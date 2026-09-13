@@ -1,0 +1,26 @@
+{
+  "name": "Условие RLS берётся из файла, ;; внутри него не разделитель",
+  "setup": "fixture:role-base",
+  "cwd": "workDir",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "caseFiles": [
+    "условие.txt"
+  ],
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: @условие.txt"
+    }
+  ],
+  "expect": {
+    "fileContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": [
+        "ЗначениеРазрешено",
+        "хвост в тексте"
+      ]
+    }
+  }
+}

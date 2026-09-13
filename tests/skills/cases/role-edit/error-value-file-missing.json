@@ -1,0 +1,21 @@
+{
+  "name": "Отказ: файла значения нет",
+  "setup": "fixture:role-base",
+  "cwd": "workDir",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: @нет.txt"
+    }
+  ],
+  "expectError": true,
+  "noSnapshot": "отказ до записи — рабочий каталог равен фикстуре",
+  "expect": {
+    "stderrContains": [
+      "Файл значения не найден"
+    ]
+  }
+}

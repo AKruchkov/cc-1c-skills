@@ -1461,9 +1461,8 @@ def resolve_role_paths(input_path):
 class Editor:
     """Состояние правки: дерево прав, счётчики, отложенные операции."""
 
-    def __init__(self, paths, value_from_file):
+    def __init__(self, paths):
         self.paths = paths
-        self.value_from_file = value_from_file
         parser = etree.XMLParser(remove_blank_text=False)
         self.tree = etree.parse(paths["RightsPath"], parser)
         self.root = self.tree.getroot()
@@ -1484,10 +1483,24 @@ class Editor:
     # --- Разбор значений операций ---
 
     def parse_batch(self, value):
-        # Значение из файла не режем: там живут многострочные условия, в которых ';;' — просто текст.
-        if self.value_from_file:
-            return [value]
+        # Делим ДО чтения файлов, поэтому ';;' внутри условия из файла разделителем не становится.
         return [part.strip() for part in value.split(";;") if part.strip()]
+
+    @staticmethod
+    def resolve_text_value(text):
+        """"@путь" в позиции ТЕКСТА (условие RLS, тело шаблона, синоним) — содержимое из файла:
+        многострочное условие инлайном ломается о кавычки и о разделитель пакета. Адрес при этом
+        остаётся в команде: "Catalog.Товары.Read: @условие.txt"."""
+        if not text or not text.startswith("@"):
+            return text
+        value_file = text[1:].strip()
+        if not os.path.isabs(value_file):
+            value_file = os.path.join(os.getcwd(), value_file)
+        if not os.path.isfile(value_file):
+            add_validation_error(f"Файл значения не найден: {value_file}")
+            return text
+        with open(value_file, encoding="utf-8-sig") as f:
+            return f.read().strip()
 
     @staticmethod
     def split_at_top_level_colon(text, open_char, close_char):
@@ -1552,7 +1565,8 @@ class Editor:
             # Показываем разбор: иначе непонятно, что навык откусил не тот сегмент.
             add_validation_error(f"{text} : разобрано как объект '{obj_name}' и право '{right_name}'")
             return None
-        return {"Object": obj_name, "Right": right_name, "Fields": fields, "Condition": condition}
+        return {"Object": obj_name, "Right": right_name, "Fields": fields,
+                "Condition": self.resolve_text_value(condition)}
 
     def parse_template_spec(self, text, name_only=False):
         left, right, found = self.split_at_top_level_colon(text, "(", ")")
@@ -1561,7 +1575,7 @@ class Editor:
         if not found:
             add_validation_error(f"{text} : ожидается 'Имя(Параметры): условие'")
             return None
-        return {"Name": left, "Condition": right}
+        return {"Name": left, "Condition": self.resolve_text_value(right)}
 
     # --- Доступ к дереву прав ---
 
@@ -2064,20 +2078,7 @@ def main():
 
     paths = resolve_role_paths(args.RolePath)
 
-    # -Value "@путь" — содержимое берётся из файла: так передают многострочное условие RLS,
-    # которое инлайном ломается о кавычки и о разделитель пакета.
     value = args.Value
-    value_from_file = False
-    if value and value.startswith("@"):
-        value_file = value[1:]
-        if not os.path.isabs(value_file):
-            value_file = os.path.join(os.getcwd(), value_file)
-        if not os.path.isfile(value_file):
-            print(f"[role-edit] Файл значения не найден: {value_file}", file=sys.stderr)
-            sys.exit(1)
-        with open(value_file, encoding="utf-8-sig") as f:
-            value = f.read().strip()
-        value_from_file = True
 
     if args.DefinitionFile and args.Operation:
         print("[role-edit] Укажите либо -DefinitionFile, либо -Operation, но не оба сразу", file=sys.stderr)
@@ -2089,7 +2090,7 @@ def main():
     target_for_guard = paths["RoleXmlPath"] if os.path.isfile(paths["RoleXmlPath"]) else paths["RightsPath"]
     assert_edit_allowed(target_for_guard, "editable")
 
-    ed = Editor(paths, value_from_file)
+    ed = Editor(paths)
 
     operations = []
     if args.DefinitionFile:
@@ -2148,9 +2149,9 @@ def main():
                     continue
                 pending.append((key, {"Name": canonical, "Value": val}))
         elif key == "set-synonym":
-            pending.append((key, {"Field": "Synonym", "Text": op_value}))
+            pending.append((key, {"Field": "Synonym", "Text": ed.resolve_text_value(op_value)}))
         elif key == "set-comment":
-            pending.append((key, {"Field": "Comment", "Text": op_value}))
+            pending.append((key, {"Field": "Comment", "Text": ed.resolve_text_value(op_value)}))
         else:
             add_validation_error(f"Неизвестная операция: {op_name}")
 

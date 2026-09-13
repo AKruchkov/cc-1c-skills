@@ -1405,18 +1405,18 @@ $script:rightsPath = $script:paths.RightsPath
 $script:roleXmlPath = $script:paths.RoleXmlPath
 $script:configRoot = $script:paths.ConfigRoot
 
-# -Value "@путь" — содержимое берётся из файла: так передают многострочное условие RLS,
-# которое инлайном ломается о кавычки и о разделитель пакета.
-$script:valueFromFile = $false
-if ($Value -and $Value.StartsWith("@")) {
-	$valueFile = $Value.Substring(1)
+# "@путь" в позиции ТЕКСТА (условие RLS, тело шаблона, синоним) — содержимое берётся из файла:
+# многострочное условие инлайном ломается о кавычки и о разделитель пакета. Адрес при этом
+# остаётся в команде: "Catalog.Товары.Read: @условие.txt".
+function Resolve-TextValue([string]$text) {
+	if (-not $text -or -not $text.StartsWith("@")) { return $text }
+	$valueFile = $text.Substring(1).Trim()
 	if (-not [System.IO.Path]::IsPathRooted($valueFile)) { $valueFile = Join-Path (Get-Location).Path $valueFile }
 	if (-not (Test-Path -LiteralPath $valueFile -PathType Leaf)) {
-		[Console]::Error.WriteLine("[role-edit] Файл значения не найден: $valueFile")
-		exit 1
+		Add-ValidationError "Файл значения не найден: $valueFile"
+		return $text
 	}
-	$Value = [System.IO.File]::ReadAllText($valueFile).Trim()
-	$script:valueFromFile = $true
+	return [System.IO.File]::ReadAllText($valueFile).Trim()
 }
 
 if ($DefinitionFile -and $Operation) {
@@ -1453,8 +1453,7 @@ function Add-Note([string]$text) { $script:notes += $text }
 # --- Разбор значений операций ---
 
 function Parse-BatchValue([string]$val) {
-	# Значение из файла не режем: там живут многострочные условия, в которых ';;' — просто текст.
-	if ($script:valueFromFile) { return ,@($val) }
+	# Делим ДО чтения файлов, поэтому ';;' внутри условия из файла разделителем не становится.
 	return @($val -split ';;' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
@@ -1539,7 +1538,7 @@ function Parse-RlsAddress([string]$text, [switch]$ConditionRequired) {
 		Add-ValidationError "$text : разобрано как объект '$objName' и право '$rightName'"
 		return $null
 	}
-	return @{ Object = $objName; Right = $rightName; Fields = $fields; Condition = $condition }
+	return @{ Object = $objName; Right = $rightName; Fields = $fields; Condition = (Resolve-TextValue $condition) }
 }
 
 # "Имя(Пар1, Пар2): условие" — скобки принадлежат имени шаблона, разделитель ищем вне них.
@@ -1550,7 +1549,7 @@ function Parse-TemplateSpec([string]$text, [switch]$NameOnly) {
 		Add-ValidationError "$text : ожидается 'Имя(Параметры): условие'"
 		return $null
 	}
-	return @{ Name = $split.Left; Condition = $split.Right }
+	return @{ Name = $split.Left; Condition = (Resolve-TextValue $split.Right) }
 }
 
 # --- Доступ к дереву прав ---
@@ -2222,8 +2221,8 @@ foreach ($op in $operations) {
 		"set-template"     { Do-SetTemplate $opValue }
 		"remove-template"  { Do-RemoveTemplate $opValue }
 		"modify-property"  { Do-ModifyProperty $opValue }
-		"set-synonym"      { $script:pendingMeta += ,@{ Field = 'Synonym'; Text = $opValue } }
-		"set-comment"      { $script:pendingMeta += ,@{ Field = 'Comment'; Text = $opValue } }
+		"set-synonym"      { $script:pendingMeta += ,@{ Field = 'Synonym'; Text = (Resolve-TextValue $opValue) } }
+		"set-comment"      { $script:pendingMeta += ,@{ Field = 'Comment'; Text = (Resolve-TextValue $opValue) } }
 		default {
 			Add-ValidationError "Неизвестная операция: $opName"
 		}
