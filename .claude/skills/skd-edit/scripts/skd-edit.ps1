@@ -1,4 +1,4 @@
-﻿# skd-edit v1.39 — Atomic 1C DCS editor
+﻿# skd-edit v1.40 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: парный .py собирает выражения автодат вне f-string ради совместимости с python 3.9 (PEP 701).
 [CmdletBinding(PositionalBinding=$false)]
@@ -194,7 +194,7 @@ function Esc-XmlText {
 	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;')
 }
 
-function Resolve-QueryValue {
+function Resolve-TextFromFile {
 	param([string]$val, [string]$baseDir)
 	if (-not $val.StartsWith("@")) { return $val }
 	$filePath = $val.Substring(1)
@@ -211,7 +211,7 @@ function Resolve-QueryValue {
 			return (Get-Content -Raw -Encoding UTF8 $c).TrimEnd()
 		}
 	}
-	Write-Error "Query file not found: $filePath (searched: $($candidates -join ', '))"
+	Write-Error "Файл значения не найден: $filePath (искали: $($candidates -join ', '))"
 	exit 1
 }
 
@@ -3097,7 +3097,7 @@ switch ($Operation) {
 		}
 
 		# InnerText setter handles XML escaping automatically
-		$queryEl.InnerText = Resolve-QueryValue $Value $script:queryBaseDir
+		$queryEl.InnerText = Resolve-TextFromFile $Value $script:queryBaseDir
 
 		$script:Dirty = $true; Write-Host "[OK] Query replaced in dataset `"$dsName`""
 	}
@@ -3337,7 +3337,7 @@ switch ($Operation) {
 		$childIndent = Get-ChildIndent $root
 
 		$parsed = Parse-DataSetShorthand $Value
-		$parsed.query = Resolve-QueryValue $parsed.query $script:queryBaseDir
+		$parsed.query = Resolve-TextFromFile $parsed.query $script:queryBaseDir
 
 		# Auto-name if empty
 		if (-not $parsed.name) {

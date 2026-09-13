@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.121 — Compile 1C DCS from JSON (+write_xml_file/write_utf8_bom: общий эталон записи)
+# skd-compile v1.122 — Compile 1C DCS from JSON (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -321,7 +321,7 @@ def fmt_dec(v):
     return str(int(v)) if v == int(v) else str(v)
 
 
-def resolve_query_value(val, base_dir):
+def resolve_text_from_file(val, base_dir):
     if not val.startswith("@"):
         return val
     file_path = val[1:]
@@ -336,7 +336,7 @@ def resolve_query_value(val, base_dir):
         if os.path.exists(c):
             with open(c, 'r', encoding='utf-8-sig') as f:
                 return f.read().rstrip()
-    print(f"Query file not found: {file_path} (searched: {', '.join(candidates)})", file=sys.stderr)
+    print(f"Файл значения не найден: {file_path} (искали: {', '.join(candidates)})", file=sys.stderr)
     sys.exit(1)
 
 
@@ -1190,7 +1190,7 @@ def emit_data_set(lines, ds, indent, default_source, tag_name='dataSet'):
 
     # Type-specific content
     if ds_type == 'DataSetQuery':
-        query_text = resolve_query_value(str(ds.get("query", "")), query_base_dir)
+        query_text = resolve_text_from_file(str(ds.get("query", "")), query_base_dir)
         lines.append(f'{indent}\t<query>{esc_xml_text(query_text)}</query>')
         if ds.get('autoFillFields') is False:
             lines.append(f'{indent}\t<autoFillFields>false</autoFillFields>')

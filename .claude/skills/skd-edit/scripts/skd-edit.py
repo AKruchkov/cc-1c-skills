@@ -1,4 +1,4 @@
-# skd-edit v1.39 — Atomic 1C DCS editor (Python port)
+# skd-edit v1.40 — Atomic 1C DCS editor (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -111,7 +111,7 @@ def esc_xml_text(s):
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
-def resolve_query_value(val, base_dir):
+def resolve_text_from_file(val, base_dir):
     if not val.startswith("@"):
         return val
     file_path = val[1:]
@@ -126,7 +126,7 @@ def resolve_query_value(val, base_dir):
         if os.path.exists(c):
             with open(c, 'r', encoding='utf-8-sig') as f:
                 return f.read().rstrip()
-    print(f"Query file not found: {file_path} (searched: {', '.join(candidates)})", file=sys.stderr)
+    print(f"Файл значения не найден: {file_path} (искали: {', '.join(candidates)})", file=sys.stderr)
     sys.exit(1)
 
 
@@ -2689,7 +2689,7 @@ elif operation == "set-query":
     if query_el is None:
         print(f"No <query> element found in dataset '{ds_name}'", file=sys.stderr)
         sys.exit(1)
-    query_el.text = resolve_query_value(value_arg, query_base_dir)
+    query_el.text = resolve_text_from_file(value_arg, query_base_dir)
     dirty = True; print(f'[OK] Query replaced in dataset "{ds_name}"')
 
 elif operation == "patch-query":
@@ -2877,7 +2877,7 @@ elif operation == "add-dataSetLink":
 elif operation == "add-dataSet":
     child_indent = get_child_indent(xml_doc)
     parsed = parse_data_set_shorthand(value_arg)
-    parsed["query"] = resolve_query_value(parsed["query"], query_base_dir)
+    parsed["query"] = resolve_text_from_file(parsed["query"], query_base_dir)
 
     if not parsed["name"]:
         count = sum(1 for ch in xml_doc if isinstance(ch.tag, str) and local_name(ch) == "dataSet" and etree.QName(ch.tag).namespace == SCH_NS)

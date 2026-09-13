@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-edit v1.0 — Edit existing 1C role rights in place
+# role-edit v1.1 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1120,8 +1120,30 @@ def validate_right_name(object_name, right_name):
     return True
 
 
-MD_NS = 'http://v8.1c.ru/8.3/MDClasses'
+# "@путь" в значении условия — текст берётся из файла: условия RLS типовых занимают десятки
 
+def resolve_text_from_file(val, base_dir):
+    if not val.startswith("@"):
+        return val
+    file_path = val[1:]
+    if os.path.isabs(file_path):
+        candidates = [file_path]
+    else:
+        candidates = [
+            os.path.join(base_dir, file_path),
+            os.path.join(os.getcwd(), file_path),
+        ]
+    for c in candidates:
+        if os.path.exists(c):
+            with open(c, 'r', encoding='utf-8-sig') as f:
+                return f.read().rstrip()
+    print(f"Файл значения не найден: {file_path} (искали: {', '.join(candidates)})", file=sys.stderr)
+    sys.exit(1)
+
+
+TEXT_BASE_DIR = os.getcwd()
+
+MD_NS = 'http://v8.1c.ru/8.3/MDClasses'
 
 # Метаданные сервиса читаются один раз на имя: раскрытие и проверка заимствования
 # спрашивают один и тот же файл.
@@ -1461,8 +1483,11 @@ def resolve_role_paths(input_path):
 class Editor:
     """Состояние правки: дерево прав, счётчики, отложенные операции."""
 
-    def __init__(self, paths):
+    def __init__(self, paths, text_base_dir):
         self.paths = paths
+        # База относительного пути @файла: каталог списка операций, иначе каталог самой роли.
+        # Текущий каталог функция проверяет вторым кандидатом в любом случае.
+        self.text_base_dir = text_base_dir
         parser = etree.XMLParser(remove_blank_text=False)
         self.tree = etree.parse(paths["RightsPath"], parser)
         self.root = self.tree.getroot()
@@ -1486,21 +1511,6 @@ class Editor:
         # Делим ДО чтения файлов, поэтому ';;' внутри условия из файла разделителем не становится.
         return [part.strip() for part in value.split(";;") if part.strip()]
 
-    @staticmethod
-    def resolve_text_value(text):
-        """"@путь" в позиции ТЕКСТА (условие RLS, тело шаблона, синоним) — содержимое из файла:
-        многострочное условие инлайном ломается о кавычки и о разделитель пакета. Адрес при этом
-        остаётся в команде: "Catalog.Товары.Read: @условие.txt"."""
-        if not text or not text.startswith("@"):
-            return text
-        value_file = text[1:].strip()
-        if not os.path.isabs(value_file):
-            value_file = os.path.join(os.getcwd(), value_file)
-        if not os.path.isfile(value_file):
-            add_validation_error(f"Файл значения не найден: {value_file}")
-            return text
-        with open(value_file, encoding="utf-8-sig") as f:
-            return f.read().strip()
 
     @staticmethod
     def split_at_top_level_colon(text, open_char, close_char):
@@ -1566,7 +1576,7 @@ class Editor:
             add_validation_error(f"{text} : разобрано как объект '{obj_name}' и право '{right_name}'")
             return None
         return {"Object": obj_name, "Right": right_name, "Fields": fields,
-                "Condition": self.resolve_text_value(condition)}
+                "Condition": resolve_text_from_file(condition, self.text_base_dir)}
 
     def parse_template_spec(self, text, name_only=False):
         left, right, found = self.split_at_top_level_colon(text, "(", ")")
@@ -1575,7 +1585,7 @@ class Editor:
         if not found:
             add_validation_error(f"{text} : ожидается 'Имя(Параметры): условие'")
             return None
-        return {"Name": left, "Condition": self.resolve_text_value(right)}
+        return {"Name": left, "Condition": resolve_text_from_file(right, self.text_base_dir)}
 
     # --- Доступ к дереву прав ---
 
@@ -2090,7 +2100,9 @@ def main():
     target_for_guard = paths["RoleXmlPath"] if os.path.isfile(paths["RoleXmlPath"]) else paths["RightsPath"]
     assert_edit_allowed(target_for_guard, "editable")
 
-    ed = Editor(paths)
+    text_base_dir = (os.path.dirname(os.path.abspath(args.DefinitionFile)) if args.DefinitionFile
+                     else os.path.dirname(paths["RightsPath"]))
+    ed = Editor(paths, text_base_dir)
 
     operations = []
     if args.DefinitionFile:
@@ -2149,9 +2161,9 @@ def main():
                     continue
                 pending.append((key, {"Name": canonical, "Value": val}))
         elif key == "set-synonym":
-            pending.append((key, {"Field": "Synonym", "Text": ed.resolve_text_value(op_value)}))
+            pending.append((key, {"Field": "Synonym", "Text": resolve_text_from_file(op_value, ed.text_base_dir)}))
         elif key == "set-comment":
-            pending.append((key, {"Field": "Comment", "Text": ed.resolve_text_value(op_value)}))
+            pending.append((key, {"Field": "Comment", "Text": resolve_text_from_file(op_value, ed.text_base_dir)}))
         else:
             add_validation_error(f"Неизвестная операция: {op_name}")
 

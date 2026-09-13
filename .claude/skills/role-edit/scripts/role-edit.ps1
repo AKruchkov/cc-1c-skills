@@ -1,4 +1,4 @@
-﻿# role-edit v1.0 — Edit existing 1C role rights in place
+﻿# role-edit v1.1 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1025,6 +1025,27 @@ function Validate-RightName {
 	return $true
 }
 
+function Resolve-TextFromFile {
+	param([string]$val, [string]$baseDir)
+	if (-not $val.StartsWith("@")) { return $val }
+	$filePath = $val.Substring(1)
+	if ([System.IO.Path]::IsPathRooted($filePath)) {
+		$candidates = @($filePath)
+	} else {
+		$candidates = @(
+			(Join-Path $baseDir $filePath),
+			(Join-Path (Get-Location).Path $filePath)
+		)
+	}
+	foreach ($c in $candidates) {
+		if (Test-Path $c) {
+			return (Get-Content -Raw -Encoding UTF8 $c).TrimEnd()
+		}
+	}
+	Write-Error "Файл значения не найден: $filePath (искали: $($candidates -join ', '))"
+	exit 1
+}
+
 # --- 5a. Service roots: expand to leaves ---
 
 # Метаданные сервиса читаются один раз на имя: раскрытие и проверка заимствования
@@ -1405,20 +1426,6 @@ $script:rightsPath = $script:paths.RightsPath
 $script:roleXmlPath = $script:paths.RoleXmlPath
 $script:configRoot = $script:paths.ConfigRoot
 
-# "@путь" в позиции ТЕКСТА (условие RLS, тело шаблона, синоним) — содержимое берётся из файла:
-# многострочное условие инлайном ломается о кавычки и о разделитель пакета. Адрес при этом
-# остаётся в команде: "Catalog.Товары.Read: @условие.txt".
-function Resolve-TextValue([string]$text) {
-	if (-not $text -or -not $text.StartsWith("@")) { return $text }
-	$valueFile = $text.Substring(1).Trim()
-	if (-not [System.IO.Path]::IsPathRooted($valueFile)) { $valueFile = Join-Path (Get-Location).Path $valueFile }
-	if (-not (Test-Path -LiteralPath $valueFile -PathType Leaf)) {
-		Add-ValidationError "Файл значения не найден: $valueFile"
-		return $text
-	}
-	return [System.IO.File]::ReadAllText($valueFile).Trim()
-}
-
 if ($DefinitionFile -and $Operation) {
 	[Console]::Error.WriteLine("[role-edit] Укажите либо -DefinitionFile, либо -Operation, но не оба сразу")
 	exit 1
@@ -1427,6 +1434,11 @@ if (-not $DefinitionFile -and -not $Operation) {
 	[Console]::Error.WriteLine("[role-edit] Укажите -Operation с -Value или -DefinitionFile")
 	exit 1
 }
+
+# База относительного пути @файла: каталог списка операций, иначе каталог самой роли.
+# Текущий каталог функция проверяет вторым кандидатом в любом случае.
+$script:textBaseDir = if ($DefinitionFile) { [System.IO.Path]::GetDirectoryName((Resolve-Path $DefinitionFile).Path) }
+                      else { [System.IO.Path]::GetDirectoryName($script:paths.RightsPath) }
 
 $targetForGuard = if (Test-Path -LiteralPath $script:roleXmlPath) { $script:roleXmlPath } else { $script:rightsPath }
 Assert-EditAllowed $targetForGuard 'editable'
@@ -1538,7 +1550,7 @@ function Parse-RlsAddress([string]$text, [switch]$ConditionRequired) {
 		Add-ValidationError "$text : разобрано как объект '$objName' и право '$rightName'"
 		return $null
 	}
-	return @{ Object = $objName; Right = $rightName; Fields = $fields; Condition = (Resolve-TextValue $condition) }
+	return @{ Object = $objName; Right = $rightName; Fields = $fields; Condition = (Resolve-TextFromFile $condition $script:textBaseDir) }
 }
 
 # "Имя(Пар1, Пар2): условие" — скобки принадлежат имени шаблона, разделитель ищем вне них.
@@ -1549,7 +1561,7 @@ function Parse-TemplateSpec([string]$text, [switch]$NameOnly) {
 		Add-ValidationError "$text : ожидается 'Имя(Параметры): условие'"
 		return $null
 	}
-	return @{ Name = $split.Left; Condition = (Resolve-TextValue $split.Right) }
+	return @{ Name = $split.Left; Condition = (Resolve-TextFromFile $split.Right $script:textBaseDir) }
 }
 
 # --- Доступ к дереву прав ---
@@ -2221,8 +2233,8 @@ foreach ($op in $operations) {
 		"set-template"     { Do-SetTemplate $opValue }
 		"remove-template"  { Do-RemoveTemplate $opValue }
 		"modify-property"  { Do-ModifyProperty $opValue }
-		"set-synonym"      { $script:pendingMeta += ,@{ Field = 'Synonym'; Text = (Resolve-TextValue $opValue) } }
-		"set-comment"      { $script:pendingMeta += ,@{ Field = 'Comment'; Text = (Resolve-TextValue $opValue) } }
+		"set-synonym"      { $script:pendingMeta += ,@{ Field = 'Synonym'; Text = (Resolve-TextFromFile $opValue $script:textBaseDir) } }
+		"set-comment"      { $script:pendingMeta += ,@{ Field = 'Comment'; Text = (Resolve-TextFromFile $opValue $script:textBaseDir) } }
 		default {
 			Add-ValidationError "Неизвестная операция: $opName"
 		}

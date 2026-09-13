@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-compile v1.40 — Compile 1C role from JSON
+# role-compile v1.41 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1166,19 +1166,28 @@ def validate_right_name(object_name, right_name):
 
 
 # "@путь" в значении условия — текст берётся из файла: условия RLS типовых занимают десятки
-# строк с кавычками, и внутри JSON-строки это источник ошибок экранирования. Путь относительный —
-# от текущего каталога, как в role-edit.
-def resolve_text_value(text):
-    if not text or not text.startswith("@"):
-        return text
-    value_file = text[1:].strip()
-    if not os.path.isabs(value_file):
-        value_file = os.path.join(os.getcwd(), value_file)
-    if not os.path.isfile(value_file):
-        add_validation_error(f"Файл значения не найден: {value_file}")
-        return text
-    with open(value_file, encoding="utf-8-sig") as f:
-        return f.read().strip()
+# строк с кавычками, и внутри JSON-строки это источник ошибок экранирования. Относительный
+# путь ищется рядом с JSON-описанием роли, затем в текущем каталоге.
+def resolve_text_from_file(val, base_dir):
+    if not val.startswith("@"):
+        return val
+    file_path = val[1:]
+    if os.path.isabs(file_path):
+        candidates = [file_path]
+    else:
+        candidates = [
+            os.path.join(base_dir, file_path),
+            os.path.join(os.getcwd(), file_path),
+        ]
+    for c in candidates:
+        if os.path.exists(c):
+            with open(c, 'r', encoding='utf-8-sig') as f:
+                return f.read().rstrip()
+    print(f"Файл значения не найден: {file_path} (искали: {', '.join(candidates)})", file=sys.stderr)
+    sys.exit(1)
+
+
+TEXT_BASE_DIR = os.getcwd()
 
 
 MD_NS = 'http://v8.1c.ru/8.3/MDClasses'
@@ -1380,7 +1389,7 @@ def parse_object_entry(entry):
         for p_name, p_value in entry['rls'].items():
             rls_right = translate_right_name(p_name)
             if rls_right in rights_map:
-                rights_map[rls_right]['Condition'] = resolve_text_value(str(p_value))
+                rights_map[rls_right]['Condition'] = resolve_text_from_file(str(p_value), TEXT_BASE_DIR)
             else:
                 print(f"WARNING: {obj_name}: RLS for '{rls_right}' but this right is not in the rights list", file=sys.stderr)
 
@@ -1628,6 +1637,10 @@ def main():
     format_version = detect_format_version(out_dir_resolved)
 
     # --- 2. Parse all object entries ---
+    # Относительный путь @файла ищем сначала рядом с JSON-описанием роли.
+    global TEXT_BASE_DIR
+    TEXT_BASE_DIR = os.path.dirname(os.path.abspath(args.JsonPath))
+
     parsed_objects = []
     seen_object_names = set()
     if defn.get('objects'):
@@ -1740,7 +1753,7 @@ def main():
         for tpl in defn['templates']:
             lines.append('\t<restrictionTemplate>')
             lines.append(f'\t\t<name>{esc_xml_text(str(tpl["name"]))}</name>')
-            lines.append(f'\t\t<condition>{esc_xml_text(resolve_text_value(str(tpl["condition"])))}</condition>')
+            lines.append(f'\t\t<condition>{esc_xml_text(resolve_text_from_file(str(tpl["condition"]), TEXT_BASE_DIR))}</condition>')
             lines.append('\t</restrictionTemplate>')
             template_count += 1
 

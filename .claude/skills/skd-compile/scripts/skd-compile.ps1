@@ -1,4 +1,4 @@
-﻿# skd-compile v1.121 — Compile 1C DCS from JSON (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# skd-compile v1.122 — Compile 1C DCS from JSON (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -305,7 +305,7 @@ function Esc-XmlText {
 	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;')
 }
 
-function Resolve-QueryValue {
+function Resolve-TextFromFile {
 	param([string]$val, [string]$baseDir)
 	if (-not $val.StartsWith("@")) { return $val }
 	$filePath = $val.Substring(1)
@@ -322,7 +322,7 @@ function Resolve-QueryValue {
 			return (Get-Content -Raw -Encoding UTF8 $c).TrimEnd()
 		}
 	}
-	Write-Error "Query file not found: $filePath (searched: $($candidates -join ', '))"
+	Write-Error "Файл значения не найден: $filePath (искали: $($candidates -join ', '))"
 	exit 1
 }
 
@@ -1341,7 +1341,7 @@ function Emit-DataSet {
 
 	# Type-specific content
 	if ($dsType -eq "DataSetQuery") {
-		$queryText = Resolve-QueryValue "$($ds.query)" $script:queryBaseDir
+		$queryText = Resolve-TextFromFile "$($ds.query)" $script:queryBaseDir
 		X "$indent`t<query>$(Esc-XmlText $queryText)</query>"
 		if ($ds.autoFillFields -eq $false) {
 			X "$indent`t<autoFillFields>false</autoFillFields>"

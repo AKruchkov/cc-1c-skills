@@ -409,6 +409,16 @@ const FAMILIES = [
   // Существует только в PY: PowerShell регистронезависим сам по себе (свойства PSObject, ключи
   // Hashtable, -eq/-contains, имена параметров, ValidateSet), поэтому в .ps1 копии нет и быть
   // не должно — ps1: null.
+  // Значение операции может быть "@путь" — текст читается из файла. Правило поиска общее:
+  // абсолютный путь как есть, относительный — рядом с DSL (или с редактируемым объектом),
+  // затем в текущем каталоге. Разъедется — и один навык начнёт искать не там, где другой.
+  {
+    name: 'значение из файла: resolve_text_from_file', py: 'resolve_text_from_file', ps1: 'Resolve-TextFromFile',
+    variants: [
+      { id: 'base', authority: 'skd-edit',
+        consumers: ['form-compile', 'role-compile', 'role-edit', 'skd-compile'] },
+    ],
+  },
   {
     name: 'case-insensitive input: CIDict', py: 'CIDict', ps1: null,
     variants: [

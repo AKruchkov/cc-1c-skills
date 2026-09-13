@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-compile v1.196 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
+# form-compile v1.197 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -1571,19 +1571,22 @@ def di_attr(el):
 QUERY_BASE_DIR = None
 
 
-def resolve_query_value(val, base_dir):
-    if not val.startswith('@'):
+def resolve_text_from_file(val, base_dir):
+    if not val.startswith("@"):
         return val
     file_path = val[1:]
     if os.path.isabs(file_path):
         candidates = [file_path]
     else:
-        candidates = [os.path.join(base_dir or os.getcwd(), file_path), os.path.join(os.getcwd(), file_path)]
+        candidates = [
+            os.path.join(base_dir, file_path),
+            os.path.join(os.getcwd(), file_path),
+        ]
     for c in candidates:
         if os.path.exists(c):
             with open(c, 'r', encoding='utf-8-sig') as f:
                 return f.read().rstrip()
-    print(f"Query file not found: {file_path} (searched: {', '.join(candidates)})", file=sys.stderr)
+    print(f"Файл значения не найден: {file_path} (искали: {', '.join(candidates)})", file=sys.stderr)
     sys.exit(1)
 
 
@@ -5877,7 +5880,7 @@ def emit_attributes(lines, attrs, indent, conditional_appearance=None):
             ddr = 'false' if s.get('dynamicDataRead') is False else 'true'
             lines.append(f'{si}<DynamicDataRead>{ddr}</DynamicDataRead>')
             if has_query:
-                qtext = resolve_query_value(str(s['query']), QUERY_BASE_DIR)
+                qtext = resolve_text_from_file(str(s['query']), QUERY_BASE_DIR)
                 lines.append(f'{si}<QueryText>{esc_xml_text(qtext)}</QueryText>')
             # Явные поля набора (редко): override title/dataPath
             if s.get('fields'):

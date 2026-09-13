@@ -1,4 +1,4 @@
-﻿# form-compile v1.196 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
+﻿# form-compile v1.197 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1726,17 +1726,24 @@ if ($FromObject) {
 
 # Базовая директория для @file-ссылок в query динсписка (зеркало skd-compile)
 $script:queryBaseDir = if ($JsonPath) { [System.IO.Path]::GetDirectoryName((Resolve-Path $JsonPath).Path) } else { (Get-Location).Path }
-function Resolve-QueryValue {
+function Resolve-TextFromFile {
 	param([string]$val, [string]$baseDir)
 	if (-not $val.StartsWith("@")) { return $val }
 	$filePath = $val.Substring(1)
 	if ([System.IO.Path]::IsPathRooted($filePath)) {
 		$candidates = @($filePath)
 	} else {
-		$candidates = @((Join-Path $baseDir $filePath), (Join-Path (Get-Location).Path $filePath))
+		$candidates = @(
+			(Join-Path $baseDir $filePath),
+			(Join-Path (Get-Location).Path $filePath)
+		)
 	}
-	foreach ($c in $candidates) { if (Test-Path $c) { return (Get-Content -Raw -Encoding UTF8 $c).TrimEnd() } }
-	Write-Error "Query file not found: $filePath (searched: $($candidates -join ', '))"
+	foreach ($c in $candidates) {
+		if (Test-Path $c) {
+			return (Get-Content -Raw -Encoding UTF8 $c).TrimEnd()
+		}
+	}
+	Write-Error "Файл значения не найден: $filePath (искали: $($candidates -join ', '))"
 	exit 1
 }
 
@@ -6035,7 +6042,7 @@ function Emit-Attributes {
 			$ddr = if ($st.dynamicDataRead -eq $false) { "false" } else { "true" }
 			X "$si<DynamicDataRead>$ddr</DynamicDataRead>"
 			if ($hasQuery) {
-				$qtext = Resolve-QueryValue "$($st.query)" $script:queryBaseDir
+				$qtext = Resolve-TextFromFile "$($st.query)" $script:queryBaseDir
 				X "$si<QueryText>$(Esc-XmlText $qtext)</QueryText>"
 			}
 			# Явные поля набора (редко): override title/dataPath
