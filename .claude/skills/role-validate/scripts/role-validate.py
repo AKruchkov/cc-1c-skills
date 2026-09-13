@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-validate v1.5 — Validate 1C role Rights.xml structure
+# role-validate v1.6 — Validate 1C role Rights.xml structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates role Rights.xml: root element, global flags, objects, rights, RLS, templates."""
 import sys, os, argparse, re
@@ -78,7 +78,9 @@ KNOWN_RIGHTS = {
     ],
     'AccumulationRegister': ['Read', 'Update', 'View', 'Edit', 'TotalsControl'],
     'AccountingRegister': ['Read', 'Update', 'View', 'Edit', 'TotalsControl'],
-    'CalculationRegister': ['Read', 'View'],
+    'CalculationRegister': [
+        'Read', 'Update', 'View', 'Edit',
+    ],
     'Constant': [
         'Read', 'Update', 'View', 'Edit',
         'ReadDataHistory', 'ViewDataHistory', 'UpdateDataHistory',
@@ -86,14 +88,13 @@ KNOWN_RIGHTS = {
         'EditDataHistoryVersionComment', 'SwitchToDataHistoryVersion',
     ],
     'ChartOfAccounts': [
-        'Read', 'Insert', 'Update', 'Delete', 'View', 'Edit', 'InputByString',
-        'InteractiveInsert', 'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark',
-        'InteractiveDelete',
-        'InteractiveDeletePredefinedData', 'InteractiveSetDeletionMarkPredefinedData',
-        'InteractiveClearDeletionMarkPredefinedData', 'InteractiveDeleteMarkedPredefinedData',
-        'ReadDataHistory', 'ReadDataHistoryOfMissingData',
-        'UpdateDataHistory', 'UpdateDataHistoryOfMissingData',
-        'UpdateDataHistorySettings', 'UpdateDataHistoryVersionComment',
+        'Read', 'Insert', 'Update', 'Delete',
+        'View', 'Edit', 'InputByString', 'InteractiveInsert',
+        'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark', 'InteractiveDelete', 'InteractiveDeleteMarked',
+        'InteractiveDeletePredefinedData', 'InteractiveSetDeletionMarkPredefinedData', 'InteractiveClearDeletionMarkPredefinedData', 'InteractiveDeleteMarkedPredefinedData',
+        'ReadDataHistory', 'ReadDataHistoryOfMissingData', 'UpdateDataHistory', 'UpdateDataHistoryOfMissingData',
+        'UpdateDataHistorySettings', 'UpdateDataHistoryVersionComment', 'ViewDataHistory', 'EditDataHistoryVersionComment',
+        'SwitchToDataHistoryVersion',
     ],
     'ChartOfCharacteristicTypes': [
         'Read', 'Insert', 'Update', 'Delete', 'View', 'Edit', 'InputByString',
@@ -107,11 +108,13 @@ KNOWN_RIGHTS = {
         'EditDataHistoryVersionComment', 'SwitchToDataHistoryVersion',
     ],
     'ChartOfCalculationTypes': [
-        'Read', 'Insert', 'Update', 'Delete', 'View', 'Edit', 'InputByString',
-        'InteractiveInsert', 'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark',
-        'InteractiveDelete',
-        'InteractiveDeletePredefinedData', 'InteractiveSetDeletionMarkPredefinedData',
-        'InteractiveClearDeletionMarkPredefinedData', 'InteractiveDeleteMarkedPredefinedData',
+        'Read', 'Insert', 'Update', 'Delete',
+        'View', 'Edit', 'InputByString', 'InteractiveInsert',
+        'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark', 'InteractiveDelete', 'InteractiveDeleteMarked',
+        'InteractiveDeletePredefinedData', 'InteractiveSetDeletionMarkPredefinedData', 'InteractiveClearDeletionMarkPredefinedData', 'InteractiveDeleteMarkedPredefinedData',
+        'ReadDataHistory', 'ReadDataHistoryOfMissingData', 'UpdateDataHistory', 'UpdateDataHistoryOfMissingData',
+        'UpdateDataHistorySettings', 'UpdateDataHistoryVersionComment', 'ViewDataHistory', 'EditDataHistoryVersionComment',
+        'SwitchToDataHistoryVersion',
     ],
     'ExchangePlan': [
         'Read', 'Insert', 'Update', 'Delete', 'View', 'Edit', 'InputByString',
@@ -123,14 +126,20 @@ KNOWN_RIGHTS = {
         'EditDataHistoryVersionComment', 'SwitchToDataHistoryVersion',
     ],
     'BusinessProcess': [
-        'Read', 'Insert', 'Update', 'Delete', 'View', 'Edit', 'InputByString',
-        'Start', 'InteractiveInsert', 'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark',
-        'InteractiveDelete', 'InteractiveActivate', 'InteractiveStart',
+        'Read', 'Insert', 'Update', 'Delete',
+        'View', 'Edit', 'InputByString', 'Start',
+        'InteractiveInsert', 'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark', 'InteractiveDelete',
+        'InteractiveDeleteMarked', 'InteractiveActivate', 'InteractiveStart', 'ReadDataHistory',
+        'ReadDataHistoryOfMissingData', 'UpdateDataHistory', 'UpdateDataHistoryOfMissingData', 'UpdateDataHistorySettings',
+        'UpdateDataHistoryVersionComment', 'ViewDataHistory', 'EditDataHistoryVersionComment', 'SwitchToDataHistoryVersion',
     ],
     'Task': [
-        'Read', 'Insert', 'Update', 'Delete', 'View', 'Edit', 'InputByString',
-        'Execute', 'InteractiveInsert', 'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark',
-        'InteractiveDelete', 'InteractiveActivate', 'InteractiveExecute',
+        'Read', 'Insert', 'Update', 'Delete',
+        'View', 'Edit', 'InputByString', 'Execute',
+        'InteractiveInsert', 'InteractiveSetDeletionMark', 'InteractiveClearDeletionMark', 'InteractiveDelete',
+        'InteractiveDeleteMarked', 'InteractiveActivate', 'InteractiveExecute', 'ReadDataHistory',
+        'ReadDataHistoryOfMissingData', 'UpdateDataHistory', 'UpdateDataHistoryOfMissingData', 'UpdateDataHistorySettings',
+        'UpdateDataHistoryVersionComment', 'ViewDataHistory', 'EditDataHistoryVersionComment', 'SwitchToDataHistoryVersion',
     ],
     'DataProcessor': ['Use', 'View'],
     'Report': ['Use', 'View'],

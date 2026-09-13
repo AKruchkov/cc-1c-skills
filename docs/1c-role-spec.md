@@ -385,7 +385,9 @@ Subsystem.Администрирование.Subsystem.Пользователи
 | Право | Описание |
 |-------|----------|
 | `Read` | Чтение |
+| `Update` | Изменение |
 | `View` | Просмотр |
+| `Edit` | Редактирование |
 
 #### Constant
 
@@ -428,6 +430,10 @@ Subsystem.Администрирование.Subsystem.Пользователи
 | `UpdateDataHistoryOfMissingData` | Обновление истории отсутствующих данных |
 | `UpdateDataHistorySettings` | Настройки истории данных |
 | `UpdateDataHistoryVersionComment` | Обновление комментария версии |
+| `InteractiveDeleteMarked` | Интерактивное удаление помеченных |
+| `ViewDataHistory` | Просмотр истории данных |
+| `EditDataHistoryVersionComment` | Редактирование комментария версии |
+| `SwitchToDataHistoryVersion` | Переход к версии |
 
 #### ChartOfCharacteristicTypes
 
@@ -459,6 +465,16 @@ Subsystem.Администрирование.Subsystem.Пользователи
 | `InteractiveSetDeletionMarkPredefinedData` | Пометка удаления предопределённых |
 | `InteractiveClearDeletionMarkPredefinedData` | Снятие пометки предопределённых |
 | `InteractiveDeleteMarkedPredefinedData` | Удаление помеченных предопределённых |
+| `InteractiveDeleteMarked` | Интерактивное удаление помеченных |
+| `ReadDataHistory` | Чтение истории данных |
+| `ReadDataHistoryOfMissingData` | Чтение истории отсутствующих данных |
+| `UpdateDataHistory` | Обновление истории данных |
+| `UpdateDataHistoryOfMissingData` | Обновление истории отсутствующих данных |
+| `UpdateDataHistorySettings` | Настройки истории данных |
+| `UpdateDataHistoryVersionComment` | Обновление комментария версии |
+| `ViewDataHistory` | Просмотр истории данных |
+| `EditDataHistoryVersionComment` | Редактирование комментария версии |
+| `SwitchToDataHistoryVersion` | Переход к версии |
 
 #### ExchangePlan
 

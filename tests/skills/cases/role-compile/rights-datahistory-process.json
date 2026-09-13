@@ -1,0 +1,43 @@
+{
+  "name": "Права истории данных у бизнес-процесса, задачи, ПВР и регистра расчёта (сверено с платформой)",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": [
+        { "type": "Task", "name": "ЗадачаИсполнителя" },
+        { "type": "BusinessProcess", "name": "Согласование", "task": "Task.ЗадачаИсполнителя" },
+        { "type": "ChartOfCalculationTypes", "name": "Начисления" },
+        {
+          "type": "CalculationRegister",
+          "name": "Начисление",
+          "chartOfCalculationTypes": "ChartOfCalculationTypes.Начисления"
+        }
+      ],
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "input": {
+    "name": "ИсторияДанныхПроцессов",
+    "synonym": "История данных процессов",
+    "objects": [
+      "BusinessProcess.Согласование: Read, ReadDataHistory, ViewDataHistory, InteractiveDeleteMarked",
+      "Task.ЗадачаИсполнителя: Read, UpdateDataHistorySettings, SwitchToDataHistoryVersion",
+      "ChartOfCalculationTypes.Начисления: Read, EditDataHistoryVersionComment, InteractiveDeleteMarked",
+      "CalculationRegister.Начисление: Read, Update, View, Edit"
+    ]
+  },
+  "validatePath": "Roles/ИсторияДанныхПроцессов",
+  "expect": {
+    "files": [
+      "Roles/ИсторияДанныхПроцессов.xml",
+      "Roles/ИсторияДанныхПроцессов/Ext/Rights.xml"
+    ],
+    "fileContains": {
+      "file": "Roles/ИсторияДанныхПроцессов/Ext/Rights.xml",
+      "text": "SwitchToDataHistoryVersion"
+    }
+  }
+}

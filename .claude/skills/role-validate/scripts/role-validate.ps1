@@ -1,4 +1,4 @@
-﻿# role-validate v1.5 — Validate 1C role structure
+﻿# role-validate v1.6 — Validate 1C role structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -61,7 +61,9 @@ $script:knownRights = @{
 	)
 	"AccumulationRegister" = @("Read","Update","View","Edit","TotalsControl")
 	"AccountingRegister" = @("Read","Update","View","Edit","TotalsControl")
-	"CalculationRegister" = @("Read","View")
+	"CalculationRegister" = @(
+		"Read","Update","View","Edit"
+	)
 	"Constant" = @(
 		"Read","Update","View","Edit",
 		"ReadDataHistory","ViewDataHistory","UpdateDataHistory",
@@ -69,14 +71,13 @@ $script:knownRights = @{
 		"EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
 	)
 	"ChartOfAccounts" = @(
-		"Read","Insert","Update","Delete","View","Edit","InputByString",
-		"InteractiveInsert","InteractiveSetDeletionMark","InteractiveClearDeletionMark",
-		"InteractiveDelete",
-		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData",
-		"InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData",
-		"ReadDataHistory","ReadDataHistoryOfMissingData",
-		"UpdateDataHistory","UpdateDataHistoryOfMissingData",
-		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment"
+		"Read","Insert","Update","Delete"
+		"View","Edit","InputByString","InteractiveInsert"
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDelete","InteractiveDeleteMarked"
+		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData","InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData"
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData"
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment"
+		"SwitchToDataHistoryVersion"
 	)
 	"ChartOfCharacteristicTypes" = @(
 		"Read","Insert","Update","Delete","View","Edit","InputByString",
@@ -90,11 +91,13 @@ $script:knownRights = @{
 		"EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
 	)
 	"ChartOfCalculationTypes" = @(
-		"Read","Insert","Update","Delete","View","Edit","InputByString",
-		"InteractiveInsert","InteractiveSetDeletionMark","InteractiveClearDeletionMark",
-		"InteractiveDelete",
-		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData",
-		"InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData"
+		"Read","Insert","Update","Delete"
+		"View","Edit","InputByString","InteractiveInsert"
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDelete","InteractiveDeleteMarked"
+		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData","InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData"
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData"
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment"
+		"SwitchToDataHistoryVersion"
 	)
 	"ExchangePlan" = @(
 		"Read","Insert","Update","Delete","View","Edit","InputByString",
@@ -106,14 +109,20 @@ $script:knownRights = @{
 		"EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
 	)
 	"BusinessProcess" = @(
-		"Read","Insert","Update","Delete","View","Edit","InputByString",
-		"Start","InteractiveInsert","InteractiveSetDeletionMark","InteractiveClearDeletionMark",
-		"InteractiveDelete","InteractiveActivate","InteractiveStart"
+		"Read","Insert","Update","Delete"
+		"View","Edit","InputByString","Start"
+		"InteractiveInsert","InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDelete"
+		"InteractiveDeleteMarked","InteractiveActivate","InteractiveStart","ReadDataHistory"
+		"ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData","UpdateDataHistorySettings"
+		"UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
 	)
 	"Task" = @(
-		"Read","Insert","Update","Delete","View","Edit","InputByString",
-		"Execute","InteractiveInsert","InteractiveSetDeletionMark","InteractiveClearDeletionMark",
-		"InteractiveDelete","InteractiveActivate","InteractiveExecute"
+		"Read","Insert","Update","Delete"
+		"View","Edit","InputByString","Execute"
+		"InteractiveInsert","InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDelete"
+		"InteractiveDeleteMarked","InteractiveActivate","InteractiveExecute","ReadDataHistory"
+		"ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData","UpdateDataHistorySettings"
+		"UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
 	)
 	"DataProcessor" = @("Use","View")
 	"Report" = @("Use","View")

@@ -12,12 +12,12 @@
 | `Configuration` | Administration, DataAdministration, UpdateDataBaseConfiguration, ConfigurationExtensionsAdministration, ActiveUsers, EventLog, ExclusiveMode, ThinClient, ThickClient, WebClient, MobileClient, ExternalConnection, Automation, Output, SaveUserData, TechnicalSpecialistMode, InteractiveOpenExtDataProcessors, InteractiveOpenExtReports, AnalyticsSystemClient, CollaborationSystemInfoBaseRegistration, MainWindowModeNormal, MainWindowModeWorkplace, MainWindowModeEmbeddedWorkplace, MainWindowModeFullscreenWorkplace, MainWindowModeKiosk |
 | `Catalog`, `ChartOfCharacteristicTypes` | Read, Insert, Update, Delete, View, Edit, InputByString, Interactive* (Insert, SetDeletionMark, ClearDeletionMark, Delete, DeleteMarked), *PredefinedData, *DataHistory* |
 | `Document` | то же + Posting, UndoPosting, InteractivePosting, InteractivePostingRegular, InteractiveUndoPosting, InteractiveChangeOfPosted |
-| `ChartOfAccounts`, `ChartOfCalculationTypes`, `ExchangePlan` | Read, Insert, Update, Delete, View, Edit, InputByString, Interactive*, *DataHistory* (без InteractiveDeleteMarked у ChartOfAccounts) |
-| `BusinessProcess` | Read, Insert, Update, Delete, View, Edit, InputByString, Start, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractiveDelete, InteractiveActivate, InteractiveStart |
+| `ChartOfAccounts`, `ChartOfCalculationTypes`, `ExchangePlan` | Read, Insert, Update, Delete, View, Edit, InputByString, Interactive*, *DataHistory* |
+| `BusinessProcess` | Read, Insert, Update, Delete, View, Edit, InputByString, Start, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractiveDelete, InteractiveDeleteMarked, InteractiveActivate, InteractiveStart, *DataHistory* |
 | `Task` | то же, но вместо Start/InteractiveStart — Execute, InteractiveExecute |
 | `InformationRegister` | Read, Update, View, Edit, TotalsControl, *DataHistory* |
 | `AccumulationRegister`, `AccountingRegister` | Read, Update, View, Edit, TotalsControl |
-| `CalculationRegister` | Read, View |
+| `CalculationRegister` | Read, Update, View, Edit |
 | `Constant` | Read, Update, View, Edit, *DataHistory* |
 | `DocumentJournal` | Read, View |
 | `Sequence` | Read, Update |
