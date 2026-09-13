@@ -1,4 +1,4 @@
-﻿# role-compile v1.43 — Compile 1C role from JSON
+﻿# role-compile v1.44 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1804,6 +1804,7 @@ Write-Host "     Rights:   $rightsPath"
 Write-Host "     Objects: $($parsedObjects.Count), Rights: $totalRights, Templates: $templateCount"
 if ($droppedByDefault.Count -gt 0) {
 	[Console]::Error.WriteLine("[role-compile] Не записаны права, совпадающие с умолчанием роли (платформа их не хранит): $($droppedByDefault -join ', ')")
+	[Console]::Error.WriteLine("  Запрет хранится у реквизитов и табличных частей (они наследуют права объекта) либо в роли с setForNewObjects=true; выдача прав — наоборот.")
 }
 foreach ($note in $closureNotes) { Write-Host $note }
 switch ($regResult) {

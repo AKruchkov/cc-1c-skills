@@ -1,4 +1,4 @@
-﻿# role-edit v1.4 — Edit existing 1C role rights in place
+﻿# role-edit v1.5 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2360,6 +2360,7 @@ foreach ($note in $script:notes) { Write-Host $note }
 Write-Host "     Added: $($script:addCount), Removed: $($script:removeCount), Modified: $($script:modifyCount)"
 if ($script:droppedByDefault.Count -gt 0) {
 	[Console]::Error.WriteLine("[role-edit] Не записаны права, совпадающие с умолчанием роли (платформа их не хранит): $($script:droppedByDefault -join ', ')")
+	[Console]::Error.WriteLine("  Запрет хранится у реквизитов и табличных частей (они наследуют права объекта) либо в роли с setForNewObjects=true; выдача прав — наоборот.")
 }
 
 if (-not $NoValidate) {

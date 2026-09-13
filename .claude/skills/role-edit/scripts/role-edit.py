@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-edit v1.4 — Edit existing 1C role rights in place
+# role-edit v1.5 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -2284,6 +2284,8 @@ def main():
     if ed.dropped_by_default:
         print("[role-edit] Не записаны права, совпадающие с умолчанием роли "
               f"(платформа их не хранит): {', '.join(ed.dropped_by_default)}", file=sys.stderr)
+        print("  Запрет хранится у реквизитов и табличных частей (они наследуют права объекта) "
+              "либо в роли с setForNewObjects=true; выдача прав — наоборот.", file=sys.stderr)
 
     if not args.NoValidate:
         validate_script = os.path.normpath(os.path.join(

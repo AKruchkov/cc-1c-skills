@@ -64,9 +64,7 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/role-compile.ps1" -
 
 ### Сервисы
 
-Платформа проверяет право на **вложенном объекте** сервиса — методе шаблона URL, операции, канале. Права на сервис целиком не существует.
-
-Весь сервис — короткая запись, навык раскроет её по метаданным сервиса в `OutputDir`:
+Право живёт на **вложенном объекте** сервиса — методе шаблона URL, операции, канале; на сервисе целиком его не бывает. Весь сервис — короткая запись, навык раскроет её по метаданным в `OutputDir`:
 
 ```json
 "objects": ["HTTPService.ЭДО: Use"]
@@ -119,20 +117,16 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/role-compile.ps1" -
 
 ## Что можно писать в `objects`
 
-Права имеют 27 типов объектов; тип или имя права вне списка — ошибка: роль не создаётся, файлы не пишутся, `Configuration.xml` не меняется. Права нельзя назначить на `Enum`, `CommonModule`, `DefinedType`, `CommonPicture`, `CommonTemplate`, `Language`, `FunctionalOption`, `EventSubscription`, `ScheduledJob`, `StyleItem`, `SettingsStorage` и подобные — в дереве редактора ролей их нет.
+Прав не бывает у `Enum`, `CommonModule`, `DefinedType`, `CommonPicture`, `CommonTemplate`, `Language`, `FunctionalOption`, `EventSubscription`, `ScheduledJob`, `StyleItem`, `SettingsStorage` и подобных — в дереве редактора ролей их нет. Ошибка в описании — отказ до записи: файлы не создаются, `Configuration.xml` не меняется.
 
 Права на части объекта задаются точечным путём: `Catalog.Контрагенты.Attribute.ИНН: View, Edit`, `WebService.Обмен.Operation.Загрузить: Use`, `HTTPService.ЭДО.URLTemplate.ЕстьНовыеДокументы.Method.POST: Use`.
 
-Роль хранит только то, что отличается от её умолчаний, — всё совпавшее навык не пишет и говорит
-об этом. При умолчаниях (`setForNewObjects: false`, `setForAttributesByDefault: true`) это значит:
-объектам верхнего уровня права выдают, а реквизитам, ТЧ, измерениям и ресурсам — только
-запрещают, потому что те наследуют права своего объекта:
+Реквизиты, табличные части, измерения и ресурсы наследуют права своего объекта — им задают
+запрет, чтобы закрыть унаследованное:
 
 ```json
 {"name": "Catalog.Товары.Attribute.Цена", "rights": {"View": false}}
 ```
-
-Запрет тянет за собой права, которым запрещённое нужно: `View: false` у реквизита уносит `Edit`.
 
 Роль расширения, включённая в основные (`DefaultRoles`), прав на заимствованные объекты давать не может — платформа это запрещает. Такие права выноси в отдельную роль вне основных.
 

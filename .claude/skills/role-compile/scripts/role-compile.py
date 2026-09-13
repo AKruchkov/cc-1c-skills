@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-compile v1.43 — Compile 1C role from JSON
+# role-compile v1.44 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1859,6 +1859,8 @@ def main():
     if dropped_by_default:
         print("[role-compile] Не записаны права, совпадающие с умолчанием роли "
               f"(платформа их не хранит): {', '.join(dropped_by_default)}", file=sys.stderr)
+        print("  Запрет хранится у реквизитов и табличных частей (они наследуют права объекта) "
+              "либо в роли с setForNewObjects=true; выдача прав — наоборот.", file=sys.stderr)
     for note in closure_notes:
         print(note)
     if reg_result == 'added':
