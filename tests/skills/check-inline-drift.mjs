@@ -412,6 +412,14 @@ const FAMILIES = [
   // Замыкание прав и фильтр значений по умолчанию: обе роли обязаны считать одинаково, иначе
   // созданная и отредактированная роль разойдутся между собой и с платформой.
   {
+    name: 'права роли: get_rights_object_uuid', py: 'get_rights_object_uuid', ps1: 'Get-RightsObjectUuid',
+    variants: [{ id: 'base', authority: 'role-compile', consumers: ['role-edit'] }],
+  },
+  {
+    name: 'права роли: is_standard_kind', py: 'is_standard_kind', ps1: 'Test-StandardKind',
+    variants: [{ id: 'base', authority: 'role-compile', consumers: ['role-edit'] }],
+  },
+  {
     name: 'права роли: close_rights_dependencies', py: 'close_rights_dependencies', ps1: 'Close-RightsDependencies',
     variants: [{ id: 'base', authority: 'role-compile', consumers: ['role-edit'] }],
   },

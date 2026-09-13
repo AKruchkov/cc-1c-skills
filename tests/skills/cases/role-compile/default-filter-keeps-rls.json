@@ -1,0 +1,30 @@
+{
+  "name": "Фильтр умолчаний не уносит право вместе с его ограничением RLS",
+  "setup": "fixture:view-preset-fx",
+  "input": {
+    "name": "РЛСПриУмолчании",
+    "setForNewObjects": true,
+    "objects": [
+      {
+        "name": "Catalog.Номенклатура",
+        "rights": {
+          "Read": true,
+          "View": true
+        },
+        "rls": {
+          "Read": "ГДЕ ЛОЖЬ"
+        }
+      }
+    ]
+  },
+  "validatePath": "Roles/РЛСПриУмолчании",
+  "expect": {
+    "fileContains": {
+      "file": "Roles/РЛСПриУмолчании/Ext/Rights.xml",
+      "text": [
+        "ГДЕ ЛОЖЬ",
+        "Read"
+      ]
+    }
+  }
+}

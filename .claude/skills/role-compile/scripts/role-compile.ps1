@@ -1,4 +1,4 @@
-﻿# role-compile v1.44 — Compile 1C role from JSON
+﻿# role-compile v1.45 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -780,7 +780,20 @@ function Sort-RightsCanonical {
 	return $sorted
 }
 
-# uuid объекта прав: у верхнего уровня — из файла объекта, у вложенного — из его узла.
+# У стандартных реквизитов и стандартных табличных частей uuid в выгрузке нет: они системные.
+# Отсутствие uuid для них — норма, а не потерянный объект.
+function Test-StandardKind {
+	param([string]$objName)
+	$parts = $objName -split '\\.'
+	if ($parts.Count -lt 3) { return $false }
+	return $parts[$parts.Count-2].StartsWith("Standard")
+}
+
+# uuid объекта прав: у верхнего уровня — из файла объекта, у вложенного — спуском по дереву.
+# Искать регуляркой по всему файлу нельзя: реквизит шапки и реквизит табличной части часто
+# называются одинаково, и поиск нашёл бы первый попавшийся. Дочерние подсистемы лежат
+# отдельными файлами, поэтому для них спуск идёт по каталогам.
+# У стандартных реквизитов uuid в выгрузке нет вовсе — для них возвращаем $null молча.
 function Get-RightsObjectUuid {
 	param([string]$objName, [string]$configRoot)
 	$parts = $objName -split '\.'
@@ -793,18 +806,33 @@ function Get-RightsObjectUuid {
 	}
 	$dir = $script:typeDirs[$parts[0]]
 	if (-not $dir -or $parts.Count -lt 2) { return $null }
+	# Подсистемы вложены каталогами: Subsystems/Родитель/Subsystems/Ребёнок.xml
 	$ownerPath = Join-Path (Join-Path $configRoot $dir) "$($parts[1]).xml"
-	if (-not (Test-Path $ownerPath)) { return $null }
-	$text = [System.IO.File]::ReadAllText($ownerPath)
-	if ($parts.Count -eq 2) {
-		if ($text -match "<$($parts[0]) uuid=`"([0-9a-fA-F-]+)`"") { return $Matches[1] }
-		return $null
+	$i = 2
+	while ($parts.Count -gt $i + 1 -and $parts[$i] -eq 'Subsystem') {
+		$ownerDir = [System.IO.Path]::Combine($configRoot, $dir, ($parts[1..($i-1)] -join [System.IO.Path]::DirectorySeparatorChar + 'Subsystems' + [System.IO.Path]::DirectorySeparatorChar))
+		$ownerPath = Join-Path (Join-Path ([System.IO.Path]::GetDirectoryName($ownerPath)) ([System.IO.Path]::GetFileNameWithoutExtension($ownerPath))) (Join-Path "Subsystems" "$($parts[$i+1]).xml")
+		$i += 2
 	}
-	# Вложенный: вид — предпоследний сегмент, имя — последний.
-	$kind = [regex]::Escape($parts[$parts.Count-2])
-	$name = [regex]::Escape($parts[$parts.Count-1])
-	$rx = "<$kind uuid=`"([0-9a-fA-F-]+)`"[^>]*>\s*<Properties>\s*<Name>$name</Name>"
-	if ($text -match $rx) { return $Matches[1] }
+	if (-not (Test-Path $ownerPath)) { return $null }
+	$doc = New-Object System.Xml.XmlDocument
+	$doc.PreserveWhitespace = $true
+	try { $doc.Load($ownerPath) } catch { return $null }
+	$nsm = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+	$nsm.AddNamespace("md", "http://v8.1c.ru/8.3/MDClasses")
+	$node = $doc.DocumentElement.FirstChild
+	while ($node -and $node.NodeType -ne 'Element') { $node = $node.NextSibling }
+	if (-not $node) { return $null }
+	# Оставшиеся пары «вид, имя» ищем строго внутри текущего узла.
+	while ($i + 1 -lt $parts.Count) {
+		$kind = $parts[$i]
+		$name = $parts[$i+1]
+		$child = $node.SelectSingleNode("md:ChildObjects/md:$kind[md:Properties/md:Name='$name']", $nsm)
+		if (-not $child) { return $null }
+		$node = $child
+		$i += 2
+	}
+	if ($node.HasAttribute("uuid")) { return $node.GetAttribute("uuid") }
 	return $null
 }
 
@@ -817,7 +845,9 @@ function Sort-ObjectsByUuid {
 		$uuid = Get-RightsObjectUuid -objName $o.Name -configRoot $configRoot
 		if ($uuid) { $known += ,[pscustomobject]@{ Uuid = $uuid; Obj = $o } }
 		else {
-			[Console]::Error.WriteLine("[role-compile] $($o.Name): объект не найден в выгрузке, uuid неизвестен — узел записан в конец (платформа переставит его при первой выгрузке)")
+			if (-not (Test-StandardKind $o.Name)) {
+				[Console]::Error.WriteLine("[role-compile] $($o.Name): объект не найден в выгрузке, uuid неизвестен — узел записан в конец (платформа переставит его при первой выгрузке)")
+			}
 			$unknown += ,$o
 		}
 	}
@@ -1526,7 +1556,9 @@ foreach ($obj in $parsedObjects) {
 	$defaultValue = Get-DefaultRightValue $obj.Name $sfno $sfab
 	$kept = @()
 	foreach ($right in $obj.Rights) {
-		if ($right.Value -eq $defaultValue) { $droppedByDefault += "$($obj.Name).$($right.Name)"; continue }
+		# Право с ограничением отличается от умолчания самим ограничением — его платформа хранит,
+		# и выбросить его значило бы молча потерять написанное условие.
+		if ($right.Value -eq $defaultValue -and -not $right.Condition) { $droppedByDefault += "$($obj.Name).$($right.Name)"; continue }
 		$kept += ,$right
 	}
 	$obj.Rights = $kept

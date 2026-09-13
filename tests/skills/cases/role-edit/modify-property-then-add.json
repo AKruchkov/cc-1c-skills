@@ -1,0 +1,26 @@
+{
+  "name": "Смена умолчания роли действует на следующие операции того же вызова",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "modify-property",
+      "value": "setForNewObjects=true"
+    },
+    {
+      "operation": "add-rights",
+      "value": "DataProcessor.Загрузка: Use"
+    }
+  ],
+  "expect": {
+    "stderrContains": [
+      "Не записаны права, совпадающие с умолчанием роли"
+    ],
+    "fileNotContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "DataProcessor.Загрузка"
+    }
+  }
+}

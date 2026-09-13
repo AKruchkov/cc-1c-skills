@@ -4,14 +4,14 @@
 	<setForAttributesByDefault>true</setForAttributesByDefault>
 	<independentRightsOfChildObjects>false</independentRightsOfChildObjects>
 	<object>
-		<name>HTTPService.Расш1_HTTPСервис1.URLTemplate.ШаблонURL1.Method.Метод1</name>
+		<name>HTTPService.ЭДО.URLTemplate.ЕстьНовыеДокументы.Method.POST</name>
 		<right>
 			<name>Use</name>
 			<value>true</value>
 		</right>
 	</object>
 	<object>
-		<name>HTTPService.ЭДО.URLTemplate.ЕстьНовыеДокументы.Method.POST</name>
+		<name>HTTPService.Расш1_HTTPСервис1.URLTemplate.ШаблонURL1.Method.Метод1</name>
 		<right>
 			<name>Use</name>
 			<value>true</value>

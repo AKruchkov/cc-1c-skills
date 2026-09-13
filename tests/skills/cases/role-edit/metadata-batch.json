@@ -1,0 +1,26 @@
+{
+  "name": "Синоним и комментарий в одном вызове не затирают друг друга",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-synonym",
+      "value": "Менеджер продаж"
+    },
+    {
+      "operation": "set-comment",
+      "value": "Комментарий роли"
+    }
+  ],
+  "expect": {
+    "fileContains": {
+      "file": "Roles/Менеджер.xml",
+      "text": [
+        "Менеджер продаж",
+        "Комментарий роли"
+      ]
+    }
+  }
+}

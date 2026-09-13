@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-edit v1.6 — Edit existing 1C role rights in place
+# role-edit v1.7 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1041,8 +1041,21 @@ def sort_rights_canonical(object_name, rights):
     return sorted_rights
 
 
+# У стандартных реквизитов и стандартных табличных частей uuid в выгрузке нет: они системные.
+# Отсутствие uuid для них — норма, а не потерянный объект.
+def is_standard_kind(object_name):
+    parts = object_name.split('.')
+    if len(parts) < 3:
+        return False
+    return parts[-2].startswith("Standard")
+
+
+# uuid объекта прав: у верхнего уровня — из файла объекта, у вложенного — спуском по дереву.
+# Искать регуляркой по всему файлу нельзя: реквизит шапки и реквизит табличной части часто
+# называются одинаково, и поиск нашёл бы первый попавшийся. Дочерние подсистемы лежат
+# отдельными файлами, поэтому для них спуск идёт по каталогам.
+# У стандартных реквизитов uuid в выгрузке нет вовсе — для них возвращаем None молча.
 def get_rights_object_uuid(object_name, config_root):
-    """uuid объекта прав: у верхнего уровня — из файла объекта, у вложенного — из его узла."""
     parts = object_name.split('.')
     if parts[0] == 'Configuration':
         cfg_path = os.path.join(config_root, 'Configuration.xml')
@@ -1054,19 +1067,36 @@ def get_rights_object_uuid(object_name, config_root):
     directory = TYPE_DIRS.get(parts[0])
     if not directory or len(parts) < 2:
         return None
+    # Подсистемы вложены каталогами: Subsystems/Родитель/Subsystems/Ребёнок.xml
     owner_path = os.path.join(config_root, directory, parts[1] + '.xml')
+    i = 2
+    while len(parts) > i + 1 and parts[i] == 'Subsystem':
+        owner_path = os.path.join(os.path.splitext(owner_path)[0], 'Subsystems', parts[i + 1] + '.xml')
+        i += 2
     if not os.path.isfile(owner_path):
         return None
-    with open(owner_path, 'r', encoding='utf-8-sig') as f:
-        text = f.read()
-    if len(parts) == 2:
-        m = re.search(r'<%s uuid="([0-9a-fA-F-]+)"' % re.escape(parts[0]), text)
-        return m.group(1) if m else None
-    # Вложенный: вид — предпоследний сегмент, имя — последний.
-    rx = r'<%s uuid="([0-9a-fA-F-]+)"[^>]*>\s*<Properties>\s*<Name>%s</Name>' % (
-        re.escape(parts[-2]), re.escape(parts[-1]))
-    m = re.search(rx, text)
-    return m.group(1) if m else None
+    try:
+        tree = etree.parse(owner_path)
+    except Exception:
+        return None
+    md = '{http://v8.1c.ru/8.3/MDClasses}'
+    node = tree.getroot()[0] if len(tree.getroot()) else None
+    if node is None:
+        return None
+    # Оставшиеся пары «вид, имя» ищем строго внутри текущего узла.
+    while i + 1 < len(parts):
+        kind, name = parts[i], parts[i + 1]
+        child = None
+        for candidate in node.findall(f'{md}ChildObjects/{md}{kind}'):
+            props = candidate.find(f'{md}Properties/{md}Name')
+            if props is not None and (props.text or '') == name:
+                child = candidate
+                break
+        if child is None:
+            return None
+        node = child
+        i += 2
+    return node.get('uuid')
 
 
 def sort_objects_by_uuid(objects, config_root):
@@ -1731,7 +1761,7 @@ class Editor:
                 if other and other > uuid_value:
                     ref = node
                     break
-        else:
+        elif not is_standard_kind(obj_name):
             self.note(f"[WARN] {obj_name}: объект не найден в выгрузке, uuid неизвестен — "
                       f"узел записан перед шаблонами (платформа переставит его при первой выгрузке)")
         if ref is None:
@@ -2095,6 +2125,11 @@ class Editor:
             self.note(f"     {spec['Name']}: уже {spec['Value']}, изменений нет")
             return
         node.text = spec["Value"]
+        # Умолчания решают, какие записи вообще пишутся, — следующие операции должны видеть новое значение.
+        if spec["Name"] == "setForNewObjects":
+            self.role_sfno = spec["Value"]
+        if spec["Name"] == "setForAttributesByDefault":
+            self.role_sfab = spec["Value"]
         self.modify_count += 1
         self.rights_dirty = True
         self.note(f"     {spec['Name']} = {spec['Value']}")
