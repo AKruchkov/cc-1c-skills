@@ -1,0 +1,20 @@
+{
+  "name": "Отказ: неизвестная операция",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "add-right",
+      "value": "Catalog.Товары: Read"
+    }
+  ],
+  "expect": {
+    "stderrContains": [
+      "Неизвестная операция"
+    ]
+  },
+  "expectError": true,
+  "noSnapshot": "отказ до записи — рабочий каталог равен фикстуре"
+}

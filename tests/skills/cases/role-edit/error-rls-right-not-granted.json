@@ -1,0 +1,20 @@
+{
+  "name": "Отказ: ограничение на невыданное право",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "InformationRegister.Цены.Read: ГДЕ ЛОЖЬ"
+    }
+  ],
+  "expect": {
+    "stderrContains": [
+      "право не выдано"
+    ]
+  },
+  "expectError": true,
+  "noSnapshot": "отказ до записи — рабочий каталог равен фикстуре"
+}

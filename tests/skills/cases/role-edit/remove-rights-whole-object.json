@@ -1,0 +1,22 @@
+{
+  "name": "Форма без двоеточия удаляет узел объекта",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "remove-rights",
+      "value": "Document.Заказ"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "узел объекта удалён"
+    ],
+    "fileNotContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "Document.Заказ"
+    }
+  }
+}

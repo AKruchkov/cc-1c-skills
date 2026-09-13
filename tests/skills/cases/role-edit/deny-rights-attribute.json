@@ -1,0 +1,22 @@
+{
+  "name": "Запрет права на реквизит с каскадом запретов",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "deny-rights",
+      "value": "Catalog.Товары.Attribute.Цена: View"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "запрещено — View, Edit"
+    ],
+    "fileContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "<value>false</value>"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "Снятие ограничения оставляет право на месте",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: ГДЕ ЛОЖЬ"
+    },
+    {
+      "operation": "remove-rls",
+      "value": "Catalog.Товары.Read"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "снято ограничений — 1"
+    ]
+  }
+}

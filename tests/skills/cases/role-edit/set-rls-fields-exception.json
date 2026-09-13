@@ -1,0 +1,26 @@
+{
+  "name": "Исключение по полям: русские имена и порядок как у платформы",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: ГДЕ ЛОЖЬ"
+    },
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read[Ссылка, Код, Наименование]: "
+    }
+  ],
+  "expect": {
+    "fileContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": [
+        "<field>Code</field>",
+        "<condition/>"
+      ]
+    }
+  }
+}

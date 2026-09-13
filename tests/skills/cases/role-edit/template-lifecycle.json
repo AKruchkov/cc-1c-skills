@@ -1,0 +1,28 @@
+{
+  "name": "Шаблон ограничения: добавление, замена, удаление",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "add-template",
+      "value": "ПоОрганизации(Мод): ГДЕ Орг = &Орг"
+    },
+    {
+      "operation": "set-template",
+      "value": "ПоОрганизации(Мод): ГДЕ Орг В (&Орг)"
+    },
+    {
+      "operation": "remove-template",
+      "value": "ДляОбъекта(Мод)"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "шаблон добавлен",
+      "шаблон заменён",
+      "шаблон удалён"
+    ]
+  }
+}

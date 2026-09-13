@@ -202,6 +202,7 @@ python scripts/switch.py --runtime powershell  # вернуть на PowerShell
 ├── form-patterns/       # Справочник паттернов компоновки форм
 ├── role-info/           # Анализ прав роли
 ├── role-compile/        # Создание роли из JSON DSL
+├── role-edit/           # Точечная правка прав существующей роли
 ├── role-validate/       # Валидация роли
 ├── skd-info/            # Анализ схемы компоновки данных
 ├── skd-compile/         # Компиляция СКД из JSON DSL

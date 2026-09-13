@@ -1,0 +1,13 @@
+{
+  "name": "Добавление права к существующему объекту не трогает прочие",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "add-rights",
+      "value": "Catalog.Товары: Insert"
+    }
+  ]
+}

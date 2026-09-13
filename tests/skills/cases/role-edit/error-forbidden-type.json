@@ -1,0 +1,20 @@
+{
+  "name": "Отказ: тип не имеет прав в роли",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "add-rights",
+      "value": "Enum.Статусы: Read"
+    }
+  ],
+  "expect": {
+    "stderrContains": [
+      "не имеет прав в роли"
+    ]
+  },
+  "expectError": true,
+  "noSnapshot": "отказ до записи — рабочий каталог равен фикстуре"
+}

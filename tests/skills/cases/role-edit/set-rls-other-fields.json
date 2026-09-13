@@ -1,0 +1,19 @@
+{
+  "name": "Ограничение на все прочие поля",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: ГДЕ ЛОЖЬ"
+    }
+  ],
+  "expect": {
+    "fileContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "restrictionByCondition"
+    }
+  }
+}

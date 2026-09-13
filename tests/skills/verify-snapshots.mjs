@@ -1547,7 +1547,7 @@ async function verifyCase(skillName, caseName, skillConfig, caseData, opts) {
 // Default skills to verify when no --skill given
 const DEFAULT_SKILLS = [
   'meta-compile', 'form-compile', 'form-compile-from-object', 'form-add', 'form-edit',
-  'role-compile', 'subsystem-compile', 'subsystem-edit',
+  'role-compile', 'role-edit', 'subsystem-compile', 'subsystem-edit',
   'cf-init', 'cf-edit', 'meta-edit', 'interface-edit',
   'epf-init', 'erf-init', 'template-add', 'help-add',
   'cfe-init', 'cfe-borrow', 'cfe-patch-method',

@@ -8,6 +8,7 @@
 |-------|-----------|----------|
 | `/role-info` | `<RightsPath>` | Компактная сводка прав: объекты по типам, только разрешённые, RLS, шаблоны |
 | `/role-compile` | `<JsonPath> <RolesDir>` | Генерация роли из JSON DSL: метаданные + Rights.xml, UUID автоматически |
+| `/role-edit` | `<RolePath> -Operation <op> -Value <val>` | Точечная правка существующей роли: права, RLS, шаблоны, свойства — UUID и прочие права сохраняются |
 | `/role-validate` | `<RightsPath> [MetadataPath]` | Валидация структурной корректности: XML, namespace, права, RLS, шаблоны |
 
 ## Рабочий цикл
@@ -15,12 +16,17 @@
 ```
 Описание прав (текст) → JSON DSL → /role-compile → XML-исходники → /role-validate
                                                                   → /role-info
+
+Правка существующей роли:   XML-исходники → /role-edit → /role-validate
 ```
 
 1. Claude формирует JSON-определение роли (с пресетами или явными правами)
 2. `/role-compile` генерирует `Roles/ИмяРоли.xml` + `Roles/ИмяРоли/Ext/Rights.xml`
 3. `/role-validate` проверяет корректность сгенерированного XML
 4. `/role-info` выводит компактную сводку для визуальной проверки
+
+Существующую роль повторной компиляцией не правят: `role-compile` перевыпускает UUID и
+переписывает `Rights.xml` целиком. Для доработки — `/role-edit`.
 
 ## JSON DSL — компактный формат
 

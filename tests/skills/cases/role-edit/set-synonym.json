@@ -1,0 +1,19 @@
+{
+  "name": "Синоним правится в метаданных роли",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-synonym",
+      "value": "Менеджер продаж"
+    }
+  ],
+  "expect": {
+    "fileContains": {
+      "file": "Roles/Менеджер.xml",
+      "text": "Менеджер продаж"
+    }
+  }
+}

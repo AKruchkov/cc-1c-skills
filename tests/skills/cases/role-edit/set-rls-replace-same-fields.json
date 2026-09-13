@@ -1,0 +1,22 @@
+{
+  "name": "Повторный set-rls с тем же набором полей заменяет строку",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: ГДЕ ЛОЖЬ"
+    },
+    {
+      "operation": "set-rls",
+      "value": "Catalog.Товары.Read: ГДЕ ИСТИНА"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "ограничение заменено"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Глобальные флаги роли",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "modify-property",
+      "value": "independentRightsOfChildObjects=true"
+    }
+  ],
+  "expect": {
+    "fileContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "<independentRightsOfChildObjects>true<"
+    }
+  }
+}

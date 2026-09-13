@@ -1,0 +1,13 @@
+{
+  "name": "Пресеты и пакет через ;; в одном вызове",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "add-rights",
+      "value": "InformationRegister.Цены: Read ;; DataProcessor.Загрузка: @view"
+    }
+  ]
+}

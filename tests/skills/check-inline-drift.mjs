@@ -56,7 +56,7 @@ const FAMILIES = [
     variants: [
       { id: 'full', authority: 'cf-edit',
         consumers: ['form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
-          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'skd-compile', 'skd-edit',
+          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'] },
     ],
   },
@@ -65,7 +65,7 @@ const FAMILIES = [
     variants: [
       { id: 'full', authority: 'cf-edit',
         consumers: ['form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
-          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'skd-compile', 'skd-edit',
+          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'] },
     ],
   },
@@ -74,7 +74,7 @@ const FAMILIES = [
     variants: [
       { id: 'full', authority: 'cf-edit',
         consumers: ['form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
-          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'skd-compile', 'skd-edit',
+          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit',
           // *-info навыки читают тем же хелпером СОСТОЯНИЕ поддержки для вывода, а не запрещают
           // правку. Тело то же, поэтому семья общая.
@@ -92,7 +92,7 @@ const FAMILIES = [
       { id: 'full', authority: 'cf-edit',
         consumers: ['cfe-borrow', 'db-cfe-admin', 'db-dump-xml', 'db-load-cf', 'db-load-git', 'db-load-xml', 'db-repo', 'db-update',
           'epf-build', 'form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
-          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'skd-compile', 'skd-edit',
+          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'] },
     ],
   },
@@ -101,7 +101,7 @@ const FAMILIES = [
     variants: [
       { id: 'full', authority: 'cf-edit',
         consumers: ['form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
-          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'skd-compile', 'skd-edit',
+          'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'],
         // support-edit и *-info читают uuid для ОТОБРАЖЕНИЯ состояния поддержки; в PY-портах
         // *-info пользуются другим путём, поэтому копия только в PS1.
@@ -118,7 +118,7 @@ const FAMILIES = [
       // конфигурации не бывает. Поэтому вариант один на всех, переключателя не нужно.
       { id: 'base', authority: 'form-compile',
         consumers: ['cfe-borrow', 'cfe-patch-method', 'form-add', 'form-validate', 'help-add', 'interface-edit',
-          'meta-compile', 'mxl-compile', 'role-compile', 'subsystem-compile', 'template-add', 'xdto-compile'] },
+          'meta-compile', 'mxl-compile', 'role-compile', 'role-edit', 'subsystem-compile', 'template-add', 'xdto-compile'] },
     ],
   },
   {
@@ -127,7 +127,7 @@ const FAMILIES = [
       { id: 'base', authority: 'meta-compile',
         consumers: ['cf-init', 'cf-validate', 'cfe-borrow', 'cfe-init', 'cfe-patch-method', 'cfe-validate', 'epf-build',
           'epf-init', 'epf-validate', 'erf-init', 'form-add', 'form-compile', 'form-validate',
-          'meta-validate', 'mxl-compile', 'role-compile', 'subsystem-compile', 'subsystem-edit',
+          'meta-validate', 'mxl-compile', 'role-compile', 'role-edit', 'subsystem-compile', 'subsystem-edit',
           'template-add', 'xdto-compile'] },
     ],
   },
@@ -222,7 +222,7 @@ const FAMILIES = [
     name: 'esc_xml (значение атрибута)', py: 'esc_xml', ps1: 'Esc-Xml',
     variants: [
       { id: 'attr-with-quot', authority: 'meta-compile',
-        consumers: ['form-compile', 'form-edit', 'meta-edit', 'mxl-compile', 'role-compile',
+        consumers: ['form-compile', 'form-edit', 'meta-edit', 'mxl-compile', 'role-compile', 'role-edit',
           'skd-compile', 'skd-edit', 'subsystem-compile', 'subsystem-edit'] },
     ],
   },
@@ -231,7 +231,7 @@ const FAMILIES = [
     variants: [
       { id: 'text-no-quot', authority: 'meta-compile',
         consumers: ['cf-init', 'cfe-init', 'epf-init', 'erf-init', 'form-compile', 'form-edit',
-          'meta-edit', 'mxl-compile', 'role-compile', 'skd-compile', 'skd-edit',
+          'meta-edit', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'xdto-compile'] },
     ],
   },
@@ -239,7 +239,7 @@ const FAMILIES = [
   {
     name: 'detect_xml_style', py: '_detect_xml_style', ps1: 'Detect-XmlStyle',
     variants: [
-      { id: 'base', authority: 'cf-edit', consumers: [],
+      { id: 'base', authority: 'cf-edit', consumers: ['role-edit'],
         // PS-сторона семьи пока закрыта только в радиусе задачи про порядок объектов;
         // в остальных навыках та же канонизация лежит инлайном — отдельная волна.
         consumersPy: ['cfe-borrow', 'form-add', 'form-remove', 'help-add', 'interface-edit', 'meta-edit',
@@ -250,7 +250,7 @@ const FAMILIES = [
   {
     name: 'finalize_xml_bytes', py: '_finalize_xml_bytes', ps1: 'Finalize-XmlText',
     variants: [
-      { id: 'base', authority: 'cf-edit', consumers: [],
+      { id: 'base', authority: 'cf-edit', consumers: ['role-edit'],
         // PS-сторона семьи пока закрыта только в радиусе задачи про порядок объектов;
         // в остальных навыках та же канонизация лежит инлайном — отдельная волна.
         consumersPy: ['cfe-borrow', 'form-add', 'form-remove', 'help-add', 'interface-edit', 'meta-edit',
@@ -415,7 +415,7 @@ const FAMILIES = [
       { id: 'base', authority: 'meta-compile',
         consumers: [
           'cf-edit', 'form-compile', 'form-edit', 'interface-edit', 'meta-edit', 'mxl-compile',
-          'role-compile', 'skd-compile', 'subsystem-compile', 'subsystem-edit'] }],
+          'role-compile', 'role-edit', 'skd-compile', 'subsystem-compile', 'subsystem-edit'] }],
   },
   {
     name: 'case-insensitive input: ci_json', py: 'ci_json', ps1: null,
@@ -423,7 +423,7 @@ const FAMILIES = [
       { id: 'base', authority: 'meta-compile',
         consumers: [
           'cf-edit', 'form-compile', 'form-edit', 'interface-edit', 'meta-edit', 'mxl-compile',
-          'role-compile', 'skd-compile', 'subsystem-compile', 'subsystem-edit'] }],
+          'role-compile', 'role-edit', 'skd-compile', 'subsystem-compile', 'subsystem-edit'] }],
   },
   {
     // Единственная из трёх, которая нужна КАЖДОМУ порту: DSL читают не все навыки, а параметры — все.
@@ -438,7 +438,7 @@ const FAMILIES = [
           'form-decompile', 'form-edit', 'form-info', 'form-remove', 'form-validate', 'help-add',
           'img-grid', 'interface-edit', 'interface-validate', 'meta-decompile', 'meta-edit', 'meta-info',
           'meta-remove', 'meta-validate', 'mxl-compile', 'mxl-decompile', 'mxl-info', 'mxl-validate',
-          'role-compile', 'role-info', 'role-validate', 'skd-compile', 'skd-decompile', 'skd-edit',
+          'role-compile', 'role-edit', 'role-info', 'role-validate', 'skd-compile', 'skd-decompile', 'skd-edit',
           'skd-info', 'skd-validate', 'subsystem-compile', 'subsystem-edit', 'subsystem-info',
           'subsystem-validate', 'support-edit', 'template-add', 'template-remove', 'web-info',
           'web-publish', 'web-stop', 'web-unpublish', 'xdto-compile', 'xdto-decompile', 'xdto-edit',
@@ -502,7 +502,7 @@ const FAMILIES = [
     variants: [
       { id: 'base', authority: 'interface-edit',
         consumers: ['cf-edit', 'form-compile', 'form-edit', 'meta-compile', 'meta-edit', 'mxl-compile',
-          'role-compile', 'skd-compile', 'skd-decompile', 'subsystem-compile', 'subsystem-edit'] },
+          'role-compile', 'role-edit', 'skd-compile', 'skd-decompile', 'subsystem-compile', 'subsystem-edit'] },
     ],
   },
   {
@@ -510,7 +510,7 @@ const FAMILIES = [
     variants: [
       { id: 'base', authority: 'interface-edit',
         consumers: ['cf-edit', 'form-compile', 'form-edit', 'meta-compile', 'meta-edit', 'mxl-compile',
-          'role-compile', 'skd-compile', 'skd-decompile', 'subsystem-compile', 'subsystem-edit'] },
+          'role-compile', 'role-edit', 'skd-compile', 'skd-decompile', 'subsystem-compile', 'subsystem-edit'] },
     ],
   },
 

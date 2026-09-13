@@ -1,0 +1,22 @@
+{
+  "name": "Права нового объекта добавляются, прежние права и шаблон целы",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "add-rights",
+      "value": "InformationRegister.Цены: Read, Update"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "InformationRegister.Цены: добавлено — Read, Update"
+    ],
+    "fileContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "ДляОбъекта(Мод)"
+    }
+  }
+}
