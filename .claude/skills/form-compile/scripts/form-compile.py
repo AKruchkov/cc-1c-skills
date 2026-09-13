@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-compile v1.197 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
+# form-compile v1.198 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -1568,7 +1568,9 @@ def di_attr(el):
 
 
 # Базовая директория для @file-ссылок в query динсписка (устанавливается в main)
-QUERY_BASE_DIR = None
+# Без -JsonPath (режим по метаданным объекта) запросов во входе нет, но база пути должна
+# оставаться валидной — как и в PS-порте, где в этой ветке берётся текущий каталог.
+QUERY_BASE_DIR = os.getcwd()
 
 
 def resolve_text_from_file(val, base_dir):
