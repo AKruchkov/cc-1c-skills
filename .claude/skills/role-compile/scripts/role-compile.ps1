@@ -1,4 +1,4 @@
-﻿# role-compile v1.41 — Compile 1C role from JSON
+﻿# role-compile v1.42 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -901,30 +901,71 @@ $script:configurationLegacyDeps = @("AnalyticsSystemClient","MainWindowModeEmbed
 $script:configurationLegacyRank = 218
 
 # Замыкание набора прав объекта. Возвращает @{ Rights = <итог>; Added = <что дописано> }.
+# Платформа хранит только то, что ОТЛИЧАЕТСЯ от значения по умолчанию для роли: при
+# setForNewObjects=false на верхнем уровне живут разрешения, при true — запреты; у реквизитных
+# вложенных объектов ту же роль играет setForAttributesByDefault. Совпавшее с умолчанием
+# платформа выбрасывает при первой же загрузке, поэтому не пишем его и сами.
+$script:attributeKinds = @(
+	"Attribute","StandardAttribute","TabularSection","StandardTabularSection",
+	"Dimension","Resource","AccountingFlag","ExtDimensionAccountingFlag","AddressingAttribute"
+)
+
+function Get-DefaultRightValue {
+	param([string]$objName, [string]$setForNewObjects, [string]$setForAttributesByDefault)
+	$parts = $objName -split '\.'
+	if ($parts.Count -lt 3) { return $setForNewObjects }
+	# Внешние источники данных под это правило не проверялись — трогаем только то, что замерено.
+	if ($parts[0] -eq 'ExternalDataSource') { return "false" }
+	$kind = $parts[$parts.Count-2]
+	if ($script:attributeKinds -contains $kind) { return $setForAttributesByDefault }
+	# Команды, подсистемы, операции сервисов флагами роли не управляются — там живут разрешения.
+	return "false"
+}
+
 function Close-RightsDependencies {
 	param([string]$objName, $rights, [int]$formatRank)
 	$parts = $objName -split '\.'
-	# У вложенных объектов (реквизит, ТЧ, измерение) зависимостей нет — платформа их не трогает.
-	if ($parts.Count -ge 3) { return @{ Rights = $rights; Added = @() } }
+	$nested = $parts.Count -ge 3
 	$objectType = $parts[0]
-	$allowed = $script:knownRights[$objectType]
+	$allowed = if ($nested) { Get-NestedRights -objectType $objectType -kind (Get-NestedKind $objName) }
+	           else { $script:knownRights[$objectType] }
 	if (-not $allowed) { return @{ Rights = $rights; Added = @() } }
 	$have = [ordered]@{}
 	foreach ($r in $rights) { if (-not $have.Contains($r.Name)) { $have[$r.Name] = $r } }
 	$byType = $script:rightDepsByType[$objectType]
 	$added = @()
-	$queue = @($have.Keys)
+	# Вперёд — только от РАЗРЕШЁННЫХ прав: платформа замыкает выданное, а не запрещённое.
+	$queue = @($have.Keys | Where-Object { $have[$_].Value -eq "true" })
 	while ($queue.Count -gt 0) {
 		$name = $queue[0]
 		$queue = @($queue | Select-Object -Skip 1)
 		$need = if ($byType -and $byType.Contains($name)) { $byType[$name] } else { $script:rightDeps[$name] }
 		if (-not $need) { continue }
 		foreach ($dep in $need) {
-			if ($have.Contains($dep)) { continue }
 			if ($allowed -notcontains $dep) { continue }
+			if ($have.Contains($dep)) {
+				# Разрешение перебивает запрет — так поступает и платформа при загрузке.
+				if ($have[$dep].Value -ne "true") { $have[$dep].Value = "true"; $added += $dep; $queue += $dep }
+				continue
+			}
 			$have[$dep] = @{ Name = $dep; Value = "true"; Condition = $null }
 			$added += $dep
 			$queue += $dep
+		}
+	}
+	# Назад — от ЗАПРЕТОВ: право, которому запрещённое нужно, платформа запрещает следом.
+	$denyQueue = @($have.Keys | Where-Object { $have[$_].Value -ne "true" })
+	while ($denyQueue.Count -gt 0) {
+		$name = $denyQueue[0]
+		$denyQueue = @($denyQueue | Select-Object -Skip 1)
+		foreach ($candidate in $allowed) {
+			if ($candidate -eq $name) { continue }
+			$need = if ($byType -and $byType.Contains($candidate)) { $byType[$candidate] } else { $script:rightDeps[$candidate] }
+			if (-not $need -or $need -notcontains $name) { continue }
+			if ($have.Contains($candidate)) { continue }
+			$have[$candidate] = @{ Name = $candidate; Value = "false"; Condition = $null }
+			$added += $candidate
+			$denyQueue += $candidate
 		}
 	}
 	if ($objectType -eq 'Configuration' -and $formatRank -le $script:configurationLegacyRank -and $have.Count -gt 0) {
@@ -1479,6 +1520,19 @@ foreach ($o in $parsedObjects) {
 $parsedObjects = @(Sort-ObjectsByUuid -objects $parsedObjects -configRoot $resolvedOutputDir)
 foreach ($o in $parsedObjects) { $o.Rights = @(Sort-RightsCanonical -objName $o.Name -rights $o.Rights) }
 
+# Записи, равные умолчанию роли, платформа не хранит — отбрасываем их сами и говорим об этом.
+$droppedByDefault = @()
+foreach ($obj in $parsedObjects) {
+	$defaultValue = Get-DefaultRightValue $obj.Name $sfno $sfab
+	$kept = @()
+	foreach ($right in $obj.Rights) {
+		if ($right.Value -eq $defaultValue) { $droppedByDefault += "$($obj.Name).$($right.Name)"; continue }
+		$kept += ,$right
+	}
+	$obj.Rights = $kept
+}
+$parsedObjects = @($parsedObjects | Where-Object { $_.Rights.Count -gt 0 })
+
 # Object blocks
 $totalRights = 0
 foreach ($obj in $parsedObjects) {
@@ -1748,6 +1802,9 @@ Write-Host "     UUID: $uuid"
 Write-Host "     Metadata: $metadataPath"
 Write-Host "     Rights:   $rightsPath"
 Write-Host "     Objects: $($parsedObjects.Count), Rights: $totalRights, Templates: $templateCount"
+if ($droppedByDefault.Count -gt 0) {
+	[Console]::Error.WriteLine("[role-compile] Не записаны права, совпадающие с умолчанием роли (платформа их не хранит): $($droppedByDefault -join ', ')")
+}
 foreach ($note in $closureNotes) { Write-Host $note }
 switch ($regResult) {
 	"added"       { Write-Host "     Configuration.xml: <Role>$roleName</Role> added to ChildObjects" }

@@ -1,4 +1,4 @@
-﻿# role-edit v1.2 — Edit existing 1C role rights in place
+﻿# role-edit v1.3 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -854,30 +854,71 @@ $script:configurationLegacyDeps = @("AnalyticsSystemClient","MainWindowModeEmbed
 $script:configurationLegacyRank = 218
 
 # Замыкание набора прав объекта. Возвращает @{ Rights = <итог>; Added = <что дописано> }.
+# Платформа хранит только то, что ОТЛИЧАЕТСЯ от значения по умолчанию для роли: при
+# setForNewObjects=false на верхнем уровне живут разрешения, при true — запреты; у реквизитных
+# вложенных объектов ту же роль играет setForAttributesByDefault. Совпавшее с умолчанием
+# платформа выбрасывает при первой же загрузке, поэтому не пишем его и сами.
+$script:attributeKinds = @(
+	"Attribute","StandardAttribute","TabularSection","StandardTabularSection",
+	"Dimension","Resource","AccountingFlag","ExtDimensionAccountingFlag","AddressingAttribute"
+)
+
+function Get-DefaultRightValue {
+	param([string]$objName, [string]$setForNewObjects, [string]$setForAttributesByDefault)
+	$parts = $objName -split '\.'
+	if ($parts.Count -lt 3) { return $setForNewObjects }
+	# Внешние источники данных под это правило не проверялись — трогаем только то, что замерено.
+	if ($parts[0] -eq 'ExternalDataSource') { return "false" }
+	$kind = $parts[$parts.Count-2]
+	if ($script:attributeKinds -contains $kind) { return $setForAttributesByDefault }
+	# Команды, подсистемы, операции сервисов флагами роли не управляются — там живут разрешения.
+	return "false"
+}
+
 function Close-RightsDependencies {
 	param([string]$objName, $rights, [int]$formatRank)
 	$parts = $objName -split '\.'
-	# У вложенных объектов (реквизит, ТЧ, измерение) зависимостей нет — платформа их не трогает.
-	if ($parts.Count -ge 3) { return @{ Rights = $rights; Added = @() } }
+	$nested = $parts.Count -ge 3
 	$objectType = $parts[0]
-	$allowed = $script:knownRights[$objectType]
+	$allowed = if ($nested) { Get-NestedRights -objectType $objectType -kind (Get-NestedKind $objName) }
+	           else { $script:knownRights[$objectType] }
 	if (-not $allowed) { return @{ Rights = $rights; Added = @() } }
 	$have = [ordered]@{}
 	foreach ($r in $rights) { if (-not $have.Contains($r.Name)) { $have[$r.Name] = $r } }
 	$byType = $script:rightDepsByType[$objectType]
 	$added = @()
-	$queue = @($have.Keys)
+	# Вперёд — только от РАЗРЕШЁННЫХ прав: платформа замыкает выданное, а не запрещённое.
+	$queue = @($have.Keys | Where-Object { $have[$_].Value -eq "true" })
 	while ($queue.Count -gt 0) {
 		$name = $queue[0]
 		$queue = @($queue | Select-Object -Skip 1)
 		$need = if ($byType -and $byType.Contains($name)) { $byType[$name] } else { $script:rightDeps[$name] }
 		if (-not $need) { continue }
 		foreach ($dep in $need) {
-			if ($have.Contains($dep)) { continue }
 			if ($allowed -notcontains $dep) { continue }
+			if ($have.Contains($dep)) {
+				# Разрешение перебивает запрет — так поступает и платформа при загрузке.
+				if ($have[$dep].Value -ne "true") { $have[$dep].Value = "true"; $added += $dep; $queue += $dep }
+				continue
+			}
 			$have[$dep] = @{ Name = $dep; Value = "true"; Condition = $null }
 			$added += $dep
 			$queue += $dep
+		}
+	}
+	# Назад — от ЗАПРЕТОВ: право, которому запрещённое нужно, платформа запрещает следом.
+	$denyQueue = @($have.Keys | Where-Object { $have[$_].Value -ne "true" })
+	while ($denyQueue.Count -gt 0) {
+		$name = $denyQueue[0]
+		$denyQueue = @($denyQueue | Select-Object -Skip 1)
+		foreach ($candidate in $allowed) {
+			if ($candidate -eq $name) { continue }
+			$need = if ($byType -and $byType.Contains($candidate)) { $byType[$candidate] } else { $script:rightDeps[$candidate] }
+			if (-not $need -or $need -notcontains $name) { continue }
+			if ($have.Contains($candidate)) { continue }
+			$have[$candidate] = @{ Name = $candidate; Value = "false"; Condition = $null }
+			$added += $candidate
+			$denyQueue += $candidate
 		}
 	}
 	if ($objectType -eq 'Configuration' -and $formatRank -le $script:configurationLegacyRank -and $have.Count -gt 0) {
@@ -1452,6 +1493,18 @@ $script:ns = New-Object System.Xml.XmlNamespaceManager($script:xmlDoc.NameTable)
 $script:ns.AddNamespace("rt", $script:mdNs)
 $script:formatVersion = if ($script:root.HasAttribute("version")) { $script:root.GetAttribute("version") } else { "2.17" }
 $script:formatRank = Get-FormatRank $script:formatVersion
+# Умолчания роли решают, какие записи платформа хранит: совпавшее с умолчанием она выбрасывает.
+$script:roleSfno = $script:root.SelectSingleNode("rt:setForNewObjects", $script:ns).InnerText
+$script:roleSfab = $script:root.SelectSingleNode("rt:setForAttributesByDefault", $script:ns).InnerText
+$script:droppedByDefault = @()
+
+function Test-RightStored {
+	param([string]$objName, [string]$rightName, [string]$value)
+	$default = Get-DefaultRightValue $objName $script:roleSfno $script:roleSfab
+	if ($value -ne $default) { return $true }
+	$script:droppedByDefault += "$objName.$rightName"
+	return $false
+}
 
 $script:addCount = 0
 $script:removeCount = 0
@@ -1737,6 +1790,7 @@ function Apply-AddRights($spec) {
 	$added = @()
 	$indent = Get-ChildIndent $objNode
 	foreach ($rightName in $final) {
+		if (-not (Test-RightStored $spec.Name $rightName 'true')) { continue }
 		$node = Find-RightNode $objNode $rightName
 		if ($node) {
 			if ((Get-RightNodeValue $node) -ne 'true') {
@@ -1790,6 +1844,7 @@ function Apply-SetRights($spec) {
 	$closure = Close-RightsDependencies -objName $spec.Name -rights @($spec.Rights | ForEach-Object { @{ Name = $_; Value = "true"; Condition = $null } }) -formatRank $script:formatRank
 	$indent = Get-ChildIndent $objNode
 	foreach ($rightName in @($closure.Rights | ForEach-Object { $_.Name })) {
+		if (-not (Test-RightStored $spec.Name $rightName 'true')) { continue }
 		$new = New-RightNode $rightName 'true' $indent
 		Insert-RightCanonical $objNode $new $spec.Name
 		$script:addCount++
@@ -1873,6 +1928,7 @@ function Apply-DenyRights($spec) {
 	$denied = @()
 	$indent = Get-ChildIndent $objNode
 	foreach ($rightName in $toDeny) {
+		if (-not (Test-RightStored $spec.Name $rightName 'false')) { continue }
 		$node = Find-RightNode $objNode $rightName
 		if ($node) {
 			if ((Get-RightNodeValue $node) -eq 'false') { continue }
@@ -1887,7 +1943,8 @@ function Apply-DenyRights($spec) {
 		$script:rightsDirty = $true
 	}
 	if ($denied.Count -eq 0) {
-		Add-Note "     $($spec.Name): права уже запрещены, изменений нет"
+		$reason = if ($script:droppedByDefault -match [regex]::Escape($spec.Name)) { "запрет совпадает с умолчанием роли и платформой не хранится" } else { "права уже запрещены" }
+		Add-Note "     $($spec.Name): $reason, изменений нет"
 		return
 	}
 	$cascade = @($denied | Where-Object { $spec.Rights -notcontains $_ })
@@ -2301,6 +2358,9 @@ Write-Host "[OK] Роль '$($script:paths.RoleName)' обновлена"
 Write-Host "     Rights:   $($script:rightsPath)"
 foreach ($note in $script:notes) { Write-Host $note }
 Write-Host "     Added: $($script:addCount), Removed: $($script:removeCount), Modified: $($script:modifyCount)"
+if ($script:droppedByDefault.Count -gt 0) {
+	[Console]::Error.WriteLine("[role-edit] Не записаны права, совпадающие с умолчанием роли (платформа их не хранит): $($script:droppedByDefault -join ', ')")
+}
 
 if (-not $NoValidate) {
 	$validateScript = Join-Path (Join-Path $PSScriptRoot "..\..\role-validate") "scripts\role-validate.ps1"

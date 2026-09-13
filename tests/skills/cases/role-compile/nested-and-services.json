@@ -14,7 +14,8 @@
       "ExternalDataSource.Источник.Table.Заказы: Read, View",
       "ExternalDataSource.Источник.Table.Заказы.Field.Сумма: View, Edit",
       "ExternalDataSource.Источник.Cube.Продажи.Dimension.Период: View"
-    ]
+    ],
+    "setForAttributesByDefault": false
   },
   "expect": {
     "files": [

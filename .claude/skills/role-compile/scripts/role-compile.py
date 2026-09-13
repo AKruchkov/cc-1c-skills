@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-compile v1.41 — Compile 1C role from JSON
+# role-compile v1.42 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -839,14 +839,37 @@ CONFIGURATION_LEGACY_DEPS = ["AnalyticsSystemClient", "MainWindowModeEmbeddedWor
 CONFIGURATION_LEGACY_RANK = 218
 
 
+# Платформа хранит только то, что ОТЛИЧАЕТСЯ от значения по умолчанию для роли: при
+# setForNewObjects=false на верхнем уровне живут разрешения, при true — запреты; у реквизитных
+# вложенных объектов ту же роль играет setForAttributesByDefault. Совпавшее с умолчанием
+# платформа выбрасывает при первой же загрузке, поэтому не пишем его и сами.
+ATTRIBUTE_KINDS = [
+    "Attribute", "StandardAttribute", "TabularSection", "StandardTabularSection",
+    "Dimension", "Resource", "AccountingFlag", "ExtDimensionAccountingFlag", "AddressingAttribute",
+]
+
+
+def get_default_right_value(object_name, set_for_new_objects, set_for_attributes_by_default):
+    parts = object_name.split('.')
+    if len(parts) < 3:
+        return set_for_new_objects
+    # Внешние источники данных под это правило не проверялись — трогаем только то, что замерено.
+    if parts[0] == 'ExternalDataSource':
+        return "false"
+    kind = parts[-2]
+    if kind in ATTRIBUTE_KINDS:
+        return set_for_attributes_by_default
+    # Команды, подсистемы, операции сервисов флагами роли не управляются — там живут разрешения.
+    return "false"
+
+
 def close_rights_dependencies(object_name, rights, format_rank):
     """Замыкание набора прав объекта. Возвращает (итоговые права, что дописано)."""
     parts = object_name.split('.')
-    # У вложенных объектов (реквизит, ТЧ, измерение) зависимостей нет — платформа их не трогает.
-    if len(parts) >= 3:
-        return rights, []
+    nested = len(parts) >= 3
     object_type = parts[0]
-    allowed = KNOWN_RIGHTS.get(object_type)
+    allowed = (get_nested_rights(object_type, get_nested_kind(object_name)) if nested
+               else KNOWN_RIGHTS.get(object_type))
     if not allowed:
         return rights, []
     have = {}
@@ -854,18 +877,39 @@ def close_rights_dependencies(object_name, rights, format_rank):
         have.setdefault(r['Name'], r)
     by_type = RIGHT_DEPS_BY_TYPE.get(object_type, {})
     added = []
-    queue = list(have.keys())
+    # Вперёд — только от РАЗРЕШЁННЫХ прав: платформа замыкает выданное, а не запрещённое.
+    queue = [n for n in have if have[n]['Value'] == 'true']
     while queue:
         name = queue.pop(0)
         need = by_type[name] if name in by_type else RIGHT_DEPS.get(name)
         if not need:
             continue
         for dep in need:
-            if dep in have or dep not in allowed:
+            if dep not in allowed:
+                continue
+            if dep in have:
+                # Разрешение перебивает запрет — так поступает и платформа при загрузке.
+                if have[dep]['Value'] != 'true':
+                    have[dep]['Value'] = 'true'
+                    added.append(dep)
+                    queue.append(dep)
                 continue
             have[dep] = {'Name': dep, 'Value': 'true', 'Condition': None}
             added.append(dep)
             queue.append(dep)
+    # Назад — от ЗАПРЕТОВ: право, которому запрещённое нужно, платформа запрещает следом.
+    deny_queue = [n for n in have if have[n]['Value'] != 'true']
+    while deny_queue:
+        name = deny_queue.pop(0)
+        for candidate in allowed:
+            if candidate == name or candidate in have:
+                continue
+            need = by_type[candidate] if candidate in by_type else RIGHT_DEPS.get(candidate)
+            if not need or name not in need:
+                continue
+            have[candidate] = {'Name': candidate, 'Value': 'false', 'Condition': None}
+            added.append(candidate)
+            deny_queue.append(candidate)
     if object_type == 'Configuration' and format_rank <= CONFIGURATION_LEGACY_RANK and have:
         for dep in CONFIGURATION_LEGACY_DEPS:
             if dep in have:
@@ -1730,6 +1774,19 @@ def main():
     for o in parsed_objects:
         o['Rights'] = sort_rights_canonical(o['Name'], o['Rights'])
 
+    # Записи, равные умолчанию роли, платформа не хранит — отбрасываем их сами и говорим об этом.
+    dropped_by_default = []
+    for obj in parsed_objects:
+        default_value = get_default_right_value(obj['Name'], sfno, sfab)
+        kept = []
+        for right in obj['Rights']:
+            if right['Value'] == default_value:
+                dropped_by_default.append(f"{obj['Name']}.{right['Name']}")
+                continue
+            kept.append(right)
+        obj['Rights'] = kept
+    parsed_objects = [o for o in parsed_objects if o['Rights']]
+
     # Object blocks
     total_rights = 0
     for obj in parsed_objects:
@@ -1799,6 +1856,9 @@ def main():
     print(f"     Metadata: {metadata_path}")
     print(f"     Rights:   {rights_path}")
     print(f"     Objects: {len(parsed_objects)}, Rights: {total_rights}, Templates: {template_count}")
+    if dropped_by_default:
+        print("[role-compile] Не записаны права, совпадающие с умолчанием роли "
+              f"(платформа их не хранит): {', '.join(dropped_by_default)}", file=sys.stderr)
     for note in closure_notes:
         print(note)
     if reg_result == 'added':

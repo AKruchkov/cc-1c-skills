@@ -1,0 +1,27 @@
+{
+  "name": "Права, совпадающие с умолчанием роли, не пишутся — платформа их не хранит",
+  "setup": "fixture:view-preset-fx",
+  "input": {
+    "name": "УмолчанияРоли",
+    "synonym": "Умолчания роли",
+    "objects": [
+      {
+        "name": "Catalog.Номенклатура",
+        "preset": "view",
+        "rights": {
+          "Delete": false
+        }
+      }
+    ]
+  },
+  "validatePath": "Roles/УмолчанияРоли",
+  "expect": {
+    "stderrContains": [
+      "Не записаны права, совпадающие с умолчанием роли"
+    ],
+    "fileNotContains": {
+      "file": "Roles/УмолчанияРоли/Ext/Rights.xml",
+      "text": "<value>false</value>"
+    }
+  }
+}

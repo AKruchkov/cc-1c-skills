@@ -1,0 +1,21 @@
+{
+  "name": "Запрет на объекте верхнего уровня не пишется: платформа его не хранит",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "deny-rights",
+      "value": "Catalog.Товары: Delete"
+    }
+  ],
+  "expect": {
+    "stdoutContains": [
+      "запрет совпадает с умолчанием роли"
+    ],
+    "stderrContains": [
+      "Не записаны права, совпадающие с умолчанием роли"
+    ]
+  }
+}

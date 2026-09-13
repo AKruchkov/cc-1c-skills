@@ -409,6 +409,16 @@ const FAMILIES = [
   // Существует только в PY: PowerShell регистронезависим сам по себе (свойства PSObject, ключи
   // Hashtable, -eq/-contains, имена параметров, ValidateSet), поэтому в .ps1 копии нет и быть
   // не должно — ps1: null.
+  // Замыкание прав и фильтр значений по умолчанию: обе роли обязаны считать одинаково, иначе
+  // созданная и отредактированная роль разойдутся между собой и с платформой.
+  {
+    name: 'права роли: close_rights_dependencies', py: 'close_rights_dependencies', ps1: 'Close-RightsDependencies',
+    variants: [{ id: 'base', authority: 'role-compile', consumers: ['role-edit'] }],
+  },
+  {
+    name: 'права роли: get_default_right_value', py: 'get_default_right_value', ps1: 'Get-DefaultRightValue',
+    variants: [{ id: 'base', authority: 'role-compile', consumers: ['role-edit'] }],
+  },
   // Значение операции может быть "@путь" — текст читается из файла. Правило поиска общее:
   // абсолютный путь как есть, относительный — рядом с DSL (или с редактируемым объектом),
   // затем в текущем каталоге. Разъедется — и один навык начнёт искать не там, где другой.

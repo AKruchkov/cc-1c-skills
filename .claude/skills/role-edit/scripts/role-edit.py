@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-edit v1.2 — Edit existing 1C role rights in place
+# role-edit v1.3 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -794,14 +794,37 @@ CONFIGURATION_LEGACY_DEPS = ["AnalyticsSystemClient", "MainWindowModeEmbeddedWor
 CONFIGURATION_LEGACY_RANK = 218
 
 
+# Платформа хранит только то, что ОТЛИЧАЕТСЯ от значения по умолчанию для роли: при
+# setForNewObjects=false на верхнем уровне живут разрешения, при true — запреты; у реквизитных
+# вложенных объектов ту же роль играет setForAttributesByDefault. Совпавшее с умолчанием
+# платформа выбрасывает при первой же загрузке, поэтому не пишем его и сами.
+ATTRIBUTE_KINDS = [
+    "Attribute", "StandardAttribute", "TabularSection", "StandardTabularSection",
+    "Dimension", "Resource", "AccountingFlag", "ExtDimensionAccountingFlag", "AddressingAttribute",
+]
+
+
+def get_default_right_value(object_name, set_for_new_objects, set_for_attributes_by_default):
+    parts = object_name.split('.')
+    if len(parts) < 3:
+        return set_for_new_objects
+    # Внешние источники данных под это правило не проверялись — трогаем только то, что замерено.
+    if parts[0] == 'ExternalDataSource':
+        return "false"
+    kind = parts[-2]
+    if kind in ATTRIBUTE_KINDS:
+        return set_for_attributes_by_default
+    # Команды, подсистемы, операции сервисов флагами роли не управляются — там живут разрешения.
+    return "false"
+
+
 def close_rights_dependencies(object_name, rights, format_rank):
     """Замыкание набора прав объекта. Возвращает (итоговые права, что дописано)."""
     parts = object_name.split('.')
-    # У вложенных объектов (реквизит, ТЧ, измерение) зависимостей нет — платформа их не трогает.
-    if len(parts) >= 3:
-        return rights, []
+    nested = len(parts) >= 3
     object_type = parts[0]
-    allowed = KNOWN_RIGHTS.get(object_type)
+    allowed = (get_nested_rights(object_type, get_nested_kind(object_name)) if nested
+               else KNOWN_RIGHTS.get(object_type))
     if not allowed:
         return rights, []
     have = {}
@@ -809,18 +832,39 @@ def close_rights_dependencies(object_name, rights, format_rank):
         have.setdefault(r['Name'], r)
     by_type = RIGHT_DEPS_BY_TYPE.get(object_type, {})
     added = []
-    queue = list(have.keys())
+    # Вперёд — только от РАЗРЕШЁННЫХ прав: платформа замыкает выданное, а не запрещённое.
+    queue = [n for n in have if have[n]['Value'] == 'true']
     while queue:
         name = queue.pop(0)
         need = by_type[name] if name in by_type else RIGHT_DEPS.get(name)
         if not need:
             continue
         for dep in need:
-            if dep in have or dep not in allowed:
+            if dep not in allowed:
+                continue
+            if dep in have:
+                # Разрешение перебивает запрет — так поступает и платформа при загрузке.
+                if have[dep]['Value'] != 'true':
+                    have[dep]['Value'] = 'true'
+                    added.append(dep)
+                    queue.append(dep)
                 continue
             have[dep] = {'Name': dep, 'Value': 'true', 'Condition': None}
             added.append(dep)
             queue.append(dep)
+    # Назад — от ЗАПРЕТОВ: право, которому запрещённое нужно, платформа запрещает следом.
+    deny_queue = [n for n in have if have[n]['Value'] != 'true']
+    while deny_queue:
+        name = deny_queue.pop(0)
+        for candidate in allowed:
+            if candidate == name or candidate in have:
+                continue
+            need = by_type[candidate] if candidate in by_type else RIGHT_DEPS.get(candidate)
+            if not need or name not in need:
+                continue
+            have[candidate] = {'Name': candidate, 'Value': 'false', 'Condition': None}
+            added.append(candidate)
+            deny_queue.append(candidate)
     if object_type == 'Configuration' and format_rank <= CONFIGURATION_LEGACY_RANK and have:
         for dep in CONFIGURATION_LEGACY_DEPS:
             if dep in have:
@@ -1501,9 +1545,19 @@ class Editor:
         self.modify_count = 0
         self.notes = []
         self.pending = []
+        # Умолчания роли решают, какие записи платформа хранит: совпавшее с умолчанием она выбрасывает.
+        self.role_sfno = node_text(self.root, "setForNewObjects")
+        self.role_sfab = node_text(self.root, "setForAttributesByDefault")
+        self.dropped_by_default = []
 
     def note(self, text):
         self.notes.append(text)
+
+    def right_stored(self, obj_name, right_name, value):
+        if value != get_default_right_value(obj_name, self.role_sfno, self.role_sfab):
+            return True
+        self.dropped_by_default.append(f"{obj_name}.{right_name}")
+        return False
 
     # --- Разбор значений операций ---
 
@@ -1751,6 +1805,8 @@ class Editor:
         indent = self.child_indent(obj_node)
         for right in closed:
             name = right["Name"]
+            if not self.right_stored(spec["Name"], name, "true"):
+                continue
             node = self.find_right(obj_node, name)
             if node is not None:
                 if node_text(node, "value") != "true":
@@ -1792,6 +1848,8 @@ class Editor:
             self.format_rank)
         indent = self.child_indent(obj_node)
         for right in closed:
+            if not self.right_stored(spec["Name"], right["Name"], "true"):
+                continue
             new_el = self.make_right(right["Name"], "true", indent)
             self.insert_right_canonical(obj_node, new_el, spec["Name"])
             self.add_count += 1
@@ -1852,6 +1910,8 @@ class Editor:
         denied = []
         indent = self.child_indent(obj_node)
         for right_name in to_deny:
+            if not self.right_stored(spec["Name"], right_name, "false"):
+                continue
             node = self.find_right(obj_node, right_name)
             if node is not None:
                 if node_text(node, "value") == "false":
@@ -1865,7 +1925,10 @@ class Editor:
             denied.append(right_name)
             self.rights_dirty = True
         if not denied:
-            self.note(f"     {spec['Name']}: права уже запрещены, изменений нет")
+            reason = ("запрет совпадает с умолчанием роли и платформой не хранится"
+                      if any(d.startswith(spec['Name'] + '.') for d in self.dropped_by_default)
+                      else "права уже запрещены")
+            self.note(f"     {spec['Name']}: {reason}, изменений нет")
             return
         cascade = [r for r in denied if r not in spec["Rights"]]
         note = f"     {spec['Name']}: запрещено — {', '.join(denied)}"
@@ -2218,6 +2281,9 @@ def main():
     for note in ed.notes:
         print(note)
     print(f"     Added: {ed.add_count}, Removed: {ed.remove_count}, Modified: {ed.modify_count}")
+    if ed.dropped_by_default:
+        print("[role-edit] Не записаны права, совпадающие с умолчанием роли "
+              f"(платформа их не хранит): {', '.join(ed.dropped_by_default)}", file=sys.stderr)
 
     if not args.NoValidate:
         validate_script = os.path.normpath(os.path.join(
