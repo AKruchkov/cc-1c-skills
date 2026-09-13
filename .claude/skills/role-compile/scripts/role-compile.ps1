@@ -1,4 +1,4 @@
-﻿# role-compile v1.42 — Compile 1C role from JSON
+﻿# role-compile v1.43 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(

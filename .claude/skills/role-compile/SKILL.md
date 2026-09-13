@@ -44,12 +44,13 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/role-compile.ps1" -
   "Document.Реализация: @edit",
   "DataProcessor.Загрузка: @view",
   "InformationRegister.Цены: Read, Update",
-  { "name": "Document.Продажа", "preset": "view", "rights": {"Delete": false}, "rls": {"Read": "#Шаблон(\"\")"} }
+  { "name": "Document.Продажа", "preset": "view", "rls": {"Read": "#Шаблон(\"\")"} },
+  { "name": "Catalog.Номенклатура.Attribute.Цена", "rights": {"View": false} }
 ]
 ```
 
 - Shorthand: `"Тип.Имя: @пресет"` или `"Тип.Имя: Право1, Право2"`
-- Объектная форма: `preset` + `rights` (переопределения) + `rls` (ограничения)
+- Объектная форма: `preset` + `rights` (точечные значения прав) + `rls` (ограничения)
 
 ### Пресеты
 
@@ -60,10 +61,6 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/role-compile.ps1" -
 
 `@` обязателен в shorthand. В объектной форме — `"preset": "view"` без `@`.
 
-### Зависимые права
-
-Набор прав дополняется до замыкания: `Edit` тянет `Read`, `Update`, `View`; интерактивные права —
-свой базовый набор; `View` у обработки и отчёта — `Use`. Дописанное перечисляется в выводе.
 
 ### Сервисы
 
@@ -78,9 +75,6 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/role-compile.ps1" -
 
 Часть маршрутов — полным путём: `"HTTPService.ЭДО.URLTemplate.ЕстьНовыеДокументы.Method.POST: Use"`.
 
-### Русские синонимы
-
-Поддерживаются русские типы (`Справочник`→Catalog, `Документ`→Document) и права (`Чтение`→Read, `Просмотр`→View). Каноничная форма — английская.
 
 ### Шаблоны RLS
 
