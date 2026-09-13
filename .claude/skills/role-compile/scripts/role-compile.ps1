@@ -1,4 +1,4 @@
-﻿# role-compile v1.39 — Compile 1C role from JSON
+﻿# role-compile v1.40 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1072,6 +1072,20 @@ function Validate-RightName {
 	return $true
 }
 
+# "@путь" в значении условия — текст берётся из файла: условия RLS типовых занимают десятки
+# строк с кавычками, и внутри JSON-строки это источник ошибок экранирования. Путь относительный —
+# от текущего каталога, как в role-edit.
+function Resolve-TextValue([string]$text) {
+	if (-not $text -or -not $text.StartsWith("@")) { return $text }
+	$valueFile = $text.Substring(1).Trim()
+	if (-not [System.IO.Path]::IsPathRooted($valueFile)) { $valueFile = Join-Path (Get-Location).Path $valueFile }
+	if (-not (Test-Path -LiteralPath $valueFile -PathType Leaf)) {
+		Add-ValidationError "Файл значения не найден: $valueFile"
+		return $text
+	}
+	return [System.IO.File]::ReadAllText($valueFile).Trim()
+}
+
 # --- 5a. Service roots: expand to leaves ---
 
 # Метаданные сервиса читаются один раз на имя: раскрытие и проверка заимствования
@@ -1290,7 +1304,7 @@ function Parse-ObjectEntry {
 		foreach ($p in $entry.rls.PSObject.Properties) {
 			$rlsRight = Translate-RightName $p.Name
 			if ($rightsMap.Contains($rlsRight)) {
-				$rightsMap[$rlsRight].Condition = "$($p.Value)"
+				$rightsMap[$rlsRight].Condition = Resolve-TextValue "$($p.Value)"
 			} else {
 				Write-Warning "${objName}: RLS for '$rlsRight' but this right is not in the rights list"
 			}
@@ -1478,7 +1492,7 @@ if ($def.templates) {
 	foreach ($tpl in $def.templates) {
 		X "`t<restrictionTemplate>"
 		X "`t`t<name>$(Esc-XmlText "$($tpl.name)")</name>"
-		X "`t`t<condition>$(Esc-XmlText "$($tpl.condition)")</condition>"
+		X "`t`t<condition>$(Esc-XmlText (Resolve-TextValue "$($tpl.condition)"))</condition>"
 		X "`t</restrictionTemplate>"
 		$templateCount++
 	}

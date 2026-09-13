@@ -1,0 +1,37 @@
+{
+  "name": "Условие RLS и тело шаблона берутся из файла",
+  "setup": "fixture:view-preset-fx",
+  "cwd": "workDir",
+  "caseFiles": [
+    "rls-usloviye.txt"
+  ],
+  "input": {
+    "name": "РольИзФайла",
+    "synonym": "Роль из файла",
+    "objects": [
+      {
+        "name": "Catalog.Номенклатура",
+        "preset": "view",
+        "rls": {
+          "Read": "@rls-usloviye.txt"
+        }
+      }
+    ],
+    "templates": [
+      {
+        "name": "ПоОрганизации(Мод)",
+        "condition": "@rls-usloviye.txt"
+      }
+    ]
+  },
+  "validatePath": "Roles/РольИзФайла",
+  "expect": {
+    "fileContains": {
+      "file": "Roles/РольИзФайла/Ext/Rights.xml",
+      "text": [
+        "ОграничениеПоОрганизации",
+        "restrictionTemplate"
+      ]
+    }
+  }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-compile v1.39 — Compile 1C role from JSON
+# role-compile v1.40 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1165,6 +1165,22 @@ def validate_right_name(object_name, right_name):
     return True
 
 
+# "@путь" в значении условия — текст берётся из файла: условия RLS типовых занимают десятки
+# строк с кавычками, и внутри JSON-строки это источник ошибок экранирования. Путь относительный —
+# от текущего каталога, как в role-edit.
+def resolve_text_value(text):
+    if not text or not text.startswith("@"):
+        return text
+    value_file = text[1:].strip()
+    if not os.path.isabs(value_file):
+        value_file = os.path.join(os.getcwd(), value_file)
+    if not os.path.isfile(value_file):
+        add_validation_error(f"Файл значения не найден: {value_file}")
+        return text
+    with open(value_file, encoding="utf-8-sig") as f:
+        return f.read().strip()
+
+
 MD_NS = 'http://v8.1c.ru/8.3/MDClasses'
 
 # Метаданные сервиса читаются один раз на имя: раскрытие и проверка заимствования
@@ -1364,7 +1380,7 @@ def parse_object_entry(entry):
         for p_name, p_value in entry['rls'].items():
             rls_right = translate_right_name(p_name)
             if rls_right in rights_map:
-                rights_map[rls_right]['Condition'] = str(p_value)
+                rights_map[rls_right]['Condition'] = resolve_text_value(str(p_value))
             else:
                 print(f"WARNING: {obj_name}: RLS for '{rls_right}' but this right is not in the rights list", file=sys.stderr)
 
@@ -1724,7 +1740,7 @@ def main():
         for tpl in defn['templates']:
             lines.append('\t<restrictionTemplate>')
             lines.append(f'\t\t<name>{esc_xml_text(str(tpl["name"]))}</name>')
-            lines.append(f'\t\t<condition>{esc_xml_text(str(tpl["condition"]))}</condition>')
+            lines.append(f'\t\t<condition>{esc_xml_text(resolve_text_value(str(tpl["condition"])))}</condition>')
             lines.append('\t</restrictionTemplate>')
             template_count += 1
 

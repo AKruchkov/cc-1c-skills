@@ -91,6 +91,13 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/role-compile.ps1" -
 
 Ссылка в `rls`: `"#ДляОбъекта(\"\")"`. Символ `&` автоматически экранируется в XML.
 
+Длинное условие держи в файле — в значении пишется `@путь` (путь от текущего каталога):
+
+```json
+"objects": [{"name": "Document.Продажа", "preset": "view", "rls": {"Read": "@условие.txt"}}],
+"templates": [{"name": "ДляОбъекта(Мод)", "condition": "@шаблон.txt"}]
+```
+
 ## Примеры
 
 ### Простая роль
