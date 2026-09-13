@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-edit v1.1 — Edit existing 1C role rights in place
+# role-edit v1.2 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1908,6 +1908,15 @@ class Editor:
             if self.same_field_set(self.restriction_fields(node), spec["Fields"]):
                 target = node
                 break
+        # Ссылка на шаблон, которого в роли нет, — тихая ошибка в рантайме 1С. Отказывать нельзя:
+        # шаблон могут добавить следующей операцией или следующим вызовом.
+        for m in re.finditer(r'#([A-Za-zА-Яа-яЁё0-9_]+)\s*\(', spec["Condition"] or ""):
+            template_name = m.group(1)
+            if template_name in ("Если", "Тогда", "Иначе", "КонецЕсли"):
+                continue
+            if self.find_template(template_name) is None:
+                print(f"[role-edit] {spec['Object']}.{spec['Right']}: условие ссылается на шаблон "
+                      f"'{template_name}', которого в роли нет", file=sys.stderr)
         new_el = self.make_restriction(indent, spec["Fields"], spec["Condition"])
         if target is not None:
             new_el.tail = target.tail
@@ -2178,8 +2187,6 @@ def main():
 
     refuse_if_errors()
 
-    order = ["add-rights", "set-rights", "deny-rights", "remove-rights", "add-template", "set-template",
-             "set-rls", "remove-rls", "remove-template", "modify-property", "set-synonym", "set-comment"]
     handlers = {
         "add-rights": ed.apply_add_rights,
         "set-rights": ed.apply_set_rights,
@@ -2194,10 +2201,9 @@ def main():
         "set-synonym": lambda s: ed.edit_role_metadata(s["Field"], s["Text"]),
         "set-comment": lambda s: ed.edit_role_metadata(s["Field"], s["Text"]),
     }
-    for key in order:
-        for op_key, spec in pending:
-            if op_key == key:
-                handlers[key](spec)
+    # Операции применяются в том порядке, в котором их перечислили.
+    for op_key, spec in pending:
+        handlers[op_key](spec)
 
     # Ошибка могла всплыть и на применении (RLS без права) — файл в этом случае не трогаем.
     refuse_if_errors()

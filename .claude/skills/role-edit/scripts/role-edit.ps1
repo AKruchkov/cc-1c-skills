@@ -1,4 +1,4 @@
-﻿# role-edit v1.1 — Edit existing 1C role rights in place
+﻿# role-edit v1.2 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1715,7 +1715,7 @@ function Do-AddRights([string]$batchVal) {
 		$spec = Parse-RightsSpec $item
 		if (-not $spec) { continue }
 		foreach ($expanded in (Expand-ServiceEntry -parsed @{ Name = $spec.Name; Rights = @($spec.Rights | ForEach-Object { @{ Name = $_; Value = "true"; Condition = $null } }) } -configRoot $script:configRoot -name $script:paths.RoleName)) {
-			$script:pendingAdds += ,@{ Name = $expanded.Name; Rights = @($expanded.Rights | ForEach-Object { $_.Name }) }
+			$script:pending += ,@{ Kind = 'add-rights'; Spec = @{ Name = $expanded.Name; Rights = @($expanded.Rights | ForEach-Object { $_.Name }) } }
 		}
 	}
 }
@@ -1771,7 +1771,7 @@ function Do-SetRights([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-RightsSpec $item
 		if (-not $spec) { continue }
-		$script:pendingSets += ,$spec
+		$script:pending += ,@{ Kind = 'set-rights'; Spec = $spec }
 	}
 }
 
@@ -1804,7 +1804,7 @@ function Do-RemoveRights([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-RightsSpec $item -AllowNoRights
 		if (-not $spec) { continue }
-		$script:pendingRemoves += ,$spec
+		$script:pending += ,@{ Kind = 'remove-rights'; Spec = $spec }
 	}
 }
 
@@ -1853,7 +1853,7 @@ function Do-DenyRights([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-RightsSpec $item
 		if (-not $spec) { continue }
-		$script:pendingDenies += ,$spec
+		$script:pending += ,@{ Kind = 'deny-rights'; Spec = $spec }
 	}
 }
 
@@ -1935,7 +1935,7 @@ function Do-SetRls([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-RlsAddress $item -ConditionRequired
 		if (-not $spec) { continue }
-		$script:pendingRls += ,$spec
+		$script:pending += ,@{ Kind = 'set-rls'; Spec = $spec }
 	}
 }
 
@@ -1955,6 +1955,15 @@ function Apply-SetRls($spec) {
 	$target = $null
 	foreach ($node in $existing) {
 		if (Test-SameFieldSet (Get-RestrictionFields $node) $spec.Fields) { $target = $node; break }
+	}
+	# Ссылка на шаблон, которого в роли нет, — тихая ошибка в рантайме 1С. Отказывать нельзя:
+	# шаблон могут добавить следующей операцией или следующим вызовом.
+	foreach ($m in [regex]::Matches("$($spec.Condition)", '#([A-Za-zА-Яа-яЁё0-9_]+)\s*\(')) {
+		$templateName = $m.Groups[1].Value
+		if ($templateName -in @('Если', 'Тогда', 'Иначе', 'КонецЕсли')) { continue }
+		if (-not (Find-TemplateNode $templateName)) {
+			[Console]::Error.WriteLine("[role-edit] $($spec.Object).$($spec.Right): условие ссылается на шаблон '$templateName', которого в роли нет")
+		}
 	}
 	$new = New-RestrictionNode $indent $spec.Fields $spec.Condition
 	if ($target) {
@@ -1978,7 +1987,7 @@ function Do-RemoveRls([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-RlsAddress $item
 		if (-not $spec) { continue }
-		$script:pendingRlsRemovals += ,$spec
+		$script:pending += ,@{ Kind = 'remove-rls'; Spec = $spec }
 	}
 }
 
@@ -2039,7 +2048,7 @@ function Do-AddTemplate([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-TemplateSpec $item
 		if (-not $spec) { continue }
-		$script:pendingTemplateAdds += ,$spec
+		$script:pending += ,@{ Kind = 'add-template'; Spec = $spec }
 	}
 }
 
@@ -2067,14 +2076,14 @@ function Do-SetTemplate([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-TemplateSpec $item
 		if (-not $spec) { continue }
-		$script:pendingTemplateSets += ,$spec
+		$script:pending += ,@{ Kind = 'set-template'; Spec = $spec }
 	}
 }
 
 function Do-RemoveTemplate([string]$batchVal) {
 	foreach ($item in (Parse-BatchValue $batchVal)) {
 		$spec = Parse-TemplateSpec $item -NameOnly
-		$script:pendingTemplateRemovals += ,$spec
+		$script:pending += ,@{ Kind = 'remove-template'; Spec = $spec }
 	}
 }
 
@@ -2127,7 +2136,7 @@ function Do-ModifyProperty([string]$batchVal) {
 			Add-ValidationError "$item : значение должно быть true или false"
 			continue
 		}
-		$script:pendingProperties += ,@{ Name = $canonical; Value = $value }
+		$script:pending += ,@{ Kind = 'modify-property'; Spec = @{ Name = $canonical; Value = $value } }
 	}
 }
 
@@ -2194,17 +2203,8 @@ function Edit-RoleMetadata([string]$field, [string]$text) {
 
 # --- Сбор и выполнение операций ---
 
-$script:pendingAdds = @()
-$script:pendingSets = @()
-$script:pendingRemoves = @()
-$script:pendingDenies = @()
-$script:pendingRls = @()
-$script:pendingRlsRemovals = @()
-$script:pendingTemplateAdds = @()
-$script:pendingTemplateSets = @()
-$script:pendingTemplateRemovals = @()
-$script:pendingProperties = @()
-$script:pendingMeta = @()
+# Очередь одна: операции применяются в том порядке, в котором их перечислили.
+$script:pending = @()
 
 $operations = @()
 if ($DefinitionFile) {
@@ -2233,8 +2233,8 @@ foreach ($op in $operations) {
 		"set-template"     { Do-SetTemplate $opValue }
 		"remove-template"  { Do-RemoveTemplate $opValue }
 		"modify-property"  { Do-ModifyProperty $opValue }
-		"set-synonym"      { $script:pendingMeta += ,@{ Field = 'Synonym'; Text = (Resolve-TextFromFile $opValue $script:textBaseDir) } }
-		"set-comment"      { $script:pendingMeta += ,@{ Field = 'Comment'; Text = (Resolve-TextFromFile $opValue $script:textBaseDir) } }
+		"set-synonym"      { $script:pending += ,@{ Kind = 'set-meta'; Spec = @{ Field = 'Synonym'; Text = (Resolve-TextFromFile $opValue $script:textBaseDir) } } }
+		"set-comment"      { $script:pending += ,@{ Kind = 'set-meta'; Spec = @{ Field = 'Comment'; Text = (Resolve-TextFromFile $opValue $script:textBaseDir) } } }
 		default {
 			Add-ValidationError "Неизвестная операция: $opName"
 		}
@@ -2249,17 +2249,21 @@ if ($script:validationErrors.Count -gt 0) {
 	exit 1
 }
 
-foreach ($spec in $script:pendingAdds) { Apply-AddRights $spec }
-foreach ($spec in $script:pendingSets) { Apply-SetRights $spec }
-foreach ($spec in $script:pendingDenies) { Apply-DenyRights $spec }
-foreach ($spec in $script:pendingRemoves) { Apply-RemoveRights $spec }
-foreach ($spec in $script:pendingTemplateAdds) { Apply-AddTemplate $spec }
-foreach ($spec in $script:pendingTemplateSets) { Apply-AddTemplate $spec -AllowReplace }
-foreach ($spec in $script:pendingRls) { Apply-SetRls $spec }
-foreach ($spec in $script:pendingRlsRemovals) { Apply-RemoveRls $spec }
-foreach ($spec in $script:pendingTemplateRemovals) { Apply-RemoveTemplate $spec }
-foreach ($spec in $script:pendingProperties) { Apply-ModifyProperty $spec }
-foreach ($spec in $script:pendingMeta) { Edit-RoleMetadata $spec.Field $spec.Text }
+foreach ($item in $script:pending) {
+	switch ($item.Kind) {
+		'add-rights'      { Apply-AddRights $item.Spec }
+		'set-rights'      { Apply-SetRights $item.Spec }
+		'deny-rights'     { Apply-DenyRights $item.Spec }
+		'remove-rights'   { Apply-RemoveRights $item.Spec }
+		'add-template'    { Apply-AddTemplate $item.Spec }
+		'set-template'    { Apply-AddTemplate $item.Spec -AllowReplace }
+		'remove-template' { Apply-RemoveTemplate $item.Spec }
+		'set-rls'         { Apply-SetRls $item.Spec }
+		'remove-rls'      { Apply-RemoveRls $item.Spec }
+		'modify-property' { Apply-ModifyProperty $item.Spec }
+		'set-meta'        { Edit-RoleMetadata $item.Spec.Field $item.Spec.Text }
+	}
+}
 
 # Ошибка могла всплыть и на применении (RLS без права) — файл в этом случае не трогаем.
 if ($script:validationErrors.Count -gt 0) {
