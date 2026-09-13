@@ -1,26 +1,6 @@
 {
   "name": "Позитив: короткая запись на сервис раскрывается во все вложенные объекты",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "HTTPService", "name": "ВнешнийAPI", "rootURL": "api",
-        "urlTemplates": {
-          "Заказы": { "template": "/orders", "methods": { "Получить": "GET", "Создать": "POST" } },
-          "Версия": { "template": "/version", "methods": { "GET": "GET" } }
-        }
-      },
-      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
-    },
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "WebService", "name": "ОбменДанными", "namespace": "http://example.org/exchange",
-        "operations": { "Загрузить": "xs:string", "Выгрузить": "xs:string" }
-      },
-      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
-    }
-  ],
+  "setup": "fixture:expand-service-roots-fx",
   "input": {
     "name": "ДоступКСервисам",
     "synonym": "Доступ к сервисам",

@@ -1,29 +1,6 @@
 {
   "name": "Роль с RLS ограничениями",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "Catalog",
-        "name": "Организации"
-      },
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    },
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "Document",
-        "name": "РеализацияТоваровУслуг"
-      },
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    }
-  ],
+  "setup": "fixture:with-rls-fx",
   "input": {
     "name": "ЧтениеДокументовПоОрганизации",
     "synonym": "Чтение документов (ограничение по организации)",

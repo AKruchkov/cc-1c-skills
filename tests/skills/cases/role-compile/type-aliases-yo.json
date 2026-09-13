@@ -1,19 +1,6 @@
 {
   "name": "Русские имена типов принимаются в обеих формах — с ё и без",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": [
-        { "type": "ChartOfCalculationTypes", "name": "ВидыРасчета" },
-        { "type": "CalculationRegister", "name": "Начисления", "chartOfCalculationTypes": "ChartOfCalculationTypes.ВидыРасчета" },
-        { "type": "Report", "name": "Сводный" }
-      ],
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    }
-  ],
+  "setup": "fixture:type-aliases-yo-fx",
   "input": {
     "name": "РольАлиасы",
     "objects": [
@@ -24,7 +11,9 @@
   },
   "validatePath": "Roles/РольАлиасы",
   "expect": {
-    "files": ["Roles/РольАлиасы/Ext/Rights.xml"],
+    "files": [
+      "Roles/РольАлиасы/Ext/Rights.xml"
+    ],
     "fileContains": {
       "file": "Roles/РольАлиасы/Ext/Rights.xml",
       "text": [

@@ -4,10 +4,13 @@
 	<setForAttributesByDefault>true</setForAttributesByDefault>
 	<independentRightsOfChildObjects>false</independentRightsOfChildObjects>
 	<object>
-		<name>Catalog.Организации</name>
+		<name>Document.Реализация</name>
 		<right>
 			<name>Read</name>
 			<value>true</value>
+			<restrictionByCondition>
+				<condition>#ПоОрганизации("")</condition>
+			</restrictionByCondition>
 		</right>
 		<right>
 			<name>View</name>
@@ -19,13 +22,10 @@
 		</right>
 	</object>
 	<object>
-		<name>Document.Реализация</name>
+		<name>Catalog.Организации</name>
 		<right>
 			<name>Read</name>
 			<value>true</value>
-			<restrictionByCondition>
-				<condition>#ПоОрганизации("")</condition>
-			</restrictionByCondition>
 		</right>
 		<right>
 			<name>View</name>

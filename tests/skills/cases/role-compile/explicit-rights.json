@@ -1,20 +1,6 @@
 {
   "name": "Роль с явными правами (без пресета)",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "InformationRegister",
-        "name": "Цены",
-        "dimensions": ["Номенклатура: String(100)"],
-        "resources": ["Цена: Number(15,2)"]
-      },
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    }
-  ],
+  "setup": "fixture:explicit-rights-fx",
   "input": {
     "name": "ПравоЦен",
     "synonym": "Право на цены",

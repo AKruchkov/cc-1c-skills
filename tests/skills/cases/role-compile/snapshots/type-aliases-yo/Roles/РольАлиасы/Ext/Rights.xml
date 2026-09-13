@@ -4,6 +4,13 @@
 	<setForAttributesByDefault>true</setForAttributesByDefault>
 	<independentRightsOfChildObjects>false</independentRightsOfChildObjects>
 	<object>
+		<name>Report.Сводный</name>
+		<right>
+			<name>View</name>
+			<value>true</value>
+		</right>
+	</object>
+	<object>
 		<name>CalculationRegister.Начисления</name>
 		<right>
 			<name>Read</name>
@@ -14,13 +21,6 @@
 		<name>ChartOfCalculationTypes.ВидыРасчета</name>
 		<right>
 			<name>Read</name>
-			<value>true</value>
-		</right>
-	</object>
-	<object>
-		<name>Report.Сводный</name>
-		<right>
-			<name>View</name>
 			<value>true</value>
 		</right>
 	</object>

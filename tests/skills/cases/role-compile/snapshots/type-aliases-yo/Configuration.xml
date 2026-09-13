@@ -247,6 +247,7 @@
 		<ChildObjects>
 			<Language>Русский</Language>
 			<Role>РольАлиасы</Role>
+			<Document>РегистраторРасчёта</Document>
 			<Report>Сводный</Report>
 			<ChartOfCalculationTypes>ВидыРасчета</ChartOfCalculationTypes>
 			<CalculationRegister>Начисления</CalculationRegister>

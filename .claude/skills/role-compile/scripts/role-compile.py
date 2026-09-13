@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-compile v1.37 — Compile 1C role from JSON
+# role-compile v1.38 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -771,6 +771,217 @@ def get_nested_rights(object_type, kind):
     return NESTED_KIND_RIGHTS.get(kind)
 
 
+# --- Канонический порядок прав и узлов (замерено на платформе) ---
+# Платформа нормализует порядок <right> внутри <object> и порядок самих <object>:
+# права идут в фиксированном для типа порядке, узлы — по uuid объекта метаданных.
+# Пишем сразу так же, иначе первая же выгрузка из Конфигуратора даст диф на ровном месте.
+RIGHT_ORDER = {
+    "AccountingRegister": ["Read", "Update", "View", "Edit", "TotalsControl"],
+    "AccumulationRegister": ["Read", "Update", "View", "Edit", "TotalsControl"],
+    "BusinessProcess": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "InteractiveActivate", "Start", "InteractiveStart", "ReadDataHistory",
+        "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData", "UpdateDataHistorySettings",
+        "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion",
+    ],
+    "CalculationRegister": ["Read", "Update", "View", "Edit"],
+    "Catalog": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "InteractiveDeletePredefinedData", "InteractiveSetDeletionMarkPredefinedData", "InteractiveClearDeletionMarkPredefinedData", "InteractiveDeleteMarkedPredefinedData",
+        "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData",
+        "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+        "SwitchToDataHistoryVersion",
+    ],
+    "ChartOfAccounts": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "InteractiveDeletePredefinedData", "InteractiveSetDeletionMarkPredefinedData", "InteractiveClearDeletionMarkPredefinedData", "InteractiveDeleteMarkedPredefinedData",
+        "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData",
+        "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+        "SwitchToDataHistoryVersion",
+    ],
+    "ChartOfCalculationTypes": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "InteractiveDeletePredefinedData", "InteractiveSetDeletionMarkPredefinedData", "InteractiveClearDeletionMarkPredefinedData", "InteractiveDeleteMarkedPredefinedData",
+        "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData",
+        "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+        "SwitchToDataHistoryVersion",
+    ],
+    "ChartOfCharacteristicTypes": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "InteractiveDeletePredefinedData", "InteractiveSetDeletionMarkPredefinedData", "InteractiveClearDeletionMarkPredefinedData", "InteractiveDeleteMarkedPredefinedData",
+        "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData",
+        "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+        "SwitchToDataHistoryVersion",
+    ],
+    "CommonAttribute": ["View", "Edit"],
+    "CommonCommand": ["View"],
+    "CommonForm": ["View"],
+    "Configuration": [
+        "Administration", "DataAdministration", "UpdateDataBaseConfiguration", "ExclusiveMode",
+        "ActiveUsers", "EventLog", "ThinClient", "WebClient",
+        "MobileClient", "ThickClient", "ExternalConnection", "Automation",
+        "TechnicalSpecialistMode", "CollaborationSystemInfoBaseRegistration", "MainWindowModeNormal", "MainWindowModeWorkplace",
+        "MainWindowModeEmbeddedWorkplace", "MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk", "AnalyticsSystemClient",
+        "SaveUserData", "ConfigurationExtensionsAdministration", "InteractiveOpenExtDataProcessors", "InteractiveOpenExtReports",
+        "Output",
+    ],
+    "Constant": [
+        "Read", "Update", "View", "Edit",
+        "ReadDataHistory", "UpdateDataHistory", "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment",
+        "ViewDataHistory", "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion",
+    ],
+    "DataProcessor": ["Use", "View"],
+    "Document": [
+        "Read", "Insert", "Update", "Delete",
+        "Posting", "UndoPosting", "View", "InteractiveInsert",
+        "Edit", "InteractiveDelete", "InteractiveSetDeletionMark", "InteractiveClearDeletionMark",
+        "InteractiveDeleteMarked", "InteractivePosting", "InteractivePostingRegular", "InteractiveUndoPosting",
+        "InteractiveChangeOfPosted", "InputByString", "ReadDataHistory", "ReadDataHistoryOfMissingData",
+        "UpdateDataHistory", "UpdateDataHistoryOfMissingData", "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment",
+        "ViewDataHistory", "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion",
+    ],
+    "DocumentJournal": ["Read", "View"],
+    "ExchangePlan": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData",
+        "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment",
+        "SwitchToDataHistoryVersion",
+    ],
+    "FilterCriterion": ["View"],
+    "HTTPService": ["Use"],
+    "InformationRegister": [
+        "Read", "Update", "View", "Edit",
+        "TotalsControl", "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory",
+        "UpdateDataHistoryOfMissingData", "UpdateDataHistorySettings", "UpdateDataHistoryVersionComment", "ViewDataHistory",
+        "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion",
+    ],
+    "IntegrationService": ["Use"],
+    "Report": ["Use", "View"],
+    "Sequence": ["Read", "Update"],
+    "SessionParameter": ["Get", "Set"],
+    "Subsystem": ["View"],
+    "Task": [
+        "Read", "Insert", "Update", "Delete",
+        "View", "InteractiveInsert", "Edit", "InteractiveDelete",
+        "InteractiveSetDeletionMark", "InteractiveClearDeletionMark", "InteractiveDeleteMarked", "InputByString",
+        "InteractiveActivate", "Execute", "InteractiveExecute", "ReadDataHistory",
+        "ReadDataHistoryOfMissingData", "UpdateDataHistory", "UpdateDataHistoryOfMissingData", "UpdateDataHistorySettings",
+        "UpdateDataHistoryVersionComment", "ViewDataHistory", "EditDataHistoryVersionComment", "SwitchToDataHistoryVersion",
+    ],
+    "WebService": ["Use"],
+}
+
+NESTED_RIGHT_ORDER = {
+    "AccountingFlag": ["View", "Edit"],
+    "AddressingAttribute": ["View", "Edit"],
+    "Attribute": ["View", "Edit"],
+    "Command": ["View"],
+    "Dimension": ["View", "Edit"],
+    "ExtDimensionAccountingFlag": ["View", "Edit"],
+    "IntegrationServiceChannel": ["Use"],
+    "Method": ["Use"],
+    "Operation": ["Use"],
+    "Recalculation": ["Read", "Update"],
+    "Resource": ["View", "Edit"],
+    "StandardAttribute": ["View", "Edit"],
+    "StandardTabularSection": ["View", "Edit"],
+    "Subsystem": ["View"],
+    "TabularSection": ["View", "Edit"],
+}
+
+# Каталоги объектов метаданных — нужны, чтобы прочитать uuid и расставить <object>.
+TYPE_DIRS = {
+    "Catalog": "Catalogs", "Document": "Documents", "DocumentJournal": "DocumentJournals",
+    "Sequence": "Sequences", "Constant": "Constants", "Report": "Reports",
+    "DataProcessor": "DataProcessors", "InformationRegister": "InformationRegisters",
+    "AccumulationRegister": "AccumulationRegisters", "AccountingRegister": "AccountingRegisters",
+    "CalculationRegister": "CalculationRegisters", "ChartOfAccounts": "ChartsOfAccounts",
+    "ChartOfCharacteristicTypes": "ChartsOfCharacteristicTypes",
+    "ChartOfCalculationTypes": "ChartsOfCalculationTypes", "ExchangePlan": "ExchangePlans",
+    "BusinessProcess": "BusinessProcesses", "Task": "Tasks", "Subsystem": "Subsystems",
+    "CommonForm": "CommonForms", "CommonCommand": "CommonCommands",
+    "CommonAttribute": "CommonAttributes", "FilterCriterion": "FilterCriteria",
+    "SessionParameter": "SessionParameters", "WebService": "WebServices",
+    "HTTPService": "HTTPServices", "IntegrationService": "IntegrationServices",
+    "ExternalDataSource": "ExternalDataSources",
+}
+
+
+def sort_rights_canonical(object_name, rights):
+    """Порядок прав объекта: известные — по таблице, незнакомые — следом, в порядке ввода."""
+    parts = object_name.split('.')
+    order = NESTED_RIGHT_ORDER.get(parts[-2]) if len(parts) >= 3 else RIGHT_ORDER.get(parts[0])
+    if not order:
+        return rights
+    by_name = {}
+    for r in rights:
+        by_name.setdefault(r['Name'], r)
+    sorted_rights = []
+    for name in order:
+        if name in by_name:
+            sorted_rights.append(by_name.pop(name))
+    for r in rights:
+        if r['Name'] in by_name:
+            sorted_rights.append(by_name.pop(r['Name']))
+    return sorted_rights
+
+
+def get_rights_object_uuid(object_name, config_root):
+    """uuid объекта прав: у верхнего уровня — из файла объекта, у вложенного — из его узла."""
+    parts = object_name.split('.')
+    if parts[0] == 'Configuration':
+        cfg_path = os.path.join(config_root, 'Configuration.xml')
+        if not os.path.isfile(cfg_path):
+            return None
+        with open(cfg_path, 'r', encoding='utf-8-sig') as f:
+            m = re.search(r'<Configuration uuid="([0-9a-fA-F-]+)"', f.read())
+        return m.group(1) if m else None
+    directory = TYPE_DIRS.get(parts[0])
+    if not directory or len(parts) < 2:
+        return None
+    owner_path = os.path.join(config_root, directory, parts[1] + '.xml')
+    if not os.path.isfile(owner_path):
+        return None
+    with open(owner_path, 'r', encoding='utf-8-sig') as f:
+        text = f.read()
+    if len(parts) == 2:
+        m = re.search(r'<%s uuid="([0-9a-fA-F-]+)"' % re.escape(parts[0]), text)
+        return m.group(1) if m else None
+    # Вложенный: вид — предпоследний сегмент, имя — последний.
+    rx = r'<%s uuid="([0-9a-fA-F-]+)"[^>]*>\s*<Properties>\s*<Name>%s</Name>' % (
+        re.escape(parts[-2]), re.escape(parts[-1]))
+    m = re.search(rx, text)
+    return m.group(1) if m else None
+
+
+def sort_objects_by_uuid(objects, config_root):
+    """Порядок узлов: по uuid объекта; неразрешённые — в конец, в порядке ввода."""
+    known, unknown = [], []
+    for o in objects:
+        uuid_value = get_rights_object_uuid(o['Name'], config_root)
+        if uuid_value:
+            known.append((uuid_value, o))
+        else:
+            print(f"[role-compile] {o['Name']}: объект не найден в выгрузке, uuid неизвестен — "
+                  f"узел записан в конец (платформа переставит его при первой выгрузке)",
+                  file=sys.stderr)
+            unknown.append(o)
+    known.sort(key=lambda pair: pair[0])
+    return [o for _, o in known] + unknown
+
+
 # Отказ копится, а не печатается сразу: роль пишется целиком, поэтому единственный
 # безопасный момент отказа — до первой записи, и показать надо все причины сразу.
 VALIDATION_ERRORS = []
@@ -1371,6 +1582,12 @@ def main():
     lines.append(f'\t<setForNewObjects>{sfno}</setForNewObjects>')
     lines.append(f'\t<setForAttributesByDefault>{sfab}</setForAttributesByDefault>')
     lines.append(f'\t<independentRightsOfChildObjects>{irco}</independentRightsOfChildObjects>')
+
+    # Порядок как у платформы: узлы по uuid объекта, права — по канону типа. Иначе первая же
+    # выгрузка из Конфигуратора переставит их и даст диф, которого никто не делал.
+    parsed_objects = sort_objects_by_uuid(parsed_objects, out_dir_resolved)
+    for o in parsed_objects:
+        o['Rights'] = sort_rights_canonical(o['Name'], o['Rights'])
 
     # Object blocks
     total_rights = 0

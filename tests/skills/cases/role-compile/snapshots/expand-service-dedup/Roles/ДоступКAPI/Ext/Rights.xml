@@ -4,14 +4,14 @@
 	<setForAttributesByDefault>true</setForAttributesByDefault>
 	<independentRightsOfChildObjects>false</independentRightsOfChildObjects>
 	<object>
-		<name>HTTPService.ВнешнийAPI.URLTemplate.Заказы.Method.Получить</name>
+		<name>HTTPService.ВнешнийAPI.URLTemplate.Заказы.Method.Создать</name>
 		<right>
 			<name>Use</name>
 			<value>true</value>
 		</right>
 	</object>
 	<object>
-		<name>HTTPService.ВнешнийAPI.URLTemplate.Заказы.Method.Создать</name>
+		<name>HTTPService.ВнешнийAPI.URLTemplate.Заказы.Method.Получить</name>
 		<right>
 			<name>Use</name>
 			<value>true</value>

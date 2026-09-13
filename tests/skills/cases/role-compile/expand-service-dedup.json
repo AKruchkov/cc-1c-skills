@@ -1,18 +1,6 @@
 {
   "name": "Позитив: раскрытый лист совпал с явно заданным — одна запись, не дубль",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "HTTPService", "name": "ВнешнийAPI", "rootURL": "api",
-        "urlTemplates": {
-          "Заказы": { "template": "/orders", "methods": { "Получить": "GET", "Создать": "POST" } },
-          "Версия": { "template": "/version", "methods": { "GET": "GET" } }
-        }
-      },
-      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
-    }
-  ],
+  "setup": "fixture:expand-service-dedup-fx",
   "input": {
     "name": "ДоступКAPI",
     "synonym": "Доступ к API",

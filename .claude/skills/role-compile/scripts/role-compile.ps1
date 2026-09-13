@@ -1,4 +1,4 @@
-﻿# role-compile v1.37 — Compile 1C role from JSON
+﻿# role-compile v1.38 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -620,6 +620,219 @@ $script:presets = @{
 	}
 }
 
+# --- 4a. Канонический порядок прав и узлов (замерено на платформе) ---
+# Платформа нормализует порядок <right> внутри <object> и порядок самих <object>:
+# права идут в фиксированном для типа порядке, узлы — по uuid объекта метаданных.
+# Пишем сразу так же, иначе первая же выгрузка из Конфигуратора даст диф на ровном месте.
+$script:rightOrder = @{
+	"AccountingRegister" = @("Read","Update","View","Edit","TotalsControl")
+	"AccumulationRegister" = @("Read","Update","View","Edit","TotalsControl")
+	"BusinessProcess" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"InteractiveActivate","Start","InteractiveStart","ReadDataHistory",
+		"ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData","UpdateDataHistorySettings",
+		"UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
+	)
+	"CalculationRegister" = @("Read","Update","View","Edit")
+	"Catalog" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData","InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData",
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData",
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment",
+		"SwitchToDataHistoryVersion"
+	)
+	"ChartOfAccounts" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData","InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData",
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData",
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment",
+		"SwitchToDataHistoryVersion"
+	)
+	"ChartOfCalculationTypes" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData","InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData",
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData",
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment",
+		"SwitchToDataHistoryVersion"
+	)
+	"ChartOfCharacteristicTypes" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"InteractiveDeletePredefinedData","InteractiveSetDeletionMarkPredefinedData","InteractiveClearDeletionMarkPredefinedData","InteractiveDeleteMarkedPredefinedData",
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData",
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment",
+		"SwitchToDataHistoryVersion"
+	)
+	"CommonAttribute" = @("View","Edit")
+	"CommonCommand" = @("View")
+	"CommonForm" = @("View")
+	"Configuration" = @(
+		"Administration","DataAdministration","UpdateDataBaseConfiguration","ExclusiveMode",
+		"ActiveUsers","EventLog","ThinClient","WebClient",
+		"MobileClient","ThickClient","ExternalConnection","Automation",
+		"TechnicalSpecialistMode","CollaborationSystemInfoBaseRegistration","MainWindowModeNormal","MainWindowModeWorkplace",
+		"MainWindowModeEmbeddedWorkplace","MainWindowModeFullscreenWorkplace","MainWindowModeKiosk","AnalyticsSystemClient",
+		"SaveUserData","ConfigurationExtensionsAdministration","InteractiveOpenExtDataProcessors","InteractiveOpenExtReports",
+		"Output"
+	)
+	"Constant" = @(
+		"Read","Update","View","Edit",
+		"ReadDataHistory","UpdateDataHistory","UpdateDataHistorySettings","UpdateDataHistoryVersionComment",
+		"ViewDataHistory","EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
+	)
+	"DataProcessor" = @("Use","View")
+	"Document" = @(
+		"Read","Insert","Update","Delete",
+		"Posting","UndoPosting","View","InteractiveInsert",
+		"Edit","InteractiveDelete","InteractiveSetDeletionMark","InteractiveClearDeletionMark",
+		"InteractiveDeleteMarked","InteractivePosting","InteractivePostingRegular","InteractiveUndoPosting",
+		"InteractiveChangeOfPosted","InputByString","ReadDataHistory","ReadDataHistoryOfMissingData",
+		"UpdateDataHistory","UpdateDataHistoryOfMissingData","UpdateDataHistorySettings","UpdateDataHistoryVersionComment",
+		"ViewDataHistory","EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
+	)
+	"DocumentJournal" = @("Read","View")
+	"ExchangePlan" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData",
+		"UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment",
+		"SwitchToDataHistoryVersion"
+	)
+	"FilterCriterion" = @("View")
+	"HTTPService" = @("Use")
+	"InformationRegister" = @(
+		"Read","Update","View","Edit",
+		"TotalsControl","ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory",
+		"UpdateDataHistoryOfMissingData","UpdateDataHistorySettings","UpdateDataHistoryVersionComment","ViewDataHistory",
+		"EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
+	)
+	"IntegrationService" = @("Use")
+	"Report" = @("Use","View")
+	"Sequence" = @("Read","Update")
+	"SessionParameter" = @("Get","Set")
+	"Subsystem" = @("View")
+	"Task" = @(
+		"Read","Insert","Update","Delete",
+		"View","InteractiveInsert","Edit","InteractiveDelete",
+		"InteractiveSetDeletionMark","InteractiveClearDeletionMark","InteractiveDeleteMarked","InputByString",
+		"InteractiveActivate","Execute","InteractiveExecute","ReadDataHistory",
+		"ReadDataHistoryOfMissingData","UpdateDataHistory","UpdateDataHistoryOfMissingData","UpdateDataHistorySettings",
+		"UpdateDataHistoryVersionComment","ViewDataHistory","EditDataHistoryVersionComment","SwitchToDataHistoryVersion"
+	)
+	"WebService" = @("Use")
+}
+
+$script:nestedRightOrder = @{
+	"AccountingFlag" = @("View","Edit")
+	"AddressingAttribute" = @("View","Edit")
+	"Attribute" = @("View","Edit")
+	"Command" = @("View")
+	"Dimension" = @("View","Edit")
+	"ExtDimensionAccountingFlag" = @("View","Edit")
+	"IntegrationServiceChannel" = @("Use")
+	"Method" = @("Use")
+	"Operation" = @("Use")
+	"Recalculation" = @("Read","Update")
+	"Resource" = @("View","Edit")
+	"StandardAttribute" = @("View","Edit")
+	"StandardTabularSection" = @("View","Edit")
+	"Subsystem" = @("View")
+	"TabularSection" = @("View","Edit")
+}
+
+# Каталоги объектов метаданных — нужны, чтобы прочитать uuid и расставить <object>.
+$script:typeDirs = @{
+	"Catalog"="Catalogs"; "Document"="Documents"; "DocumentJournal"="DocumentJournals"
+	"Sequence"="Sequences"; "Constant"="Constants"; "Report"="Reports"; "DataProcessor"="DataProcessors"
+	"InformationRegister"="InformationRegisters"; "AccumulationRegister"="AccumulationRegisters"
+	"AccountingRegister"="AccountingRegisters"; "CalculationRegister"="CalculationRegisters"
+	"ChartOfAccounts"="ChartsOfAccounts"; "ChartOfCharacteristicTypes"="ChartsOfCharacteristicTypes"
+	"ChartOfCalculationTypes"="ChartsOfCalculationTypes"; "ExchangePlan"="ExchangePlans"
+	"BusinessProcess"="BusinessProcesses"; "Task"="Tasks"; "Subsystem"="Subsystems"
+	"CommonForm"="CommonForms"; "CommonCommand"="CommonCommands"; "CommonAttribute"="CommonAttributes"
+	"FilterCriterion"="FilterCriteria"; "SessionParameter"="SessionParameters"
+	"WebService"="WebServices"; "HTTPService"="HTTPServices"; "IntegrationService"="IntegrationServices"
+	"ExternalDataSource"="ExternalDataSources"
+}
+
+# Порядок прав объекта: известные — по таблице, незнакомые — следом, в порядке ввода.
+function Sort-RightsCanonical {
+	param([string]$objName, $rights)
+	$parts = $objName -split '\.'
+	$order = if ($parts.Count -ge 3) { $script:nestedRightOrder[$parts[$parts.Count-2]] }
+	         else { $script:rightOrder[$parts[0]] }
+	if (-not $order) { return $rights }
+	$byName = @{}
+	foreach ($r in $rights) { if (-not $byName.ContainsKey($r.Name)) { $byName[$r.Name] = $r } }
+	$sorted = @()
+	foreach ($name in $order) { if ($byName.ContainsKey($name)) { $sorted += ,$byName[$name]; $byName.Remove($name) } }
+	foreach ($r in $rights) { if ($byName.ContainsKey($r.Name)) { $sorted += ,$r; $byName.Remove($r.Name) } }
+	return $sorted
+}
+
+# uuid объекта прав: у верхнего уровня — из файла объекта, у вложенного — из его узла.
+function Get-RightsObjectUuid {
+	param([string]$objName, [string]$configRoot)
+	$parts = $objName -split '\.'
+	if ($parts[0] -eq 'Configuration') {
+		$cfgPath = Join-Path $configRoot "Configuration.xml"
+		if (-not (Test-Path $cfgPath)) { return $null }
+		$head = [System.IO.File]::ReadAllText($cfgPath)
+		if ($head -match '<Configuration uuid="([0-9a-fA-F-]+)"') { return $Matches[1] }
+		return $null
+	}
+	$dir = $script:typeDirs[$parts[0]]
+	if (-not $dir -or $parts.Count -lt 2) { return $null }
+	$ownerPath = Join-Path (Join-Path $configRoot $dir) "$($parts[1]).xml"
+	if (-not (Test-Path $ownerPath)) { return $null }
+	$text = [System.IO.File]::ReadAllText($ownerPath)
+	if ($parts.Count -eq 2) {
+		if ($text -match "<$($parts[0]) uuid=`"([0-9a-fA-F-]+)`"") { return $Matches[1] }
+		return $null
+	}
+	# Вложенный: вид — предпоследний сегмент, имя — последний.
+	$kind = [regex]::Escape($parts[$parts.Count-2])
+	$name = [regex]::Escape($parts[$parts.Count-1])
+	$rx = "<$kind uuid=`"([0-9a-fA-F-]+)`"[^>]*>\s*<Properties>\s*<Name>$name</Name>"
+	if ($text -match $rx) { return $Matches[1] }
+	return $null
+}
+
+# Порядок узлов: по uuid объекта; неразрешённые — в конец, в порядке ввода.
+function Sort-ObjectsByUuid {
+	param($objects, [string]$configRoot)
+	$known = @()
+	$unknown = @()
+	foreach ($o in $objects) {
+		$uuid = Get-RightsObjectUuid -objName $o.Name -configRoot $configRoot
+		if ($uuid) { $known += ,[pscustomobject]@{ Uuid = $uuid; Obj = $o } }
+		else {
+			[Console]::Error.WriteLine("[role-compile] $($o.Name): объект не найден в выгрузке, uuid неизвестен — узел записан в конец (платформа переставит его при первой выгрузке)")
+			$unknown += ,$o
+		}
+	}
+	# Сортировка строго ordinal: Sort-Object сравнивает по культуре и игнорирует дефис,
+	# из-за чего порядок разошёлся бы и с платформой, и с py-портом.
+	$arr = [object[]]$known
+	if ($arr.Count -gt 1) {
+		[Array]::Sort($arr, [System.Comparison[object]]{ param($x, $y) [string]::CompareOrdinal($x.Uuid, $y.Uuid) })
+	}
+	$result = @()
+	foreach ($k in $arr) { $result += ,$k.Obj }
+	foreach ($u in $unknown) { $result += ,$u }
+	return $result
+}
+
 # --- 5. Helpers ---
 
 function Get-ObjectType {
@@ -1118,6 +1331,11 @@ $irco = if ($null -ne $def.independentRightsOfChildObjects) { "$($def.independen
 X "`t<setForNewObjects>$sfno</setForNewObjects>"
 X "`t<setForAttributesByDefault>$sfab</setForAttributesByDefault>"
 X "`t<independentRightsOfChildObjects>$irco</independentRightsOfChildObjects>"
+
+# Порядок как у платформы: узлы по uuid объекта, права — по канону типа. Иначе первая же
+# выгрузка из Конфигуратора переставит их и даст диф, которого никто не делал.
+$parsedObjects = @(Sort-ObjectsByUuid -objects $parsedObjects -configRoot $resolvedOutputDir)
+foreach ($o in $parsedObjects) { $o.Rights = @(Sort-RightsCanonical -objName $o.Name -rights $o.Rights) }
 
 # Object blocks
 $totalRights = 0

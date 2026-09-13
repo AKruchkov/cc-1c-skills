@@ -247,6 +247,7 @@
 		<ChildObjects>
 			<Language>Русский</Language>
 			<Role>ИсторияДанныхПроцессов</Role>
+			<Document>РегистраторРасчёта</Document>
 			<ChartOfCalculationTypes>Начисления</ChartOfCalculationTypes>
 			<CalculationRegister>Начисление</CalculationRegister>
 			<BusinessProcess>Согласование</BusinessProcess>

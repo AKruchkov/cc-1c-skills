@@ -1,18 +1,6 @@
 {
   "name": "Роль с русскими типами и правами",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "Catalog",
-        "name": "Контрагенты"
-      },
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    }
-  ],
+  "setup": "fixture:russian-types-fx",
   "input": {
     "name": "ЧтениеКонтрагентов",
     "synonym": "Чтение контрагентов",

@@ -1,24 +1,6 @@
 {
   "name": "Права истории данных у бизнес-процесса, задачи, ПВР и регистра расчёта (сверено с платформой)",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": [
-        { "type": "Task", "name": "ЗадачаИсполнителя" },
-        { "type": "BusinessProcess", "name": "Согласование", "task": "Task.ЗадачаИсполнителя" },
-        { "type": "ChartOfCalculationTypes", "name": "Начисления" },
-        {
-          "type": "CalculationRegister",
-          "name": "Начисление",
-          "chartOfCalculationTypes": "ChartOfCalculationTypes.Начисления"
-        }
-      ],
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    }
-  ],
+  "setup": "fixture:rights-datahistory-process-fx",
   "input": {
     "name": "ИсторияДанныхПроцессов",
     "synonym": "История данных процессов",
