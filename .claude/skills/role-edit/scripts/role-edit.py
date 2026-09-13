@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-edit v1.5 — Edit existing 1C role rights in place
+# role-edit v1.6 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1740,13 +1740,14 @@ class Editor:
                 ref = templates[0]
         self.insert_child(self.root, new_el, ref, indent)
 
-    # Узел без единого разрешающего права платформа не производит.
-    def remove_object_if_no_true_rights(self, obj_node):
-        if self.true_right_names(obj_node):
+    # Пустых узлов платформа не производит. Узел с одними запретами — производит (так закрывают
+    # реквизит), поэтому смотрим на наличие прав вообще, а не только разрешающих.
+    def remove_object_if_empty(self, obj_node):
+        if self.right_nodes(obj_node):
             return
         name = node_text(obj_node, "name")
         self.remove_child(obj_node)
-        self.note(f"     {name}: разрешающих прав не осталось — узел объекта удалён")
+        self.note(f"     {name}: прав не осталось — узел объекта удалён")
 
     # --- Зависимости ---
 
@@ -1857,7 +1858,7 @@ class Editor:
         self.note(f"     {spec['Name']}: набор прав заменён")
         if dropped_rls:
             self.note(f"[WARN] {spec['Name']}: снято ограничений RLS: {dropped_rls}")
-        self.remove_object_if_no_true_rights(obj_node)
+        self.remove_object_if_empty(obj_node)
 
     def apply_remove_rights(self, spec):
         obj_node = self.find_object(spec["Name"])
@@ -1894,13 +1895,15 @@ class Editor:
         if cascade:
             note += f" (каскадом: {', '.join(cascade)})"
         self.note(note)
-        self.remove_object_if_no_true_rights(obj_node)
+        self.remove_object_if_empty(obj_node)
 
     def apply_deny_rights(self, spec):
         obj_node = self.find_object(spec["Name"])
+        created = False
         if obj_node is None:
             obj_node = self.make_object(spec["Name"], self.child_indent(self.root))
             self.insert_object_node(obj_node, spec["Name"])
+            created = True
         to_deny = []
         for right_name in spec["Rights"]:
             to_deny.append(right_name)
@@ -1925,6 +1928,8 @@ class Editor:
             denied.append(right_name)
             self.rights_dirty = True
         if not denied:
+            if created:
+                self.remove_child(obj_node)
             reason = ("запрет совпадает с умолчанием роли и платформой не хранится"
                       if any(d.startswith(spec['Name'] + '.') for d in self.dropped_by_default)
                       else "права уже запрещены")

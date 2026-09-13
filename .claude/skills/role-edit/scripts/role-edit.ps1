@@ -1,4 +1,4 @@
-﻿# role-edit v1.5 — Edit existing 1C role rights in place
+﻿# role-edit v1.6 — Edit existing 1C role rights in place
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1713,12 +1713,15 @@ function New-ObjectNode([string]$objName) {
 	return $nodes[0]
 }
 
-# Узел без единого разрешающего права платформа не производит: остаточные запреты уходят с ним.
-function Remove-ObjectIfNoTrueRights($objNode) {
-	if ((Get-TrueRightNames $objNode).Count -gt 0) { return $false }
+# Пустых узлов платформа не производит. Узел с одними запретами — производит (так закрывают
+# реквизит), поэтому смотрим на наличие прав вообще, а не только разрешающих.
+function Remove-ObjectIfEmpty($objNode) {
+	# @() на месте использования: return из функции разворачивает массив из одного элемента,
+	# и .Count у него $null — узел с единственным правом считался бы пустым.
+	if (@(Get-RightNodes $objNode).Count -gt 0) { return $false }
 	$name = Get-ObjectNodeName $objNode
 	Remove-NodeWithWhitespace $objNode
-	Add-Note "     ${name}: разрешающих прав не осталось — узел объекта удалён"
+	Add-Note "     ${name}: прав не осталось — узел объекта удалён"
 	return $true
 }
 
@@ -1852,7 +1855,7 @@ function Apply-SetRights($spec) {
 	$script:rightsDirty = $true
 	Add-Note "     $($spec.Name): набор прав заменён"
 	if ($droppedRls -gt 0) { Add-Note "[WARN] $($spec.Name): снято ограничений RLS: $droppedRls" }
-	Remove-ObjectIfNoTrueRights $objNode | Out-Null
+	Remove-ObjectIfEmpty $objNode | Out-Null
 }
 
 function Do-RemoveRights([string]$batchVal) {
@@ -1901,7 +1904,7 @@ function Apply-RemoveRights($spec) {
 	$note = "     $($spec.Name): снято — $($removed -join ', ')"
 	if ($cascade.Count -gt 0) { $note += " (каскадом: $($cascade -join ', '))" }
 	Add-Note $note
-	Remove-ObjectIfNoTrueRights $objNode | Out-Null
+	Remove-ObjectIfEmpty $objNode | Out-Null
 }
 
 function Do-DenyRights([string]$batchVal) {
@@ -1914,9 +1917,11 @@ function Do-DenyRights([string]$batchVal) {
 
 function Apply-DenyRights($spec) {
 	$objNode = Find-ObjectNode $spec.Name
+	$created = $false
 	if (-not $objNode) {
 		$objNode = New-ObjectNode $spec.Name
 		Insert-ObjectNode $objNode $spec.Name
+		$created = $true
 	}
 	$toDeny = @()
 	foreach ($rightName in $spec.Rights) {
@@ -1943,6 +1948,7 @@ function Apply-DenyRights($spec) {
 		$script:rightsDirty = $true
 	}
 	if ($denied.Count -eq 0) {
+		if ($created) { Remove-NodeWithWhitespace $objNode }
 		$reason = if ($script:droppedByDefault -match [regex]::Escape($spec.Name)) { "запрет совпадает с умолчанием роли и платформой не хранится" } else { "права уже запрещены" }
 		Add-Note "     $($spec.Name): $reason, изменений нет"
 		return
@@ -2031,7 +2037,7 @@ function Apply-SetRls($spec) {
 		# Строка без полей («прочие поля») идёт первой, строки с полями — после неё.
 		$refNode = $null
 		if ($spec.Fields.Count -eq 0) {
-			foreach ($node in $existing) { if ((Get-RestrictionFields $node).Count -gt 0) { $refNode = $node; break } }
+			foreach ($node in $existing) { if (@(Get-RestrictionFields $node).Count -gt 0) { $refNode = $node; break } }
 		}
 		Insert-BeforeElement $rightNode $new $refNode $indent
 		$script:addCount++
@@ -2062,7 +2068,7 @@ function Apply-RemoveRls($spec) {
 	$removed = 0
 	foreach ($node in @($rightNode.SelectNodes("rt:restrictionByCondition", $script:ns))) {
 		# Адрес без скобок снимает все ограничения права, со скобками — строку с этим набором полей.
-		if ($spec.Fields.Count -gt 0 -and -not (Test-SameFieldSet (Get-RestrictionFields $node) $spec.Fields)) { continue }
+		if (@($spec.Fields).Count -gt 0 -and -not (Test-SameFieldSet (Get-RestrictionFields $node) $spec.Fields)) { continue }
 		Remove-NodeWithWhitespace $node
 		$removed++
 	}

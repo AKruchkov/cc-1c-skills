@@ -1,0 +1,23 @@
+{
+  "name": "Отброшенный запрет не оставляет пустой узел, когда файл меняет соседняя операция",
+  "setup": "fixture:role-base",
+  "params": {
+    "rolePath": "Roles/Менеджер"
+  },
+  "input": [
+    {
+      "operation": "deny-rights",
+      "value": "InformationRegister.Цены: Read"
+    },
+    {
+      "operation": "add-rights",
+      "value": "Catalog.Товары: Insert"
+    }
+  ],
+  "expect": {
+    "fileNotContains": {
+      "file": "Roles/Менеджер/Ext/Rights.xml",
+      "text": "InformationRegister.Цены"
+    }
+  }
+}
