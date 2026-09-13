@@ -1,4 +1,4 @@
-﻿# role-compile v1.38 — Compile 1C role from JSON
+﻿# role-compile v1.39 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -833,6 +833,112 @@ function Sort-ObjectsByUuid {
 	return $result
 }
 
+# --- 4b. Зависимости прав (замерено на платформе) ---
+# Платформа при загрузке сама доводит набор до замыкания: выдал Edit — получил ещё
+# Read, Update и View. Пишем замыкание сразу, иначе файл и база расходятся.
+# Таблица общая для типов; исключения — там, где у типа своя механика (обработка и отчёт
+# держатся на Use, план счетов не тянет Read под историю данных).
+$script:rightDeps = @{
+	"Delete" = @("Read")
+	"Edit" = @("Read","Update","View")
+	"EditDataHistoryVersionComment" = @("Read","ReadDataHistory","UpdateDataHistoryVersionComment","View")
+	"Execute" = @("Read","Update")
+	"InputByString" = @("Read","View")
+	"Insert" = @("Read")
+	"InteractiveActivate" = @("Read","Update")
+	"InteractiveChangeOfPosted" = @("Edit","Read","Update","View")
+	"InteractiveClearDeletionMark" = @("Edit","Read","Update","View")
+	"InteractiveClearDeletionMarkPredefinedData" = @("Edit","InteractiveClearDeletionMark","Read","Update","View")
+	"InteractiveDelete" = @("Delete","Edit","Read","Update","View")
+	"InteractiveDeleteMarked" = @("Delete","Edit","Read","Update","View")
+	"InteractiveDeleteMarkedPredefinedData" = @("Delete","Edit","InteractiveDeleteMarked","Read","Update","View")
+	"InteractiveDeletePredefinedData" = @("Delete","Edit","InteractiveDelete","Read","Update","View")
+	"InteractiveExecute" = @("Execute","Read","Update")
+	"InteractiveInsert" = @("Edit","Insert","Read","Update","View")
+	"InteractivePosting" = @("Edit","Posting","Read","Update","View")
+	"InteractivePostingRegular" = @("Edit","InteractivePosting","Posting","Read","Update","View")
+	"InteractiveSetDeletionMark" = @("Edit","Read","Update","View")
+	"InteractiveSetDeletionMarkPredefinedData" = @("Edit","InteractiveSetDeletionMark","Read","Update","View")
+	"InteractiveStart" = @("Read","Start","Update")
+	"InteractiveUndoPosting" = @("Edit","Read","UndoPosting","Update","View")
+	"Posting" = @("Read","Update")
+	"ReadDataHistory" = @("Read")
+	"ReadDataHistoryOfMissingData" = @("Read","ReadDataHistory")
+	"Start" = @("Read","Update")
+	"SwitchToDataHistoryVersion" = @("Read","View")
+	"UndoPosting" = @("Read","Update")
+	"Update" = @("Read")
+	"UpdateDataHistory" = @("Read","ReadDataHistory")
+	"UpdateDataHistoryOfMissingData" = @("Read","ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory")
+	"UpdateDataHistoryVersionComment" = @("Read","ReadDataHistory")
+	"View" = @("Read")
+	"ViewDataHistory" = @("Read","ReadDataHistory","View")
+}
+
+$script:rightDepsByType = @{
+	"ChartOfAccounts" = @{
+		"ReadDataHistory" = @()
+		"ReadDataHistoryOfMissingData" = @("ReadDataHistory")
+		"UpdateDataHistory" = @("ReadDataHistory")
+		"UpdateDataHistoryOfMissingData" = @("ReadDataHistory","ReadDataHistoryOfMissingData","UpdateDataHistory")
+		"UpdateDataHistoryVersionComment" = @("ReadDataHistory")
+	}
+	"DataProcessor" = @{
+		"View" = @("Use")
+	}
+	"InformationRegister" = @{
+		"UpdateDataHistoryOfMissingData" = @("Read","ReadDataHistory","UpdateDataHistory")
+	}
+	"Report" = @{
+		"View" = @("Use")
+	}
+}
+
+$script:configurationLegacyDeps = @("AnalyticsSystemClient","MainWindowModeEmbeddedWorkplace","MainWindowModeFullscreenWorkplace","MainWindowModeKiosk","MainWindowModeNormal","MainWindowModeWorkplace")
+
+# Права конфигурации: до формата 2.19 платформа взводила весь блок режимов окна вместе с
+# любым правом, с 2.19 (8.3.26) перестала. Сами права допустимы и там, и там.
+$script:configurationLegacyRank = 218
+
+# Замыкание набора прав объекта. Возвращает @{ Rights = <итог>; Added = <что дописано> }.
+function Close-RightsDependencies {
+	param([string]$objName, $rights, [int]$formatRank)
+	$parts = $objName -split '\.'
+	# У вложенных объектов (реквизит, ТЧ, измерение) зависимостей нет — платформа их не трогает.
+	if ($parts.Count -ge 3) { return @{ Rights = $rights; Added = @() } }
+	$objectType = $parts[0]
+	$allowed = $script:knownRights[$objectType]
+	if (-not $allowed) { return @{ Rights = $rights; Added = @() } }
+	$have = [ordered]@{}
+	foreach ($r in $rights) { if (-not $have.Contains($r.Name)) { $have[$r.Name] = $r } }
+	$byType = $script:rightDepsByType[$objectType]
+	$added = @()
+	$queue = @($have.Keys)
+	while ($queue.Count -gt 0) {
+		$name = $queue[0]
+		$queue = @($queue | Select-Object -Skip 1)
+		$need = if ($byType -and $byType.Contains($name)) { $byType[$name] } else { $script:rightDeps[$name] }
+		if (-not $need) { continue }
+		foreach ($dep in $need) {
+			if ($have.Contains($dep)) { continue }
+			if ($allowed -notcontains $dep) { continue }
+			$have[$dep] = @{ Name = $dep; Value = "true"; Condition = $null }
+			$added += $dep
+			$queue += $dep
+		}
+	}
+	if ($objectType -eq 'Configuration' -and $formatRank -le $script:configurationLegacyRank -and $have.Count -gt 0) {
+		foreach ($dep in $script:configurationLegacyDeps) {
+			if ($have.Contains($dep)) { continue }
+			$have[$dep] = @{ Name = $dep; Value = "true"; Condition = $null }
+			$added += $dep
+		}
+	}
+	$result = @()
+	foreach ($k in $have.Keys) { $result += ,$have[$k] }
+	return @{ Rights = $result; Added = $added }
+}
+
 # --- 5. Helpers ---
 
 function Get-ObjectType {
@@ -1332,6 +1438,15 @@ X "`t<setForNewObjects>$sfno</setForNewObjects>"
 X "`t<setForAttributesByDefault>$sfab</setForAttributesByDefault>"
 X "`t<independentRightsOfChildObjects>$irco</independentRightsOfChildObjects>"
 
+# Замыкание зависимостей: платформа при загрузке всё равно доведёт набор до полного,
+# и файл разошёлся бы с базой. Дописанное показываем — права выдаются не молча.
+$closureNotes = @()
+foreach ($o in $parsedObjects) {
+	$closed = Close-RightsDependencies -objName $o.Name -rights $o.Rights -formatRank (Get-FormatRank $formatVersion)
+	$o.Rights = @($closed.Rights)
+	if ($closed.Added.Count -gt 0) { $closureNotes += "     $($o.Name): по зависимости добавлено — $($closed.Added -join ', ')" }
+}
+
 # Порядок как у платформы: узлы по uuid объекта, права — по канону типа. Иначе первая же
 # выгрузка из Конфигуратора переставит их и даст диф, которого никто не делал.
 $parsedObjects = @(Sort-ObjectsByUuid -objects $parsedObjects -configRoot $resolvedOutputDir)
@@ -1606,6 +1721,7 @@ Write-Host "     UUID: $uuid"
 Write-Host "     Metadata: $metadataPath"
 Write-Host "     Rights:   $rightsPath"
 Write-Host "     Objects: $($parsedObjects.Count), Rights: $totalRights, Templates: $templateCount"
+foreach ($note in $closureNotes) { Write-Host $note }
 switch ($regResult) {
 	"added"       { Write-Host "     Configuration.xml: <Role>$roleName</Role> added to ChildObjects" }
 	"already"     { Write-Host "     Configuration.xml: <Role>$roleName</Role> already registered" }

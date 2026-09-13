@@ -1,0 +1,22 @@
+{
+  "name": "Набор прав замыкается по зависимостям, как это сделала бы платформа",
+  "setup": "fixture:view-preset-fx",
+  "input": {
+    "name": "ЗамыканиеПрав",
+    "synonym": "Замыкание прав",
+    "objects": [
+      "Catalog.Номенклатура: Edit",
+      "DataProcessor.Загрузка: View"
+    ]
+  },
+  "validatePath": "Roles/ЗамыканиеПрав",
+  "expect": {
+    "files": [
+      "Roles/ЗамыканиеПрав/Ext/Rights.xml"
+    ],
+    "stdoutContains": [
+      "Catalog.Номенклатура: по зависимости добавлено — Read, Update, View",
+      "DataProcessor.Загрузка: по зависимости добавлено — Use"
+    ]
+  }
+}

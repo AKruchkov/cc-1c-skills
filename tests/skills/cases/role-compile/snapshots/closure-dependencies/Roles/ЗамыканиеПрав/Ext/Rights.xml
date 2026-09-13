@@ -4,27 +4,32 @@
 	<setForAttributesByDefault>true</setForAttributesByDefault>
 	<independentRightsOfChildObjects>false</independentRightsOfChildObjects>
 	<object>
-		<name>Report.Сводный</name>
+		<name>Catalog.Номенклатура</name>
 		<right>
-			<name>Use</name>
+			<name>Read</name>
+			<value>true</value>
+		</right>
+		<right>
+			<name>Update</name>
 			<value>true</value>
 		</right>
 		<right>
 			<name>View</name>
 			<value>true</value>
 		</right>
-	</object>
-	<object>
-		<name>CalculationRegister.Начисления</name>
 		<right>
-			<name>Read</name>
+			<name>Edit</name>
 			<value>true</value>
 		</right>
 	</object>
 	<object>
-		<name>ChartOfCalculationTypes.ВидыРасчета</name>
+		<name>DataProcessor.Загрузка</name>
 		<right>
-			<name>Read</name>
+			<name>Use</name>
+			<value>true</value>
+		</right>
+		<right>
+			<name>View</name>
 			<value>true</value>
 		</right>
 	</object>

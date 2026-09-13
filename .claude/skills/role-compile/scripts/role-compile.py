@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-compile v1.38 — Compile 1C role from JSON
+# role-compile v1.39 — Compile 1C role from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -769,6 +769,110 @@ def get_nested_rights(object_type, kind):
     if by_type and kind in by_type:
         return by_type[kind]
     return NESTED_KIND_RIGHTS.get(kind)
+
+
+# --- Зависимости прав (замерено на платформе) ---
+# Платформа при загрузке сама доводит набор до замыкания: выдал Edit — получил ещё
+# Read, Update и View. Пишем замыкание сразу, иначе файл и база расходятся.
+# Таблица общая для типов; исключения — там, где у типа своя механика (обработка и отчёт
+# держатся на Use, план счетов не тянет Read под историю данных).
+RIGHT_DEPS = {
+    "Delete": ["Read"],
+    "Edit": ["Read", "Update", "View"],
+    "EditDataHistoryVersionComment": ["Read", "ReadDataHistory", "UpdateDataHistoryVersionComment", "View"],
+    "Execute": ["Read", "Update"],
+    "InputByString": ["Read", "View"],
+    "Insert": ["Read"],
+    "InteractiveActivate": ["Read", "Update"],
+    "InteractiveChangeOfPosted": ["Edit", "Read", "Update", "View"],
+    "InteractiveClearDeletionMark": ["Edit", "Read", "Update", "View"],
+    "InteractiveClearDeletionMarkPredefinedData": ["Edit", "InteractiveClearDeletionMark", "Read", "Update", "View"],
+    "InteractiveDelete": ["Delete", "Edit", "Read", "Update", "View"],
+    "InteractiveDeleteMarked": ["Delete", "Edit", "Read", "Update", "View"],
+    "InteractiveDeleteMarkedPredefinedData": ["Delete", "Edit", "InteractiveDeleteMarked", "Read", "Update", "View"],
+    "InteractiveDeletePredefinedData": ["Delete", "Edit", "InteractiveDelete", "Read", "Update", "View"],
+    "InteractiveExecute": ["Execute", "Read", "Update"],
+    "InteractiveInsert": ["Edit", "Insert", "Read", "Update", "View"],
+    "InteractivePosting": ["Edit", "Posting", "Read", "Update", "View"],
+    "InteractivePostingRegular": ["Edit", "InteractivePosting", "Posting", "Read", "Update", "View"],
+    "InteractiveSetDeletionMark": ["Edit", "Read", "Update", "View"],
+    "InteractiveSetDeletionMarkPredefinedData": ["Edit", "InteractiveSetDeletionMark", "Read", "Update", "View"],
+    "InteractiveStart": ["Read", "Start", "Update"],
+    "InteractiveUndoPosting": ["Edit", "Read", "UndoPosting", "Update", "View"],
+    "Posting": ["Read", "Update"],
+    "ReadDataHistory": ["Read"],
+    "ReadDataHistoryOfMissingData": ["Read", "ReadDataHistory"],
+    "Start": ["Read", "Update"],
+    "SwitchToDataHistoryVersion": ["Read", "View"],
+    "UndoPosting": ["Read", "Update"],
+    "Update": ["Read"],
+    "UpdateDataHistory": ["Read", "ReadDataHistory"],
+    "UpdateDataHistoryOfMissingData": ["Read", "ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory"],
+    "UpdateDataHistoryVersionComment": ["Read", "ReadDataHistory"],
+    "View": ["Read"],
+    "ViewDataHistory": ["Read", "ReadDataHistory", "View"],
+}
+
+RIGHT_DEPS_BY_TYPE = {
+    "ChartOfAccounts": {
+        "ReadDataHistory": [],
+        "ReadDataHistoryOfMissingData": ["ReadDataHistory"],
+        "UpdateDataHistory": ["ReadDataHistory"],
+        "UpdateDataHistoryOfMissingData": ["ReadDataHistory", "ReadDataHistoryOfMissingData", "UpdateDataHistory"],
+        "UpdateDataHistoryVersionComment": ["ReadDataHistory"],
+    },
+    "DataProcessor": {
+        "View": ["Use"],
+    },
+    "InformationRegister": {
+        "UpdateDataHistoryOfMissingData": ["Read", "ReadDataHistory", "UpdateDataHistory"],
+    },
+    "Report": {
+        "View": ["Use"],
+    },
+}
+
+CONFIGURATION_LEGACY_DEPS = ["AnalyticsSystemClient", "MainWindowModeEmbeddedWorkplace", "MainWindowModeFullscreenWorkplace", "MainWindowModeKiosk", "MainWindowModeNormal", "MainWindowModeWorkplace"]
+
+# Права конфигурации: до формата 2.19 платформа взводила весь блок режимов окна вместе с
+# любым правом, с 2.19 (8.3.26) перестала. Сами права допустимы и там, и там.
+CONFIGURATION_LEGACY_RANK = 218
+
+
+def close_rights_dependencies(object_name, rights, format_rank):
+    """Замыкание набора прав объекта. Возвращает (итоговые права, что дописано)."""
+    parts = object_name.split('.')
+    # У вложенных объектов (реквизит, ТЧ, измерение) зависимостей нет — платформа их не трогает.
+    if len(parts) >= 3:
+        return rights, []
+    object_type = parts[0]
+    allowed = KNOWN_RIGHTS.get(object_type)
+    if not allowed:
+        return rights, []
+    have = {}
+    for r in rights:
+        have.setdefault(r['Name'], r)
+    by_type = RIGHT_DEPS_BY_TYPE.get(object_type, {})
+    added = []
+    queue = list(have.keys())
+    while queue:
+        name = queue.pop(0)
+        need = by_type[name] if name in by_type else RIGHT_DEPS.get(name)
+        if not need:
+            continue
+        for dep in need:
+            if dep in have or dep not in allowed:
+                continue
+            have[dep] = {'Name': dep, 'Value': 'true', 'Condition': None}
+            added.append(dep)
+            queue.append(dep)
+    if object_type == 'Configuration' and format_rank <= CONFIGURATION_LEGACY_RANK and have:
+        for dep in CONFIGURATION_LEGACY_DEPS:
+            if dep in have:
+                continue
+            have[dep] = {'Name': dep, 'Value': 'true', 'Condition': None}
+            added.append(dep)
+    return list(have.values()), added
 
 
 # --- Канонический порядок прав и узлов (замерено на платформе) ---
@@ -1583,6 +1687,14 @@ def main():
     lines.append(f'\t<setForAttributesByDefault>{sfab}</setForAttributesByDefault>')
     lines.append(f'\t<independentRightsOfChildObjects>{irco}</independentRightsOfChildObjects>')
 
+    # Замыкание зависимостей: платформа при загрузке всё равно доведёт набор до полного,
+    # и файл разошёлся бы с базой. Дописанное показываем — права выдаются не молча.
+    closure_notes = []
+    for o in parsed_objects:
+        o['Rights'], added = close_rights_dependencies(o['Name'], o['Rights'], format_rank(format_version))
+        if added:
+            closure_notes.append(f"     {o['Name']}: по зависимости добавлено — {', '.join(added)}")
+
     # Порядок как у платформы: узлы по uuid объекта, права — по канону типа. Иначе первая же
     # выгрузка из Конфигуратора переставит их и даст диф, которого никто не делал.
     parsed_objects = sort_objects_by_uuid(parsed_objects, out_dir_resolved)
@@ -1658,6 +1770,8 @@ def main():
     print(f"     Metadata: {metadata_path}")
     print(f"     Rights:   {rights_path}")
     print(f"     Objects: {len(parsed_objects)}, Rights: {total_rights}, Templates: {template_count}")
+    for note in closure_notes:
+        print(note)
     if reg_result == 'added':
         print(f"     Configuration.xml: <Role>{role_name}</Role> added to ChildObjects")
     elif reg_result == 'already':
