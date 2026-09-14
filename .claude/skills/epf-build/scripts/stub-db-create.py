@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# stub-db-create v1.10 — Create temp 1C infobase with metadata stubs for EPF/ERF build
+# stub-db-create v1.11 — Create temp 1C infobase with metadata stubs for EPF/ERF build
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -1133,6 +1133,14 @@ def write_bom(path, content):
 GUID_RE = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
 
 
+def retag_refs(text, ext_tag, cfg_tag):
+    # Только префикс вида объекта в начале квалифицированного имени. Глобальная замена подстроки
+    # резала бы и имя самого объекта, если оно оканчивается так же (ПриёмкаExternalReport), —
+    # ссылка расходилась с именем, и заглушка не грузилась.
+    return re.sub(r'(?<![\w.])%s(Object)?\.' % ext_tag,
+                  lambda m: cfg_tag + (m.group(1) or '') + '.', text)
+
+
 def add_source_object_to_config(source_xml, cfg_dir):
     # Копия объекта живёт в конфигурации базы, а следом в ту же базу грузится исходник как ВНЕШНЯЯ
     # обработка. С одинаковыми идентификаторами платформа путает их и через раз отвечает «Исключение
@@ -1163,7 +1171,7 @@ def add_source_object_to_config(source_xml, cfg_dir):
     conv = reissue(text)
     conv = conv.replace('<%s ' % ext_tag, '<%s ' % cfg_tag).replace('<%s>' % ext_tag, '<%s>' % cfg_tag)
     conv = conv.replace('</%s>' % ext_tag, '</%s>' % cfg_tag)
-    conv = conv.replace('%sObject.' % ext_tag, '%sObject.' % cfg_tag).replace('%s.' % ext_tag, '%s.' % cfg_tag)
+    conv = retag_refs(conv, ext_tag, cfg_tag)
 
     # Тип менеджера у внешней обработки не объявлен, а объекту конфигурации он обязателен:
     # без него платформа отвечает «отсутствует один или более типов объекта».
@@ -1200,7 +1208,7 @@ def add_source_object_to_config(source_xml, cfg_dir):
                     with io.open(full, encoding='utf-8-sig') as fh:
                         t = fh.read()
                     t = reissue(t)
-                    t = t.replace('%sObject.' % ext_tag, '%sObject.' % cfg_tag).replace('%s.' % ext_tag, '%s.' % cfg_tag)
+                    t = retag_refs(t, ext_tag, cfg_tag)
                     write_bom(dst, t)
                 else:
                     shutil.copyfile(full, dst)

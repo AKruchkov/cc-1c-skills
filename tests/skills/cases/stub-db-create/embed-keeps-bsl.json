@@ -1,6 +1,5 @@
 {
   "name": "Модуль копируется байт в байт",
-  "osOnly": "win32",
   "fakePlatform": {
     "exit": 1,
     "log": ""
@@ -27,13 +26,13 @@
   ],
   "args_extra": [
     "-SourceDir",
-    "{workDir}\\src",
+    "{workDir}/src",
     "-V8Path",
-    "{workDir}\\fake.cmd",
+    "{fakePlatform}",
     "-TempBasePath",
-    "{workDir}\\base",
+    "{workDir}/base",
     "-EmbedSourceFile",
-    "{workDir}\\src\\Проба.xml"
+    "{workDir}/src/Проба.xml"
   ],
   "expect": {
     "filesEqual": [
@@ -43,7 +42,7 @@
       }
     ],
     "fileContains": {
-      "file": "base\\cfg\\DataProcessors\\Проба\\Ext\\ObjectModule.bsl",
+      "file": "base/cfg/DataProcessors/Проба/Ext/ObjectModule.bsl",
       "text": "ExternalDataProcessorObject.Проба"
     }
   },

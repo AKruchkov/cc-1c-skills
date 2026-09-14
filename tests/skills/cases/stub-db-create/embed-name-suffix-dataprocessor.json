@@ -1,0 +1,71 @@
+{
+  "name": "Имя, оканчивающееся на ExternalDataProcessor, не калечится в ссылках",
+  "fakePlatform": {
+    "exit": 1,
+    "log": ""
+  },
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "ТестExternalDataProcessor",
+        "-SrcDir": "{workDir}/src"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/src/ТестExternalDataProcessor.xml",
+        "-FormName": "Форма",
+        "-SetDefault": true
+      }
+    }
+  ],
+  "args_extra": [
+    "-SourceDir",
+    "{workDir}/src",
+    "-V8Path",
+    "{fakePlatform}",
+    "-TempBasePath",
+    "{workDir}/base",
+    "-EmbedSourceFile",
+    "{workDir}/src/ТестExternalDataProcessor.xml"
+  ],
+  "expect": {
+    "fileContains": [
+      {
+        "file": "base/cfg/DataProcessors/ТестExternalDataProcessor.xml",
+        "text": [
+          "<Name>ТестExternalDataProcessor</Name>",
+          "<DefaultForm>DataProcessor.ТестExternalDataProcessor.Form.Форма</DefaultForm>",
+          "<xr:GeneratedType name=\"DataProcessorObject.ТестExternalDataProcessor\" category=\"Object\">",
+          "<xr:GeneratedType name=\"DataProcessorManager.ТестExternalDataProcessor\" category=\"Manager\">"
+        ]
+      },
+      {
+        "file": "base/cfg/DataProcessors/ТестExternalDataProcessor/Forms/Форма/Ext/Form.xml",
+        "text": "<v8:Type>cfg:DataProcessorObject.ТестExternalDataProcessor</v8:Type>"
+      },
+      {
+        "file": "base/cfg/Configuration.xml",
+        "text": "<DataProcessor>ТестExternalDataProcessor</DataProcessor>"
+      }
+    ],
+    "fileNotContains": [
+      {
+        "file": "base/cfg/DataProcessors/ТестExternalDataProcessor.xml",
+        "text": [
+          "ТестDataProcessor",
+          "<ExternalDataProcessor ",
+          ">ExternalDataProcessor."
+        ]
+      },
+      {
+        "file": "base/cfg/DataProcessors/ТестExternalDataProcessor/Forms/Форма/Ext/Form.xml",
+        "text": "ТестDataProcessor"
+      }
+    ]
+  },
+  "expectError": true,
+  "noSnapshot": "платформа фейковая, а GUID копии перевыпускаются случайными — проверяется сгенерированная конфигурация"
+}

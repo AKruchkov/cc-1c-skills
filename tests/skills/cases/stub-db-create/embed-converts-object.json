@@ -1,6 +1,5 @@
 {
   "name": "Внешняя обработка конвертируется в объект конфигурации",
-  "osOnly": "win32",
   "fakePlatform": {
     "exit": 1,
     "log": ""
@@ -27,18 +26,18 @@
   ],
   "args_extra": [
     "-SourceDir",
-    "{workDir}\\src",
+    "{workDir}/src",
     "-V8Path",
-    "{workDir}\\fake.cmd",
+    "{fakePlatform}",
     "-TempBasePath",
-    "{workDir}\\base",
+    "{workDir}/base",
     "-EmbedSourceFile",
-    "{workDir}\\src\\Проба.xml"
+    "{workDir}/src/Проба.xml"
   ],
   "expect": {
     "fileContains": [
       {
-        "file": "base\\cfg\\DataProcessors\\Проба.xml",
+        "file": "base/cfg/DataProcessors/Проба.xml",
         "text": [
           "<DataProcessor uuid=",
           "<xr:GeneratedType name=\"DataProcessorObject.Проба\" category=\"Object\">",
@@ -47,12 +46,12 @@
         ]
       },
       {
-        "file": "base\\cfg\\Configuration.xml",
+        "file": "base/cfg/Configuration.xml",
         "text": "<DataProcessor>Проба</DataProcessor>"
       }
     ],
     "fileNotContains": {
-      "file": "base\\cfg\\DataProcessors\\Проба.xml",
+      "file": "base/cfg/DataProcessors/Проба.xml",
       "text": [
         "<ExternalDataProcessor",
         "ExternalDataProcessorObject."

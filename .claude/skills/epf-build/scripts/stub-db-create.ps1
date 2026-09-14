@@ -1,4 +1,4 @@
-﻿# stub-db-create v1.10 — Create temp 1C infobase with metadata stubs for EPF/ERF build
+﻿# stub-db-create v1.11 — Create temp 1C infobase with metadata stubs for EPF/ERF build
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -387,6 +387,16 @@ if ($needsRegistrator) {
 #
 # Подстановка типа делается ТОЛЬКО в .xml (это DefaultForm и основной реквизит формы); в .bsl
 # такой же текст был бы кодом, и трогать его нельзя.
+function Convert-RefTags {
+	param([string]$Text, [string]$ExtTag, [string]$CfgTag)
+
+	# Только префикс вида объекта в начале квалифицированного имени. Глобальная замена подстроки
+	# резала бы и имя самого объекта, если оно оканчивается так же (ПриёмкаExternalReport), —
+	# ссылка расходилась с именем, и заглушка не грузилась. [regex]::Replace, а не -replace:
+	# оператор регистронезависим, а теги 1С регистрозависимы.
+	return [regex]::Replace($Text, "(?<![\w.])$ExtTag(Object)?\.", ($CfgTag + '$1.'))
+}
+
 function Add-SourceObjectToConfig {
 	param([string]$SourceXml, [string]$CfgDir)
 
@@ -416,7 +426,7 @@ function Add-SourceObjectToConfig {
 
 	$conv = $reGuid.Replace($text, $reissue)
 	$conv = $conv.Replace("<$extTag ", "<$cfgTag ").Replace("<$extTag>", "<$cfgTag>").Replace("</$extTag>", "</$cfgTag>")
-	$conv = $conv.Replace("${extTag}Object.", "${cfgTag}Object.").Replace("$extTag.", "$cfgTag.")
+	$conv = Convert-RefTags $conv $extTag $cfgTag
 
 	# Тип менеджера у внешней обработки не объявлен, а объекту конфигурации он обязателен:
 	# без него платформа отвечает «отсутствует один или более типов объекта».
@@ -454,7 +464,7 @@ function Add-SourceObjectToConfig {
 			if ($f.Extension -ieq '.xml') {
 				$t = [IO.File]::ReadAllText($f.FullName, [Text.Encoding]::UTF8)
 				$t = $reGuid.Replace($t, $reissue)
-				$t = $t.Replace("${extTag}Object.", "${cfgTag}Object.").Replace("$extTag.", "$cfgTag.")
+				$t = Convert-RefTags $t $extTag $cfgTag
 				[IO.File]::WriteAllText($dst, $t, $encBom)
 			} else {
 				Copy-Item -Path $f.FullName -Destination $dst -Force

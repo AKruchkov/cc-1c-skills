@@ -1,6 +1,5 @@
 {
   "name": "У копии все GUID свои",
-  "osOnly": "win32",
   "fakePlatform": {
     "exit": 1,
     "log": ""
@@ -27,18 +26,18 @@
   ],
   "args_extra": [
     "-SourceDir",
-    "{workDir}\\src",
+    "{workDir}/src",
     "-V8Path",
-    "{workDir}\\fake.cmd",
+    "{fakePlatform}",
     "-TempBasePath",
-    "{workDir}\\base",
+    "{workDir}/base",
     "-EmbedSourceFile",
-    "{workDir}\\src\\Проба.xml"
+    "{workDir}/src/Проба.xml"
   ],
   "expect": {
     "fileNotContains": [
       {
-        "file": "base\\cfg\\DataProcessors\\Проба.xml",
+        "file": "base/cfg/DataProcessors/Проба.xml",
         "text": [
           "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb",
           "cccccccc-4444-5555-6666-dddddddddddd",
@@ -46,12 +45,12 @@
         ]
       },
       {
-        "file": "base\\cfg\\DataProcessors\\Проба\\Forms\\Форма.xml",
+        "file": "base/cfg/DataProcessors/Проба/Forms/Форма.xml",
         "text": "11111111-2222-3333-4444-555555555555"
       }
     ],
     "fileContains": {
-      "file": "base\\cfg\\DataProcessors\\Проба.xml",
+      "file": "base/cfg/DataProcessors/Проба.xml",
       "text": "<xr:TypeId>"
     }
   },
