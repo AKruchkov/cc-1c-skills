@@ -1,0 +1,31 @@
+{
+  "name": "Генерация: источник на английских ключевых словах — перехватчик эмитируется на них же",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "EnMod", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/EnMod/Ext/Module.bsl",
+        "content": "#Region Public\n\nFunction GetData(Val Parameter) Export\n\tResult = New Array;\n\tResult.Add(Parameter);\n\tReturn Result;\nEndFunction\n\n#EndRegion\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.EnMod" }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "modulePath": "CommonModule.EnMod",
+    "methodName": "GetData",
+    "interceptorType": "ModificationAndControl"
+  },
+  "expect": { "stdoutContains": "&ChangeAndValidate(\"GetData\")" }
+}

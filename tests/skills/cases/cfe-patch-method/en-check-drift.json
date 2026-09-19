@@ -1,0 +1,34 @@
+{
+  "name": "-Check: дрейф в модуле на английских ключевых словах (exit 1)",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "BatchMod", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/BatchMod/Ext/Module.bsl",
+        "content": "#Region Public\n\nFunction CalcA() Export\n\tX = 1;\n\tReturn X;\nEndFunction\n\nFunction CalcB() Export\n\tY = 2;\n\tW = 5;\n\tReturn Y;\nEndFunction\n\n#EndRegion\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.BatchMod" }
+    },
+    {
+      "writeFile": {
+        "path": "cfe/CommonModules/BatchMod/Ext/Module.bsl",
+        "content": "#Region Public\n&ChangeAndValidate(\"CalcA\")\nFunction Тест_CalcA()\n\tX = 1;\n\tReturn X;\nEndFunction\n&ChangeAndValidate(\"CalcB\")\nFunction Тест_CalcB()\n\tY = 2;\n\tReturn Y;\nEndFunction\n#EndRegion\n"
+      }
+    }
+  ],
+  "params": { "extensionPath": "cfe" },
+  "args_extra": ["-Check"],
+  "expectError": true,
+  "expect": { "stdoutContains": "CommonModule.BatchMod.CalcB" }
+}

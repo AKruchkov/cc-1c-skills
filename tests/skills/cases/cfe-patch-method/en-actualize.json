@@ -1,0 +1,33 @@
+{
+  "name": "-Actualize: английский перехватчик остаётся английским, правка переносится",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "EnSync", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/EnSync/Ext/Module.bsl",
+        "content": "#Region Public\n\nProcedure Write(Item) Export\n\tBeginTransaction();\n\tItem.Write();\n\tLogEvent();\n\tCommitTransaction();\nEndProcedure\n\n#EndRegion\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.EnSync" }
+    },
+    {
+      "writeFile": {
+        "path": "cfe/CommonModules/EnSync/Ext/Module.bsl",
+        "content": "#Region Public\n&ChangeAndValidate(\"Write\")\nProcedure Тест_Write(Item)\n\tBeginTransaction();\n\tItem.Write();\n#Insert\n\tCheckRights(Item);\n#EndInsert\n\tCommitTransaction();\nEndProcedure\n#EndRegion\n"
+      }
+    }
+  ],
+  "params": { "extensionPath": "cfe" },
+  "args_extra": ["-Actualize"],
+  "expect": { "stdoutContains": "актуализировано: 1" }
+}

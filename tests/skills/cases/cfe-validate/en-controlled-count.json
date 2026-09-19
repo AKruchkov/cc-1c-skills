@@ -1,0 +1,33 @@
+{
+  "name": "Счётчик контролируемых методов считает английские аннотации",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "EnCount", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/EnCount/Ext/Module.bsl",
+        "content": "#Region Public\n\nProcedure Write(Item) Export\n\tItem.Write();\nEndProcedure\n\n#EndRegion\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.EnCount" }
+    },
+    {
+      "writeFile": {
+        "path": "cfe/CommonModules/EnCount/Ext/Module.bsl",
+        "content": "#Region Public\n&ChangeAndValidate(\"Write\")\nProcedure Тест_Write(Item)\n\tItem.Write();\nEndProcedure\n#EndRegion\n"
+      }
+    }
+  ],
+  "params": { "extensionPath": "cfe" },
+  "args_extra": ["-Detailed"],
+  "expect": { "stdoutContains": "Контролируемых методов (&ИзменениеИКонтроль): 1" }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "Перехватчики и блоки вставки на английских ключевых словах видны в отчёте",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "EnDiff", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/EnDiff/Ext/Module.bsl",
+        "content": "#Region Public\n\nProcedure Write(Item) Export\n\tBeginTransaction();\n\tItem.Write();\n\tCommitTransaction();\nEndProcedure\n\n#EndRegion\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.EnDiff" }
+    },
+    {
+      "writeFile": {
+        "path": "cfe/CommonModules/EnDiff/Ext/Module.bsl",
+        "content": "#Region Public\n&ChangeAndValidate(\"Write\")\nProcedure Тест_Write(Item)\n\tBeginTransaction();\n\tItem.Write();\n#Insert // проверка прав\n\tCheckRights(Item);\n#EndInsert\n\tCommitTransaction();\nEndProcedure\n#EndRegion\n"
+      }
+    }
+  ],
+  "params": { "extensionPath": "cfe" },
+  "expect": { "stdoutContains": "&ChangeAndValidate(\"Write\")" }
+}

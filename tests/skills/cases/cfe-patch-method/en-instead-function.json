@@ -1,0 +1,31 @@
+{
+  "name": "Генерация: Instead для английской функции — ProceedWithCall и английское обрамление",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "EnCalc", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/EnCalc/Ext/Module.bsl",
+        "content": "#Region Private\n\n#If Server Then\n\nFunction Rate(Val Currency, Period) Export\n\tReturn 1;\nEndFunction\n\n#EndIf\n\n#EndRegion\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.EnCalc" }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "modulePath": "CommonModule.EnCalc",
+    "methodName": "Rate",
+    "interceptorType": "Instead"
+  },
+  "expect": { "stdoutContains": "&Around(\"Rate\")" }
+}
