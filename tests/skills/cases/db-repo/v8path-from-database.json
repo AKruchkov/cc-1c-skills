@@ -1,0 +1,33 @@
+{
+  "name": "Платформа берётся из v8path записи базы",
+  "fakePlatform": {
+    "log": "﻿---- Начало операции с хранилищем конфигурации ----\r\nОбъект не был изменен: Справочник.Номенклатура\r\n---- Операция с хранилищем конфигурации завершена ----\r\nПомещение изменений объектов в хранилище успешно завершено\r\n"
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": ".v8-project.json",
+        "content": {
+          "v8path": "{workDir}/nowhere/1cv8.exe",
+          "databases": [
+            { "id": "dev", "name": "Dev", "type": "file", "path": "{workDir}/ib", "v8path": "{fakePlatform}" }
+          ]
+        }
+      }
+    }
+  ],
+  "args_extra": [
+    "-InfoBasePath", "{workDir}/ib",
+    "-RepositoryPath", "{workDir}/repo",
+    "-RepositoryUser", "Admin",
+    "-Command", "commit",
+    "-Objects", "Справочник.Номенклатура",
+    "-Comment", "x"
+  ],
+  "cwd": "workDir",
+  "expect": {
+    "stdoutContains": "Новая версия в хранилище НЕ создана",
+    "stdoutNotContains": "nowhere"
+  },
+  "noSnapshot": "проверяется выбор платформы по stdout, файлов на выходе нет"
+}

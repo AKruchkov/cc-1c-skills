@@ -1,4 +1,4 @@
-﻿# db-load-cf v1.18 — Load 1C configuration from CF file
+﻿# db-load-cf v1.19 — Load 1C configuration from CF file
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -303,6 +303,17 @@ Assert-InfoBaseExists $InfoBasePath
 # Модель не передаёт ни путь к платформе конкретной базы, ни реквизиты хранилища: скрипт
 # сопоставляет параметры соединения с записью в databases[] и берёт их оттуда. Тот же приём,
 # что в cf-edit.ps1 (сопоставление по configSrc).
+function Find-V8Project([string]$startDir) {
+	$d = $startDir
+	for ($i = 0; $i -lt 20 -and $d; $i++) {
+		$pj = Join-Path $d ".v8-project.json"
+		if (Test-Path $pj) { return $pj }
+		$parent = [System.IO.Path]::GetDirectoryName($d)
+		if ($parent -eq $d) { break }
+		$d = $parent
+	}
+	return $null
+}
 function Test-SamePath {
     param([string]$A, [string]$B)
     if (-not $A -or -not $B) { return $false }
@@ -445,18 +456,6 @@ function Write-PlatformOutput {
     Write-Host "--- End ---"
 }
 
-
-function Find-V8Project([string]$startDir) {
-	$d = $startDir
-	for ($i = 0; $i -lt 20 -and $d; $i++) {
-		$pj = Join-Path $d ".v8-project.json"
-		if (Test-Path $pj) { return $pj }
-		$parent = [System.IO.Path]::GetDirectoryName($d)
-		if ($parent -eq $d) { break }
-		$d = $parent
-	}
-	return $null
-}
 
 # Постусловие применимости расширения: платформа отчитывается успехом и о расширении, которое
 # не применит — отказ всплывает лениво, при первом вызове метода, записью в журнал регистрации.
