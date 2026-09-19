@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-validate v1.16 — Validate 1C configuration extension XML structure (CFE)
+# cfe-validate v1.17 — Validate 1C configuration extension XML structure (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates extension Configuration.xml: root, InternalInfo, extension properties, ChildObjects, borrowed objects."""
 import sys, os, argparse, re
@@ -25,6 +25,40 @@ def ci_parse_args(parser, argv=None):
         if m and argv[i + 1].lower() in m:
             argv[i + 1] = m[argv[i + 1].lower()]
     return parser.parse_args(argv)
+
+
+# Built-in language keywords in both spellings. The platform accepts either one in any module
+# (pairs taken from the platform string tables), so a module written in English is ordinary
+# source, not a broken one: we must read both and emit the spelling we read.
+def bsl_keywords():
+    return {
+        "ru": {
+            "Async": "Асинх", "Proc": "Процедура", "EndProc": "КонецПроцедуры",
+            "Func": "Функция", "EndFunc": "КонецФункции", "Val": "Знач",
+            "Region": "Область", "EndRegion": "КонецОбласти",
+            "If": "Если", "Then": "Тогда", "ElsIf": "ИначеЕсли", "Else": "Иначе", "EndIf": "КонецЕсли",
+            "And": "И", "Not": "НЕ",
+            "Insert": "Вставка", "EndInsert": "КонецВставки", "Delete": "Удаление", "EndDelete": "КонецУдаления",
+            "Before": "Перед", "After": "После", "Around": "Вместо", "Control": "ИзменениеИКонтроль",
+            "Proceed": "ПродолжитьВызов", "Return": "Возврат",
+            # Not a keyword: name of the local the generated Instead-stub declares. Lives here so
+            # that the language of emitted text is decided in exactly one place.
+            "ResultVar": "Результат",
+            "Directives": ["НаКлиенте", "НаСервере", "НаСервереБезКонтекста", "НаКлиентеНаСервереБезКонтекста", "НаКлиентеНаСервере"],
+        },
+        "en": {
+            "Async": "Async", "Proc": "Procedure", "EndProc": "EndProcedure",
+            "Func": "Function", "EndFunc": "EndFunction", "Val": "Val",
+            "Region": "Region", "EndRegion": "EndRegion",
+            "If": "If", "Then": "Then", "ElsIf": "ElsIf", "Else": "Else", "EndIf": "EndIf",
+            "And": "And", "Not": "Not",
+            "Insert": "Insert", "EndInsert": "EndInsert", "Delete": "Delete", "EndDelete": "EndDelete",
+            "Before": "Before", "After": "After", "Around": "Around", "Control": "ChangeAndValidate",
+            "Proceed": "ProceedWithCall", "Return": "Return",
+            "ResultVar": "Result",
+            "Directives": ["AtClient", "AtServer", "AtServerNoContext", "AtClientAtServerNoContext", "AtClientAtServer"],
+        },
+    }
 
 
 NS = {
@@ -1267,6 +1301,8 @@ def main():
                     r.warn(f'16. {issue}')
 
     # --- Breadcrumb: controlled methods (&ИзменениеИКонтроль) drift is not checked here ---
+    ctrl_kw = bsl_keywords()
+    ctrl_re = re.compile(r'^\s*&(?:' + ctrl_kw["ru"]["Control"] + '|' + ctrl_kw["en"]["Control"] + r')\(')
     ctrl_count = 0
     for dp, _dn, files in os.walk(config_dir):
         for fn in files:
@@ -1274,7 +1310,7 @@ def main():
                 try:
                     with open(os.path.join(dp, fn), 'r', encoding='utf-8-sig') as f:
                         for ln in f:
-                            if re.match(r'^\s*&ИзменениеИКонтроль\(', ln):
+                            if ctrl_re.match(ln):
                                 ctrl_count += 1
                 except OSError:
                     pass

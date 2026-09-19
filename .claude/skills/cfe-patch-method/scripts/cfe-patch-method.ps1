@@ -1,4 +1,4 @@
-﻿# cfe-patch-method v2.11 — Source-aware method interceptor for 1C extension (CFE)
+﻿# cfe-patch-method v2.12 — Source-aware method interceptor for 1C extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -50,6 +50,103 @@ $script:typeDirMap = @{
 $script:decoratorMap = @{
 	"Before"="Перед"; "After"="После"; "Instead"="Вместо"
 	"ModificationAndControl"="ИзменениеИКонтроль"
+}
+
+# InterceptorType -> keyword table key (emission goes through the table, the map above stays
+# the normalized value the logic compares against)
+$script:decoratorKey = @{
+	"Before"="Before"; "After"="After"; "Instead"="Around"
+	"ModificationAndControl"="Control"
+}
+
+# Built-in language keywords in both spellings. The platform accepts either one in any module
+# (pairs taken from the platform string tables), so a module written in English is ordinary
+# source, not a broken one: we must read both and emit the spelling we read.
+function Get-BslKeywords {
+	return @{
+		ru = @{
+			Async="Асинх"; Proc="Процедура"; EndProc="КонецПроцедуры"
+			Func="Функция"; EndFunc="КонецФункции"; Val="Знач"
+			Region="Область"; EndRegion="КонецОбласти"
+			If="Если"; Then="Тогда"; ElsIf="ИначеЕсли"; Else="Иначе"; EndIf="КонецЕсли"
+			And="И"; Not="НЕ"
+			Insert="Вставка"; EndInsert="КонецВставки"; Delete="Удаление"; EndDelete="КонецУдаления"
+			Before="Перед"; After="После"; Around="Вместо"; Control="ИзменениеИКонтроль"
+			Proceed="ПродолжитьВызов"; Return="Возврат"
+			# Not a keyword: name of the local the generated Instead-stub declares. Lives here so
+			# that the language of emitted text is decided in exactly one place.
+			ResultVar="Результат"
+			Directives=@("НаКлиенте", "НаСервере", "НаСервереБезКонтекста", "НаКлиентеНаСервереБезКонтекста", "НаКлиентеНаСервере")
+		}
+		en = @{
+			Async="Async"; Proc="Procedure"; EndProc="EndProcedure"
+			Func="Function"; EndFunc="EndFunction"; Val="Val"
+			Region="Region"; EndRegion="EndRegion"
+			If="If"; Then="Then"; ElsIf="ElsIf"; Else="Else"; EndIf="EndIf"
+			And="And"; Not="Not"
+			Insert="Insert"; EndInsert="EndInsert"; Delete="Delete"; EndDelete="EndDelete"
+			Before="Before"; After="After"; Around="Around"; Control="ChangeAndValidate"
+			Proceed="ProceedWithCall"; Return="Return"
+			ResultVar="Result"
+			Directives=@("AtClient", "AtServer", "AtServerNoContext", "AtClientAtServerNoContext", "AtClientAtServer")
+		}
+	}
+}
+
+$script:bslKw = Get-BslKeywords
+
+# Regex alternation for a keyword in both spellings
+function Get-KwAlt {
+	param([string]$key)
+	return '(?:' + $script:bslKw.ru[$key] + '|' + $script:bslKw.en[$key] + ')'
+}
+
+# Spelling language of a recognized keyword. English is the discriminator: a Russian keyword
+# never equals an English one, so anything else is 'ru'.
+function Get-BslLang {
+	param([string]$word)
+	$w = $word.Trim().ToLower()
+	foreach ($k in @("Async", "Proc", "EndProc", "Func", "EndFunc", "Region", "If", "Insert", "Delete", "Before", "After", "Around", "Control")) {
+		if ($script:bslKw.en[$k].ToLower() -eq $w) { return "en" }
+	}
+	return "ru"
+}
+
+# Edit marker kind at the start of a line: Insert/Delete/EndInsert/EndDelete, $null if none.
+# The marker owns the start of the line only — a trailing comment does not bother the platform
+# and must not bother us either.
+function Get-BslMarkerKind {
+	param([string]$line)
+	$kw = $script:bslKw
+	foreach ($k in @("EndInsert", "EndDelete", "Insert", "Delete")) {
+		if ($line -match ('^\s*#(?:' + $kw.ru[$k] + '|' + $kw.en[$k] + ')\b')) { return $k }
+	}
+	return $null
+}
+
+# Parse interceptor annotations present in a module. Type is normalized to the Russian spelling
+# so everything downstream stays single-language; Raw keeps what the file actually says.
+function Get-Interceptors {
+	param($lines)
+	$kw = $script:bslKw
+	$keys = @("Before", "After", "Control", "Around")
+	$alt = @()
+	$norm = @{}
+	foreach ($k in $keys) {
+		$alt += $kw.ru[$k]; $alt += $kw.en[$k]
+		$norm[$kw.ru[$k].ToLower()] = $kw.ru[$k]
+		$norm[$kw.en[$k].ToLower()] = $kw.ru[$k]
+	}
+	$re = '^&(' + ($alt -join '|') + ')\("([^"]+)"\)'
+	$result = @()
+	for ($i = 0; $i -lt $lines.Count; $i++) {
+		$t = $lines[$i].Trim()
+		if ($t -match $re) {
+			$raw = $Matches[1]
+			$result += @{ Type = $norm[$raw.ToLower()]; Raw = $raw; Method = $Matches[2]; Line = $i }
+		}
+	}
+	return $result
 }
 
 # Compute relative .bsl path segments from ModulePath (used for both ext and src)
@@ -125,7 +222,8 @@ function Split-TopLevel {
 # Is a trimmed line a context-directive annotation?
 function Test-ContextDirective {
 	param([string]$trimmed)
-	return $trimmed -match '^&(НаКлиенте|НаСервере|НаСервереБезКонтекста|НаКлиентеНаСервереБезКонтекста|НаКлиентеНаСервере)\s*$'
+	$alt = ($script:bslKw.ru.Directives + $script:bslKw.en.Directives) -join '|'
+	return $trimmed -match ('^&(' + $alt + ')\s*$')
 }
 
 # Read a method signature starting at declaration line; returns @{ ParamsText; EndLineIdx }
@@ -163,46 +261,54 @@ function Read-Signature {
 
 # Compute effective condition of the current branch of an #Если frame
 function Get-EffectiveCondition {
-	param($frame)
+	param($frame, [string]$lang)
+	$kwNot = $script:bslKw[$lang].Not
+	$kwAnd = $script:bslKw[$lang].And
 	$conds = $frame.Conds
 	$n = $conds.Count
 	if ($frame.InElse) {
 		$parts = @()
-		foreach ($c in $conds) { $parts += "НЕ ($c)" }
-		return ($parts -join " И ")
+		foreach ($c in $conds) { $parts += "$kwNot ($c)" }
+		return ($parts -join " $kwAnd ")
 	}
 	if ($n -eq 1) { return $conds[0] }
 	$parts = @()
-	for ($j = 0; $j -lt ($n - 1); $j++) { $parts += "НЕ ($($conds[$j]))" }
+	for ($j = 0; $j -lt ($n - 1); $j++) { $parts += "$kwNot ($($conds[$j]))" }
 	$parts += $conds[$n - 1]
-	return ($parts -join " И ")
+	return ($parts -join " $kwAnd ")
 }
 
 # Extract the enclosing wrapper chain (regions + preprocessor) at a target line.
 # Returns array outer->inner of @{ Kind='region'|'if'; Name=..; Cond=.. }
 function Get-EnclosingChain {
-	param($lines, [int]$targetIdx)
+	param($lines, [int]$targetIdx, [string]$lang)
+	$reRegion = '^#' + (Get-KwAlt 'Region') + '\s+(\S+)'
+	$reEndRegion = '^#' + (Get-KwAlt 'EndRegion')
+	$reIf = '^#' + (Get-KwAlt 'If') + '\s+(.+?)\s+' + (Get-KwAlt 'Then')
+	$reElsIf = '^#' + (Get-KwAlt 'ElsIf') + '\s+(.+?)\s+' + (Get-KwAlt 'Then')
+	$reElse = '^#' + (Get-KwAlt 'Else') + '(\s|$)'
+	$reEndIf = '^#' + (Get-KwAlt 'EndIf')
 	$stack = New-Object System.Collections.ArrayList
 	for ($i = 0; $i -lt $targetIdx; $i++) {
 		$t = $lines[$i].Trim()
-		if ($t -match '^#Область\s+(\S+)') {
+		if ($t -match $reRegion) {
 			[void]$stack.Add(@{ Kind = 'region'; Name = $Matches[1] })
-		} elseif ($t -match '^#КонецОбласти') {
+		} elseif ($t -match $reEndRegion) {
 			for ($k = $stack.Count - 1; $k -ge 0; $k--) { if ($stack[$k].Kind -eq 'region') { $stack.RemoveAt($k); break } }
-		} elseif ($t -match '^#Если\s+(.+?)\s+Тогда') {
+		} elseif ($t -match $reIf) {
 			[void]$stack.Add(@{ Kind = 'if'; Conds = @($Matches[1].Trim()); InElse = $false })
-		} elseif ($t -match '^#ИначеЕсли\s+(.+?)\s+Тогда') {
+		} elseif ($t -match $reElsIf) {
 			for ($k = $stack.Count - 1; $k -ge 0; $k--) { if ($stack[$k].Kind -eq 'if') { $stack[$k].Conds += $Matches[1].Trim(); $stack[$k].InElse = $false; break } }
-		} elseif ($t -match '^#Иначе(\s|$)') {
+		} elseif ($t -match $reElse) {
 			for ($k = $stack.Count - 1; $k -ge 0; $k--) { if ($stack[$k].Kind -eq 'if') { $stack[$k].InElse = $true; break } }
-		} elseif ($t -match '^#КонецЕсли') {
+		} elseif ($t -match $reEndIf) {
 			for ($k = $stack.Count - 1; $k -ge 0; $k--) { if ($stack[$k].Kind -eq 'if') { $stack.RemoveAt($k); break } }
 		}
 	}
 	$chain = @()
 	foreach ($f in $stack) {
 		if ($f.Kind -eq 'region') { $chain += @{ Kind = 'region'; Name = $f.Name } }
-		else { $chain += @{ Kind = 'if'; Cond = (Get-EffectiveCondition $f) } }
+		else { $chain += @{ Kind = 'if'; Cond = (Get-EffectiveCondition $f $lang) } }
 	}
 	return ,$chain
 }
@@ -210,13 +316,14 @@ function Get-EnclosingChain {
 # Extract a method from source .bsl lines. Returns $null if not found.
 function Extract-Method {
 	param($lines, [string]$methodName)
-	$declRe = '^\s*(Асинх\s+)?(Процедура|Функция)\s+(' + [regex]::Escape($methodName) + ')\s*\('
+	$declRe = '^\s*(' + (Get-KwAlt 'Async') + '\s+)?(' + (Get-KwAlt 'Proc') + '|' + (Get-KwAlt 'Func') + ')\s+(' + [regex]::Escape($methodName) + ')\s*\('
 	for ($i = 0; $i -lt $lines.Count; $i++) {
 		if ($lines[$i] -imatch $declRe) {
 			$isAsync = [bool]$Matches[1]
 			$keyword = $Matches[2]
 			$canonical = $Matches[3]
-			$isFunction = ($keyword -ieq "Функция")
+			$lang = Get-BslLang $keyword
+			$isFunction = ($keyword -ieq $script:bslKw.ru.Func -or $keyword -ieq $script:bslKw.en.Func)
 
 			$sig = Read-Signature $lines $i
 			if (-not $sig) { throw "Не удалось разобрать сигнатуру метода '$methodName'" }
@@ -227,13 +334,13 @@ function Extract-Method {
 			$paramNames = @()
 			if ($paramsText.Trim().Length -gt 0) {
 				foreach ($seg in (Split-TopLevel $paramsText)) {
-					$s = $seg.Trim() -replace '^Знач\s+', ''
+					$s = $seg.Trim() -replace ('^' + (Get-KwAlt 'Val') + '\s+'), ''
 					if ($s -match '^([\w]+)') { $paramNames += $Matches[1] }
 				}
 			}
 
 			# Body: from sigEnd+1 to matching Конец*
-			$endRe = if ($isFunction) { '^\s*КонецФункции\b' } else { '^\s*КонецПроцедуры\b' }
+			$endRe = if ($isFunction) { '^\s*' + (Get-KwAlt 'EndFunc') + '\b' } else { '^\s*' + (Get-KwAlt 'EndProc') + '\b' }
 			$bodyStart = $sigEnd + 1
 			$bodyEnd = -1
 			for ($j = $bodyStart; $j -lt $lines.Count; $j++) {
@@ -251,10 +358,11 @@ function Extract-Method {
 			}
 
 			# Enclosing chain (regions + preprocessor)
-			$chain = Get-EnclosingChain $lines $i
+			$chain = Get-EnclosingChain $lines $i $lang
 
 			return @{
 				Canonical   = $canonical
+				Lang        = $lang
 				IsFunction  = $isFunction
 				IsAsync     = $isAsync
 				ParamsText  = $paramsText
@@ -271,25 +379,13 @@ function Extract-Method {
 	return $null
 }
 
-# Parse interceptors present in a module (type + method)
-function Get-Interceptors {
-	param($lines)
-	$result = @()
-	for ($i = 0; $i -lt $lines.Count; $i++) {
-		$t = $lines[$i].Trim()
-		if ($t -match '^&(Перед|После|ИзменениеИКонтроль|Вместо)\("([^"]+)"\)') {
-			$result += @{ Type = $Matches[1]; Method = $Matches[2]; Line = $i }
-		}
-	}
-	return $result
-}
-
 # Parse declared procedure/function names in a module
 function Get-ProcNames {
 	param($lines)
+	$re = '^\s*(?:' + (Get-KwAlt 'Async') + '\s+)?(?:' + (Get-KwAlt 'Proc') + '|' + (Get-KwAlt 'Func') + ')\s+([\w]+)\s*\('
 	$names = @()
 	foreach ($line in $lines) {
-		if ($line -imatch '^\s*(?:Асинх\s+)?(?:Процедура|Функция)\s+([\w]+)\s*\(') { $names += $Matches[1] }
+		if ($line -imatch $re) { $names += $Matches[1] }
 	}
 	return $names
 }
@@ -300,14 +396,15 @@ function Get-ProcNames {
 function Build-InterceptorCore {
 	param($method, [string]$interceptorType, [string]$interceptorName)
 
-	$decoratorRu = $script:decoratorMap[$interceptorType]
-	$asyncPrefix = if ($method.IsAsync) { "Асинх " } else { "" }
-	$keyword = if ($method.IsFunction) { "Функция" } else { "Процедура" }
-	$endKeyword = if ($method.IsFunction) { "КонецФункции" } else { "КонецПроцедуры" }
+	$kw = $script:bslKw[$method.Lang]
+	$decorator = $kw[$script:decoratorKey[$interceptorType]]
+	$asyncPrefix = if ($method.IsAsync) { "$($kw.Async) " } else { "" }
+	$keyword = if ($method.IsFunction) { $kw.Func } else { $kw.Proc }
+	$endKeyword = if ($method.IsFunction) { $kw.EndFunc } else { $kw.EndProc }
 
 	$lines = @()
 	if ($method.Context) { $lines += $method.Context }
-	$lines += "&$decoratorRu(`"$($method.Canonical)`")"
+	$lines += "&$decorator(`"$($method.Canonical)`")"
 	$lines += "$asyncPrefix$keyword $interceptorName($($method.ParamsText))"
 
 	switch ($interceptorType) {
@@ -320,11 +417,11 @@ function Build-InterceptorCore {
 		"Instead" {
 			$namesJoined = ($method.ParamNames -join ", ")
 			if ($method.IsFunction) {
-				$lines += "`tРезультат = ПродолжитьВызов($namesJoined);"
+				$lines += "`t$($kw.ResultVar) = $($kw.Proceed)($namesJoined);"
 				$lines += "`t// TODO: доработать поведение"
-				$lines += "`tВозврат Результат;"
+				$lines += "`t$($kw.Return) $($kw.ResultVar);"
 			} else {
-				$lines += "`tПродолжитьВызов($namesJoined);"
+				$lines += "`t$($kw.Proceed)($namesJoined);"
 				$lines += "`t// TODO: доработать поведение"
 			}
 		}
@@ -339,16 +436,17 @@ function Build-InterceptorCore {
 # Wrap core with region/preprocessor lines, adding blank lines ("air") around
 # each structural boundary. Empty chain -> core as-is.
 function Build-WrappedBlock {
-	param($chainArr, $core)
+	param($chainArr, $core, [string]$lang)
+	$kw = $script:bslKw[$lang]
 	$b = @()
 	foreach ($w in $chainArr) {
-		if ($w.Kind -eq 'region') { $b += "#Область $($w.Name)" } else { $b += "#Если $($w.Cond) Тогда" }
+		if ($w.Kind -eq 'region') { $b += "#$($kw.Region) $($w.Name)" } else { $b += "#$($kw.If) $($w.Cond) $($kw.Then)" }
 		$b += ""
 	}
 	$b += $core
 	for ($c = $chainArr.Count - 1; $c -ge 0; $c--) {
 		$b += ""
-		if ($chainArr[$c].Kind -eq 'region') { $b += "#КонецОбласти" } else { $b += "#КонецЕсли" }
+		if ($chainArr[$c].Kind -eq 'region') { $b += "#$($kw.EndRegion)" } else { $b += "#$($kw.EndIf)" }
 	}
 	return $b
 }
@@ -385,18 +483,18 @@ function Parse-MarkedBody {
 	$ops = @()         # edit operations
 	$i = 0
 	while ($i -lt $bodyLines.Count) {
-		$t = $bodyLines[$i].Trim()
-		if ($t -eq '#Вставка') {
+		$kind = Get-BslMarkerKind $bodyLines[$i]
+		if ($kind -eq 'Insert') {
 			$ins = @()
 			$i++
-			while ($i -lt $bodyLines.Count -and $bodyLines[$i].Trim() -ne '#КонецВставки') { $ins += $bodyLines[$i]; $i++ }
+			while ($i -lt $bodyLines.Count -and (Get-BslMarkerKind $bodyLines[$i]) -ne 'EndInsert') { $ins += $bodyLines[$i]; $i++ }
 			$i++  # skip #КонецВставки
 			$ops += @{ Kind = 'insert'; After = ($v1.Count - 1); Lines = $ins }
-		} elseif ($t -eq '#Удаление') {
+		} elseif ($kind -eq 'Delete') {
 			$startIdx = $v1.Count
 			$i++
 			$del = @()
-			while ($i -lt $bodyLines.Count -and $bodyLines[$i].Trim() -ne '#КонецУдаления') { $del += $bodyLines[$i]; $v1 += $bodyLines[$i]; $i++ }
+			while ($i -lt $bodyLines.Count -and (Get-BslMarkerKind $bodyLines[$i]) -ne 'EndDelete') { $del += $bodyLines[$i]; $v1 += $bodyLines[$i]; $i++ }
 			$i++  # skip #КонецУдаления
 			$ops += @{ Kind = 'delete'; Start = $startIdx; End = ($v1.Count - 1); Lines = $del }
 		} else {
@@ -594,7 +692,8 @@ function Get-ResyncConflictReason {
 
 # Write per-method conflict folder: conflict.md + base/local/remote
 function Write-ConflictFolder {
-	param($folder, $methodId, $extBsl, $existingName, $method, $v1, $markedBody, $v2, $v1norm, $v2norm, $disputed, $enc)
+	param($folder, $methodId, $extBsl, $existingName, $method, $v1, $markedBody, $v2, $v1norm, $v2norm, $disputed, [string]$lang, $enc)
+	$kw = $script:bslKw[$lang]
 	if (-not (Test-Path $folder)) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
 	[IO.File]::WriteAllText((Join-Path $folder 'base.bsl'), (($v1 -join "`r`n") + "`r`n"), $enc)
 	[IO.File]::WriteAllText((Join-Path $folder 'local.bsl'), (($markedBody -join "`r`n") + "`r`n"), $enc)
@@ -602,7 +701,7 @@ function Write-ConflictFolder {
 	$md = @()
 	$md += "# $methodId"
 	$md += "Править: $extBsl"
-	$md += "Метод:   $existingName (&ИзменениеИКонтроль(`"$($method.Canonical)`"))"
+	$md += "Метод:   $existingName (&$($kw.Control)(`"$($method.Canonical)`"))"
 	$md += "Причина: $(Get-ResyncConflictReason $disputed)"
 	$md += ""
 	$md += "## Не размещено — перенести вручную"
@@ -614,10 +713,10 @@ function Write-ConflictFolder {
 			$md += "### Конфликт №$cn — вставка"
 			$md += "Как блок стоял в вашей версии (local):"
 			if ($d.Before -and $d.Before.Count -gt 0) { foreach ($l in $d.Before) { $md += $l } }
-			$md += "#Вставка"; foreach ($l in $d.Lines) { $md += $l }; $md += "#КонецВставки"
+			$md += "#$($kw.Insert)"; foreach ($l in $d.Lines) { $md += $l }; $md += "#$($kw.EndInsert)"
 			if ($d.After -and $d.After.Count -gt 0) { foreach ($l in $d.After) { $md += $l } }
 			$md += ""
-			$md += "Якорь (строки вокруг #Вставка) изменился/исчез в новом оригинале — блок не лёг автоматически (см. дифф base→remote ниже)."
+			$md += "Якорь (строки вокруг #$($kw.Insert)) изменился/исчез в новом оригинале — блок не лёг автоматически (см. дифф base→remote ниже)."
 			$md += "В модуле расширения блок припаркован в конце метода под меткой // [РЕСИНК-КОНФЛИКТ №$cn] — найди по ней."
 			$md += "Куда переносить: если якорного кода в новом методе больше нет — он, вероятно, вынесен/отрефакторен (ищите в диффе новый вызов/процедуру). Размести адаптацию по смыслу: например пост-обработкой после нового вызова, либо в заимствованной процедуре, куда переехал код. При правке файла сохрани кодировку (UTF-8 с BOM)."
 		} else {
@@ -644,15 +743,20 @@ function Invoke-Resync {
 	$methodId = "$logicalModule.$($method.Canonical)"
 	$decLine = $dup.Line
 	$sigLineIdx = $decLine + 1
-	if ($sigLineIdx -ge $extLines.Count -or $extLines[$sigLineIdx] -notmatch '^\s*(?:Асинх\s+)?(?:Процедура|Функция)\s+([\w]+)\s*\(') {
+	$declRe = '^\s*(?:' + (Get-KwAlt 'Async') + '\s+)?(' + (Get-KwAlt 'Proc') + '|' + (Get-KwAlt 'Func') + ')\s+([\w]+)\s*\('
+	if ($sigLineIdx -ge $extLines.Count -or $extLines[$sigLineIdx] -notmatch $declRe) {
 		return @{ Id = $methodId; Status = 'ОШИБКА'; ExtBsl = $extBsl; Reason = 'не разобрать сигнатуру перехватчика' }
 	}
-	$existingName = $Matches[1]
+	# The block we are about to rewrite is the interceptor already in the extension, so it is
+	# its spelling — not the source module's — that the rewritten block must keep.
+	$lang = Get-BslLang $Matches[1]
+	$kw = $script:bslKw[$lang]
+	$existingName = $Matches[2]
 	$sig = Read-Signature $extLines $sigLineIdx
 	if (-not $sig) { return @{ Id = $methodId; Status = 'ОШИБКА'; ExtBsl = $extBsl; Reason = 'не разобрать сигнатуру' } }
 	$sigEnd = $sig.EndLineIdx
-	$isFunc = ($extLines[$sigLineIdx] -imatch '^\s*(?:Асинх\s+)?Функция\b')
-	$endRe = if ($isFunc) { '^\s*КонецФункции\b' } else { '^\s*КонецПроцедуры\b' }
+	$isFunc = ($extLines[$sigLineIdx] -imatch ('^\s*(?:' + (Get-KwAlt 'Async') + '\s+)?' + (Get-KwAlt 'Func') + '\b'))
+	$endRe = if ($isFunc) { '^\s*' + (Get-KwAlt 'EndFunc') + '\b' } else { '^\s*' + (Get-KwAlt 'EndProc') + '\b' }
 	$blockEnd = -1
 	for ($j = $sigEnd + 1; $j -lt $extLines.Count; $j++) { if ($extLines[$j] -imatch $endRe) { $blockEnd = $j; break } }
 	if ($blockEnd -lt 0) { return @{ Id = $methodId; Status = 'ОШИБКА'; ExtBsl = $extBsl; Reason = 'не найден конец перехватчика' } }
@@ -732,12 +836,12 @@ function Invoke-Resync {
 
 	# assemble new marked body
 	$newBody = @()
-	foreach ($blk in $insertTop) { $newBody += "#Вставка"; foreach ($l in $blk) { $newBody += $l }; $newBody += "#КонецВставки" }
+	foreach ($blk in $insertTop) { $newBody += "#$($kw.Insert)"; foreach ($l in $blk) { $newBody += $l }; $newBody += "#$($kw.EndInsert)" }
 	for ($k = 0; $k -lt $v2.Count; $k++) {
-		if ($delStart.ContainsKey($k)) { $newBody += "#Удаление" }
+		if ($delStart.ContainsKey($k)) { $newBody += "#$($kw.Delete)" }
 		$newBody += $v2[$k]
-		if ($delEnd.ContainsKey($k)) { $newBody += "#КонецУдаления" }
-		if ($insertAfter.ContainsKey($k)) { foreach ($blk in $insertAfter[$k]) { $newBody += "#Вставка"; foreach ($l in $blk) { $newBody += $l }; $newBody += "#КонецВставки" } }
+		if ($delEnd.ContainsKey($k)) { $newBody += "#$($kw.EndDelete)" }
+		if ($insertAfter.ContainsKey($k)) { foreach ($blk in $insertAfter[$k]) { $newBody += "#$($kw.Insert)"; foreach ($l in $blk) { $newBody += $l }; $newBody += "#$($kw.EndInsert)" } }
 	}
 	if ($disputed.Count -gt 0) {
 		$newBody += "`t// [РЕСИНК-КОНФЛИКТ] блоки ниже не легли автоматически — перенесите вручную (по № см. conflict.md / index.md в merge-воркспейсе, путь в выводе)."
@@ -746,7 +850,7 @@ function Invoke-Resync {
 			$cn++
 			if ($d.Kind -eq 'insert') {
 				$newBody += "`t// [РЕСИНК-КОНФЛИКТ №$cn] вставка — исходный якорь изменён в новом оригинале."
-				$newBody += "#Вставка"; foreach ($l in $d.Lines) { $newBody += $l }; $newBody += "#КонецВставки"
+				$newBody += "#$($kw.Insert)"; foreach ($l in $d.Lines) { $newBody += $l }; $newBody += "#$($kw.EndInsert)"
 			}
 			else {
 				$newBody += "`t// [РЕСИНК-КОНФЛИКТ №$cn] удаление — строки не найдены в новом оригинале:"
@@ -754,12 +858,12 @@ function Invoke-Resync {
 			}
 		}
 	}
-	$asyncPrefix = if ($method.IsAsync) { "Асинх " } else { "" }
-	$keyword = if ($method.IsFunction) { "Функция" } else { "Процедура" }
-	$endKeyword = if ($method.IsFunction) { "КонецФункции" } else { "КонецПроцедуры" }
+	$asyncPrefix = if ($method.IsAsync) { "$($kw.Async) " } else { "" }
+	$keyword = if ($method.IsFunction) { $kw.Func } else { $kw.Proc }
+	$endKeyword = if ($method.IsFunction) { $kw.EndFunc } else { $kw.EndProc }
 	$newBlock = @()
 	if ($method.Context) { $newBlock += $method.Context }
-	$newBlock += "&ИзменениеИКонтроль(`"$($method.Canonical)`")"
+	$newBlock += "&$($kw.Control)(`"$($method.Canonical)`")"
 	$newBlock += "$asyncPrefix$keyword $existingName($($method.ParamsText))"
 	$newBlock += $newBody
 	$newBlock += $endKeyword
@@ -775,7 +879,7 @@ function Invoke-Resync {
 	$conflictDir = $null
 	if ($disputed.Count -gt 0) {
 		$conflictDir = $conflictFolder
-		Write-ConflictFolder $conflictFolder $methodId $extBsl $existingName $method $v1 $markedBody $v2 $v1norm $v2norm $disputed $enc
+		Write-ConflictFolder $conflictFolder $methodId $extBsl $existingName $method $v1 $markedBody $v2 $v1norm $v2norm $disputed $lang $enc
 	}
 	$status = if ($disputed.Count -gt 0) { 'ЧАСТИЧНО' } elseif ($transferred.Count -eq 0 -and $absorbed.Count -gt 0) { 'ПЕРЕНЕСЕНО В ОСНОВНУЮ' } else { 'АКТУАЛИЗИРОВАН' }
 	$rsn = if ($disputed.Count -gt 0) { Get-ResyncConflictReason $disputed } elseif ($status -eq 'ПЕРЕНЕСЕНО В ОСНОВНУЮ') { 'все правки уже в основной конфигурации — перехватчик можно удалить' } else { '' }
@@ -1062,6 +1166,8 @@ if ($method.IsFunction -and ($InterceptorType -eq "Before" -or $InterceptorType 
 }
 
 $decoratorRu = $script:decoratorMap[$InterceptorType]
+# What the annotation will actually look like in the module: the source's spelling
+$decoratorOut = $script:bslKw[$method.Lang][$script:decoratorKey[$InterceptorType]]
 
 # --- Read existing extension module (if any) ---
 $extLines = @()
@@ -1078,7 +1184,7 @@ $enc = New-Object System.Text.UTF8Encoding($true)
 
 if ($dup) {
 	if ($InterceptorType -ne "ModificationAndControl") {
-		Write-Host "[ПРОПУЩЕН] Перехватчик &$decoratorRu(`"$MethodName`") уже есть в модуле — дубль не создаётся."
+		Write-Host "[ПРОПУЩЕН] Перехватчик &$($dup.Raw)(`"$MethodName`") уже есть в модуле — дубль не создаётся."
 		Write-Host "     Файл: $extBsl"
 		exit 0
 	}
@@ -1123,11 +1229,7 @@ $candidate = "${namePrefix}$($method.Canonical)"
 $taken = @($existingProcNames | ForEach-Object { $_.ToLower() })
 $interceptorName = $candidate
 if ($taken -contains $candidate.ToLower()) {
-	if ($InterceptorType -eq "ModificationAndControl") {
-		$interceptorName = "${candidate}_ИзменениеИКонтроль"
-	} else {
-		$interceptorName = "${candidate}_$decoratorRu"
-	}
+	$interceptorName = "${candidate}_$($script:bslKw[$method.Lang][$script:decoratorKey[$InterceptorType]])"
 }
 
 $core = Build-InterceptorCore $method $InterceptorType $interceptorName
@@ -1142,7 +1244,7 @@ if ($extExists) {
 		if ($chain[$c].Kind -eq 'region') {
 			$rname = $chain[$c].Name
 			for ($li = 0; $li -lt $extLines.Count; $li++) {
-				if ($extLines[$li].Trim() -match ('^#Область\s+' + [regex]::Escape($rname) + '\s*$')) {
+				if ($extLines[$li].Trim() -match ('^#' + (Get-KwAlt 'Region') + '\s+' + [regex]::Escape($rname) + '\s*$')) {
 					$reuseRegionIdx = $c; $reuseLineIdx = $li; break
 				}
 			}
@@ -1157,14 +1259,14 @@ if ($reuseRegionIdx -ge 0) {
 	$innerChain = @()
 	for ($c = $reuseRegionIdx + 1; $c -lt $chain.Count; $c++) { $innerChain += $chain[$c] }
 
-	$block = Build-WrappedBlock $innerChain $core
+	$block = Build-WrappedBlock $innerChain $core $method.Lang
 
 	# find matching #КонецОбласти for the reused region
 	$depth = 0; $closeIdx = -1
 	for ($li = $reuseLineIdx; $li -lt $extLines.Count; $li++) {
 		$t = $extLines[$li].Trim()
-		if ($t -match '^#Область\s') { $depth++ }
-		elseif ($t -match '^#КонецОбласти') { $depth--; if ($depth -eq 0) { $closeIdx = $li; break } }
+		if ($t -match ('^#' + (Get-KwAlt 'Region') + '\s')) { $depth++ }
+		elseif ($t -match ('^#' + (Get-KwAlt 'EndRegion'))) { $depth--; if ($depth -eq 0) { $closeIdx = $li; break } }
 	}
 	if ($closeIdx -lt 0) { Write-Error "Не найден #КонецОбласти для региона (переиспользование)"; exit 1 }
 
@@ -1181,7 +1283,7 @@ if ($reuseRegionIdx -ge 0) {
 	$placement = "в существующий регион '$($chain[$reuseRegionIdx].Name)'"
 } else {
 	# Build full wrapper chain (source order) and append (or create file).
-	$block = Build-WrappedBlock $chain $core
+	$block = Build-WrappedBlock $chain $core $method.Lang
 	$blockText = ($block -join "`r`n") + "`r`n"
 
 	$bslDir = Split-Path $extBsl -Parent
@@ -1210,7 +1312,7 @@ if ($flagTarget) {
 	Set-PropertyStateFlag $flagTarget.File $flagTarget.Property (Detect-FormatVersion $ExtensionPath)
 }
 
-Write-Host "[OK] Перехватчик &$decoratorRu(`"$MethodName`") — $placement"
+Write-Host "[OK] Перехватчик &$decoratorOut(`"$MethodName`") — $placement"
 Write-Host "     Файл:       $extBsl"
 Write-Host "     Процедура:  $interceptorName($($method.ParamsText -replace '\s+', ' '))"
 if ($method.Context) { Write-Host "     Контекст:   $($method.Context)" }

@@ -149,6 +149,30 @@ const FAMILIES = [
     ],
   },
 
+  // ─── Встроенный язык 1С в двух написаниях ────────────────────────────────
+  // Платформа принимает и русские, и английские ключевые слова, поэтому разбор модуля обязан
+  // читать оба написания. Таблица пар — данные, но живёт функцией: гард видит только функции,
+  // а разъехавшаяся пара слов даёт ровно тот тихий ложно-чистый отчёт, из-за которого всё это
+  // и делалось (ишью #97).
+  {
+    name: 'BSL: таблица ключевых слов', py: 'bsl_keywords', ps1: 'Get-BslKeywords',
+    variants: [
+      { id: 'base', authority: 'cfe-patch-method', consumers: ['cfe-diff', 'cfe-validate'] },
+    ],
+  },
+  {
+    name: 'BSL: вид маркера правки', py: 'bsl_marker_kind', ps1: 'Get-BslMarkerKind',
+    variants: [
+      { id: 'base', authority: 'cfe-patch-method', consumers: ['cfe-diff'] },
+    ],
+  },
+  {
+    name: 'BSL: разбор аннотаций перехвата', py: 'get_interceptors', ps1: 'Get-Interceptors',
+    variants: [
+      { id: 'base', authority: 'cfe-patch-method', consumers: ['cfe-diff'] },
+    ],
+  },
+
   // ─── Запись файла в каноне выгрузки ──────────────────────────────────────
   {
     name: 'write_xml_file', py: 'write_xml_file', ps1: 'Write-XmlFile',

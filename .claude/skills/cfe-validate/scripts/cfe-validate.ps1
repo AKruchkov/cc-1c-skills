@@ -1,4 +1,4 @@
-﻿# cfe-validate v1.16 — Validate 1C configuration extension structure (CFE)
+﻿# cfe-validate v1.17 — Validate 1C configuration extension structure (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1299,12 +1299,48 @@ if ($versionRank -ge 219 -and $childObjNode) {
 	}
 }
 
+# Built-in language keywords in both spellings. The platform accepts either one in any module
+# (pairs taken from the platform string tables), so a module written in English is ordinary
+# source, not a broken one: we must read both and emit the spelling we read.
+function Get-BslKeywords {
+	return @{
+		ru = @{
+			Async="Асинх"; Proc="Процедура"; EndProc="КонецПроцедуры"
+			Func="Функция"; EndFunc="КонецФункции"; Val="Знач"
+			Region="Область"; EndRegion="КонецОбласти"
+			If="Если"; Then="Тогда"; ElsIf="ИначеЕсли"; Else="Иначе"; EndIf="КонецЕсли"
+			And="И"; Not="НЕ"
+			Insert="Вставка"; EndInsert="КонецВставки"; Delete="Удаление"; EndDelete="КонецУдаления"
+			Before="Перед"; After="После"; Around="Вместо"; Control="ИзменениеИКонтроль"
+			Proceed="ПродолжитьВызов"; Return="Возврат"
+			# Not a keyword: name of the local the generated Instead-stub declares. Lives here so
+			# that the language of emitted text is decided in exactly one place.
+			ResultVar="Результат"
+			Directives=@("НаКлиенте", "НаСервере", "НаСервереБезКонтекста", "НаКлиентеНаСервереБезКонтекста", "НаКлиентеНаСервере")
+		}
+		en = @{
+			Async="Async"; Proc="Procedure"; EndProc="EndProcedure"
+			Func="Function"; EndFunc="EndFunction"; Val="Val"
+			Region="Region"; EndRegion="EndRegion"
+			If="If"; Then="Then"; ElsIf="ElsIf"; Else="Else"; EndIf="EndIf"
+			And="And"; Not="Not"
+			Insert="Insert"; EndInsert="EndInsert"; Delete="Delete"; EndDelete="EndDelete"
+			Before="Before"; After="After"; Around="Around"; Control="ChangeAndValidate"
+			Proceed="ProceedWithCall"; Return="Return"
+			ResultVar="Result"
+			Directives=@("AtClient", "AtServer", "AtServerNoContext", "AtClientAtServerNoContext", "AtClientAtServer")
+		}
+	}
+}
+
 # --- Breadcrumb: controlled methods (&ИзменениеИКонтроль) drift is not checked here ---
 $extRootDir = Split-Path $resolvedPath -Parent
+$ctrlKw = Get-BslKeywords
+$ctrlRe = '(?m)^\s*&(?:' + $ctrlKw.ru.Control + '|' + $ctrlKw.en.Control + ')\('
 $ctrlCount = 0
 foreach ($bslFile in (Get-ChildItem -Path $extRootDir -Recurse -Filter *.bsl -File -ErrorAction SilentlyContinue)) {
 	$txt = [System.IO.File]::ReadAllText($bslFile.FullName, [System.Text.Encoding]::UTF8)
-	$ctrlCount += ([regex]::Matches($txt, '(?m)^\s*&ИзменениеИКонтроль\(')).Count
+	$ctrlCount += ([regex]::Matches($txt, $ctrlRe)).Count
 }
 if ($ctrlCount -gt 0) {
 	Out-Line "[INFO]  Контролируемых методов (&ИзменениеИКонтроль): $ctrlCount — их актуальность здесь не проверяется. Сверьте: /cfe-patch-method -Check -ExtensionPath <ext> -ConfigPath <cf>"

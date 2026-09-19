@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-diff v1.5 — Analyze and compare 1C configuration extension (CFE)
+# cfe-diff v1.6 — Analyze and compare 1C configuration extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -165,34 +165,95 @@ def get_bsl_files(obj_type, obj_name, extension_path):
     return bsl_files
 
 
-# --- Helper: parse interceptors from .bsl ---
+# Built-in language keywords in both spellings. The platform accepts either one in any module
+# (pairs taken from the platform string tables), so a module written in English is ordinary
+# source, not a broken one: we must read both and emit the spelling we read.
+def bsl_keywords():
+    return {
+        "ru": {
+            "Async": "Асинх", "Proc": "Процедура", "EndProc": "КонецПроцедуры",
+            "Func": "Функция", "EndFunc": "КонецФункции", "Val": "Знач",
+            "Region": "Область", "EndRegion": "КонецОбласти",
+            "If": "Если", "Then": "Тогда", "ElsIf": "ИначеЕсли", "Else": "Иначе", "EndIf": "КонецЕсли",
+            "And": "И", "Not": "НЕ",
+            "Insert": "Вставка", "EndInsert": "КонецВставки", "Delete": "Удаление", "EndDelete": "КонецУдаления",
+            "Before": "Перед", "After": "После", "Around": "Вместо", "Control": "ИзменениеИКонтроль",
+            "Proceed": "ПродолжитьВызов", "Return": "Возврат",
+            # Not a keyword: name of the local the generated Instead-stub declares. Lives here so
+            # that the language of emitted text is decided in exactly one place.
+            "ResultVar": "Результат",
+            "Directives": ["НаКлиенте", "НаСервере", "НаСервереБезКонтекста", "НаКлиентеНаСервереБезКонтекста", "НаКлиентеНаСервере"],
+        },
+        "en": {
+            "Async": "Async", "Proc": "Procedure", "EndProc": "EndProcedure",
+            "Func": "Function", "EndFunc": "EndFunction", "Val": "Val",
+            "Region": "Region", "EndRegion": "EndRegion",
+            "If": "If", "Then": "Then", "ElsIf": "ElsIf", "Else": "Else", "EndIf": "EndIf",
+            "And": "And", "Not": "Not",
+            "Insert": "Insert", "EndInsert": "EndInsert", "Delete": "Delete", "EndDelete": "EndDelete",
+            "Before": "Before", "After": "After", "Around": "Around", "Control": "ChangeAndValidate",
+            "Proceed": "ProceedWithCall", "Return": "Return",
+            "ResultVar": "Result",
+            "Directives": ["AtClient", "AtServer", "AtServerNoContext", "AtClientAtServerNoContext", "AtClientAtServer"],
+        },
+    }
 
-def get_interceptors(bsl_path):
+
+BSL_KW = bsl_keywords()
+
+
+# Edit marker kind at the start of a line: Insert/Delete/EndInsert/EndDelete, None if none.
+# The marker owns the start of the line only — a trailing comment does not bother the platform
+# and must not bother us either.
+def bsl_marker_kind(line):
+    kw = BSL_KW
+    for k in ("EndInsert", "EndDelete", "Insert", "Delete"):
+        if re.match(r'^\s*#(?:' + kw["ru"][k] + '|' + kw["en"][k] + r')\b', line, re.IGNORECASE):
+            return k
+    return None
+
+
+# Parse interceptor annotations present in a module. Type is normalized to the Russian spelling
+# so everything downstream stays single-language; raw keeps what the file actually says.
+def get_interceptors(lines):
+    kw = BSL_KW
+    keys = ("Before", "After", "Control", "Around")
+    alt = []
+    norm = {}
+    for k in keys:
+        alt.append(kw["ru"][k])
+        alt.append(kw["en"][k])
+        norm[kw["ru"][k].lower()] = kw["ru"][k]
+        norm[kw["en"][k].lower()] = kw["ru"][k]
+    pat = re.compile(r'^&(' + '|'.join(alt) + r')\("([^"]+)"\)', re.IGNORECASE)
+    result = []
+    for i in range(len(lines)):
+        m = pat.match(lines[i].strip())
+        if m:
+            raw = m.group(1)
+            result.append({"type": norm[raw.lower()], "raw": raw, "method": m.group(2), "line": i})
+    return result
+
+
+# --- Helper: read a .bsl and parse its interceptors ---
+
+def get_file_interceptors(bsl_path):
     if not os.path.isfile(bsl_path):
         return []
 
     with open(bsl_path, "r", encoding="utf-8-sig") as fh:
         lines = fh.readlines()
 
-    interceptors = []
-    pattern = re.compile(r'^&(\u041f\u0435\u0440\u0435\u0434|\u041f\u043e\u0441\u043b\u0435|\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435\u0418\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c|\u0412\u043c\u0435\u0441\u0442\u043e)\("([^"]+)"\)')
-    # The above is: ^&(Перед|После|ИзменениеИКонтроль|Вместо)\("([^"]+)"\)
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        m = pattern.match(stripped)
-        if m:
-            interceptors.append({
-                "Type": m.group(1),
-                "Method": m.group(2),
-                "Line": i + 1,
-                "File": bsl_path,
-            })
-
-    return interceptors
+    return [{
+        "Type": ic["type"],
+        "Raw": ic["raw"],
+        "Method": ic["method"],
+        "Line": ic["line"] + 1,
+        "File": bsl_path,
+    } for ic in get_interceptors(lines)]
 
 
-# --- Helper: extract #Вставка blocks from .bsl ---
+# --- Helper: extract insert-marker blocks from .bsl ---
 
 def get_insertion_blocks(bsl_path):
     if not os.path.isfile(bsl_path):
@@ -207,14 +268,12 @@ def get_insertion_blocks(bsl_path):
     start_line = 0
 
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == "\u0023\u0412\u0441\u0442\u0430\u0432\u043a\u0430":
-            # #Вставка
+        kind = bsl_marker_kind(line)
+        if kind == "Insert":
             in_block = True
             block_lines = []
             start_line = i + 1
-        elif stripped == "\u0023\u041a\u043e\u043d\u0435\u0446\u0412\u0441\u0442\u0430\u0432\u043a\u0438" and in_block:
-            # #КонецВставки
+        elif kind == "EndInsert" and in_block:
             in_block = False
             blocks.append({
                 "StartLine": start_line,
@@ -319,10 +378,10 @@ def mode_a(objects, extension_path):
             bsl_files = get_bsl_files(obj["Type"], obj["Name"], extension_path)
             for bsl in bsl_files:
                 rel_path = bsl.replace(extension_path, "").lstrip("\\/")
-                interceptor_list = get_interceptors(bsl)
+                interceptor_list = get_file_interceptors(bsl)
                 if len(interceptor_list) > 0:
                     for ic in interceptor_list:
-                        print(f'             &{ic["Type"]}("{ic["Method"]}") \u2014 line {ic["Line"]} in {rel_path}')
+                        print(f'             &{ic["Raw"]}("{ic["Method"]}") \u2014 line {ic["Line"]} in {rel_path}')
                 else:
                     print(f"             {rel_path} (no interceptors)")
 
@@ -434,7 +493,7 @@ def mode_b(objects, extension_path, config_path):
         # Find .bsl files with &ИзменениеИКонтроль
         bsl_files = get_bsl_files(obj["Type"], obj["Name"], extension_path)
         for bsl in bsl_files:
-            interceptor_list = get_interceptors(bsl)
+            interceptor_list = get_file_interceptors(bsl)
             mac_interceptors = [ic for ic in interceptor_list if ic["Type"] == "\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435\u0418\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c"]
 
             if len(mac_interceptors) == 0:

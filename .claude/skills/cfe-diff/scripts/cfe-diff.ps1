@@ -1,4 +1,4 @@
-﻿# cfe-diff v1.5 — Analyze and compare 1C configuration extension (CFE)
+﻿# cfe-diff v1.6 — Analyze and compare 1C configuration extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -162,24 +162,90 @@ function Get-BslFiles {
 	return $bslFiles
 }
 
-# --- Helper: parse interceptors from .bsl ---
+# Built-in language keywords in both spellings. The platform accepts either one in any module
+# (pairs taken from the platform string tables), so a module written in English is ordinary
+# source, not a broken one: we must read both and emit the spelling we read.
+function Get-BslKeywords {
+	return @{
+		ru = @{
+			Async="Асинх"; Proc="Процедура"; EndProc="КонецПроцедуры"
+			Func="Функция"; EndFunc="КонецФункции"; Val="Знач"
+			Region="Область"; EndRegion="КонецОбласти"
+			If="Если"; Then="Тогда"; ElsIf="ИначеЕсли"; Else="Иначе"; EndIf="КонецЕсли"
+			And="И"; Not="НЕ"
+			Insert="Вставка"; EndInsert="КонецВставки"; Delete="Удаление"; EndDelete="КонецУдаления"
+			Before="Перед"; After="После"; Around="Вместо"; Control="ИзменениеИКонтроль"
+			Proceed="ПродолжитьВызов"; Return="Возврат"
+			# Not a keyword: name of the local the generated Instead-stub declares. Lives here so
+			# that the language of emitted text is decided in exactly one place.
+			ResultVar="Результат"
+			Directives=@("НаКлиенте", "НаСервере", "НаСервереБезКонтекста", "НаКлиентеНаСервереБезКонтекста", "НаКлиентеНаСервере")
+		}
+		en = @{
+			Async="Async"; Proc="Procedure"; EndProc="EndProcedure"
+			Func="Function"; EndFunc="EndFunction"; Val="Val"
+			Region="Region"; EndRegion="EndRegion"
+			If="If"; Then="Then"; ElsIf="ElsIf"; Else="Else"; EndIf="EndIf"
+			And="And"; Not="Not"
+			Insert="Insert"; EndInsert="EndInsert"; Delete="Delete"; EndDelete="EndDelete"
+			Before="Before"; After="After"; Around="Around"; Control="ChangeAndValidate"
+			Proceed="ProceedWithCall"; Return="Return"
+			ResultVar="Result"
+			Directives=@("AtClient", "AtServer", "AtServerNoContext", "AtClientAtServerNoContext", "AtClientAtServer")
+		}
+	}
+}
+
+$script:bslKw = Get-BslKeywords
+
+# Edit marker kind at the start of a line: Insert/Delete/EndInsert/EndDelete, $null if none.
+# The marker owns the start of the line only — a trailing comment does not bother the platform
+# and must not bother us either.
+function Get-BslMarkerKind {
+	param([string]$line)
+	$kw = $script:bslKw
+	foreach ($k in @("EndInsert", "EndDelete", "Insert", "Delete")) {
+		if ($line -match ('^\s*#(?:' + $kw.ru[$k] + '|' + $kw.en[$k] + ')\b')) { return $k }
+	}
+	return $null
+}
+
+# Parse interceptor annotations present in a module. Type is normalized to the Russian spelling
+# so everything downstream stays single-language; Raw keeps what the file actually says.
 function Get-Interceptors {
+	param($lines)
+	$kw = $script:bslKw
+	$keys = @("Before", "After", "Control", "Around")
+	$alt = @()
+	$norm = @{}
+	foreach ($k in $keys) {
+		$alt += $kw.ru[$k]; $alt += $kw.en[$k]
+		$norm[$kw.ru[$k].ToLower()] = $kw.ru[$k]
+		$norm[$kw.en[$k].ToLower()] = $kw.ru[$k]
+	}
+	$re = '^&(' + ($alt -join '|') + ')\("([^"]+)"\)'
+	$result = @()
+	for ($i = 0; $i -lt $lines.Count; $i++) {
+		$t = $lines[$i].Trim()
+		if ($t -match $re) {
+			$raw = $Matches[1]
+			$result += @{ Type = $norm[$raw.ToLower()]; Raw = $raw; Method = $Matches[2]; Line = $i }
+		}
+	}
+	return $result
+}
+
+# --- Helper: read a .bsl and parse its interceptors ---
+function Get-FileInterceptors {
 	param([string]$bslPath)
 
 	if (-not (Test-Path $bslPath)) { return @() }
 	$lines = [System.IO.File]::ReadAllLines($bslPath, [System.Text.Encoding]::UTF8)
-	$interceptors = @()
-	$i = 0
-	while ($i -lt $lines.Count) {
-		$line = $lines[$i].Trim()
-		if ($line -match '^&(Перед|После|ИзменениеИКонтроль|Вместо)\("([^"]+)"\)') {
-			$type = $Matches[1]
-			$method = $Matches[2]
-			$interceptors += @{ Type = $type; Method = $method; Line = $i + 1; File = $bslPath }
-		}
-		$i++
+	$result = @()
+	foreach ($ic in (Get-Interceptors $lines)) {
+		$result += @{ Type = $ic.Type; Raw = $ic.Raw; Method = $ic.Method; Line = $ic.Line + 1; File = $bslPath }
 	}
-	return $interceptors
+	return $result
 }
 
 # --- Helper: extract #Вставка blocks from .bsl ---
@@ -194,12 +260,13 @@ function Get-InsertionBlocks {
 	$startLine = 0
 
 	for ($i = 0; $i -lt $lines.Count; $i++) {
-		$line = $lines[$i].Trim()
-		if ($line -eq "#Вставка") {
+		$line = $lines[$i]
+		$kind = Get-BslMarkerKind $line
+		if ($kind -eq "Insert") {
 			$inBlock = $true
 			$blockLines = @()
 			$startLine = $i + 1
-		} elseif ($line -eq "#КонецВставки" -and $inBlock) {
+		} elseif ($kind -eq "EndInsert" -and $inBlock) {
 			$inBlock = $false
 			$blocks += @{
 				StartLine = $startLine
@@ -298,10 +365,10 @@ if ($Mode -eq "A") {
 			$bslFiles = Get-BslFiles $obj.Type $obj.Name
 			foreach ($bsl in $bslFiles) {
 				$relPath = $bsl.Replace($ExtensionPath, "").TrimStart("\", "/")
-				$interceptors = Get-Interceptors $bsl
+				$interceptors = Get-FileInterceptors $bsl
 				if ($interceptors.Count -gt 0) {
 					foreach ($ic in $interceptors) {
-						Write-Host "             &$($ic.Type)(`"$($ic.Method)`") — line $($ic.Line) in $relPath"
+						Write-Host "             &$($ic.Raw)(`"$($ic.Method)`") — line $($ic.Line) in $relPath"
 					}
 				} else {
 					Write-Host "             $relPath (no interceptors)"
@@ -412,7 +479,7 @@ if ($Mode -eq "B") {
 		# Find .bsl files with &ИзменениеИКонтроль
 		$bslFiles = Get-BslFiles $obj.Type $obj.Name
 		foreach ($bsl in $bslFiles) {
-			$interceptors = Get-Interceptors $bsl
+			$interceptors = Get-FileInterceptors $bsl
 			$macInterceptors = @($interceptors | Where-Object { $_.Type -eq "ИзменениеИКонтроль" })
 
 			if ($macInterceptors.Count -eq 0) { continue }
