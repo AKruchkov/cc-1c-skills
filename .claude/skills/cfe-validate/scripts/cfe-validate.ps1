@@ -1309,7 +1309,9 @@ function Get-BslKeywords {
 			Func="Функция"; EndFunc="КонецФункции"; Val="Знач"
 			Region="Область"; EndRegion="КонецОбласти"
 			If="Если"; Then="Тогда"; ElsIf="ИначеЕсли"; Else="Иначе"; EndIf="КонецЕсли"
-			And="И"; Not="НЕ"
+			# Platform spells the negation "Не"; we emit "НЕ" as this skill always has —
+			# the language is case-insensitive, and the lower case would churn every snapshot.
+			And="И"; Or="Или"; Not="НЕ"
 			Insert="Вставка"; EndInsert="КонецВставки"; Delete="Удаление"; EndDelete="КонецУдаления"
 			Before="Перед"; After="После"; Around="Вместо"; Control="ИзменениеИКонтроль"
 			Proceed="ПродолжитьВызов"; Return="Возврат"
@@ -1323,7 +1325,7 @@ function Get-BslKeywords {
 			Func="Function"; EndFunc="EndFunction"; Val="Val"
 			Region="Region"; EndRegion="EndRegion"
 			If="If"; Then="Then"; ElsIf="ElsIf"; Else="Else"; EndIf="EndIf"
-			And="And"; Not="Not"
+			And="And"; Or="Or"; Not="Not"
 			Insert="Insert"; EndInsert="EndInsert"; Delete="Delete"; EndDelete="EndDelete"
 			Before="Before"; After="After"; Around="Around"; Control="ChangeAndValidate"
 			Proceed="ProceedWithCall"; Return="Return"
