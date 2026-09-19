@@ -487,18 +487,25 @@ function Parse-MarkedBody {
 	while ($i -lt $bodyLines.Count) {
 		$kind = Get-BslMarkerKind $bodyLines[$i]
 		if ($kind -eq 'Insert') {
+			# Marker lines are kept verbatim: they carry the author's spelling, indent and — since
+			# a tail comment is legal — the note explaining the edit. Re-emitting a bare keyword
+			# would silently drop that note on -Actualize.
+			$open = $bodyLines[$i]
 			$ins = @()
 			$i++
 			while ($i -lt $bodyLines.Count -and (Get-BslMarkerKind $bodyLines[$i]) -ne 'EndInsert') { $ins += $bodyLines[$i]; $i++ }
+			$close = if ($i -lt $bodyLines.Count) { $bodyLines[$i] } else { $null }
 			$i++  # skip #КонецВставки
-			$ops += @{ Kind = 'insert'; After = ($v1.Count - 1); Lines = $ins }
+			$ops += @{ Kind = 'insert'; After = ($v1.Count - 1); Lines = $ins; Open = $open; Close = $close }
 		} elseif ($kind -eq 'Delete') {
+			$open = $bodyLines[$i]
 			$startIdx = $v1.Count
 			$i++
 			$del = @()
 			while ($i -lt $bodyLines.Count -and (Get-BslMarkerKind $bodyLines[$i]) -ne 'EndDelete') { $del += $bodyLines[$i]; $v1 += $bodyLines[$i]; $i++ }
+			$close = if ($i -lt $bodyLines.Count) { $bodyLines[$i] } else { $null }
 			$i++  # skip #КонецУдаления
-			$ops += @{ Kind = 'delete'; Start = $startIdx; End = ($v1.Count - 1); Lines = $del }
+			$ops += @{ Kind = 'delete'; Start = $startIdx; End = ($v1.Count - 1); Lines = $del; Open = $open; Close = $close }
 		} else {
 			$v1 += $bodyLines[$i]
 			$i++
@@ -715,7 +722,9 @@ function Write-ConflictFolder {
 			$md += "### Конфликт №$cn — вставка"
 			$md += "Как блок стоял в вашей версии (local):"
 			if ($d.Before -and $d.Before.Count -gt 0) { foreach ($l in $d.Before) { $md += $l } }
-			$md += "#$($kw.Insert)"; foreach ($l in $d.Lines) { $md += $l }; $md += "#$($kw.EndInsert)"
+			$openLine = if ([string]::IsNullOrEmpty($d.Open)) { "#$($kw.Insert)" } else { $d.Open }
+			$closeLine = if ([string]::IsNullOrEmpty($d.Close)) { "#$($kw.EndInsert)" } else { $d.Close }
+			$md += $openLine; foreach ($l in $d.Lines) { $md += $l }; $md += $closeLine
 			if ($d.After -and $d.After.Count -gt 0) { foreach ($l in $d.After) { $md += $l } }
 			$md += ""
 			$md += "Якорь (строки вокруг #$($kw.Insert)) изменился/исчез в новом оригинале — блок не лёг автоматически (см. дифф base→remote ниже)."
@@ -809,14 +818,14 @@ function Invoke-Resync {
 			elseif ($null -eq $k) {
 				$dbefore = @(); if ($op.After -ge 0) { $bz = [Math]::Max(0, $op.After - 2); for ($z = $bz; $z -le $op.After; $z++) { $dbefore += $v1[$z] } }
 				$dafter = @(); $az = [Math]::Min($v1.Count - 1, $op.After + 3); for ($z = $op.After + 1; $z -le $az; $z++) { $dafter += $v1[$z] }
-				$disputed += @{ Kind = 'insert'; Lines = $op.Lines; Before = $dbefore; After = $dafter }
+				$disputed += @{ Kind = 'insert'; Lines = $op.Lines; Open = $op.Open; Close = $op.Close; Before = $dbefore; After = $dafter }
 			}
-			elseif ($k -lt 0) { $insertTop += ,$op.Lines; $transferred += @{ Kind = 'insert' } }
-			else { if (-not $insertAfter.ContainsKey($k)) { $insertAfter[$k] = @() }; $insertAfter[$k] += ,$op.Lines; $transferred += @{ Kind = 'insert' } }
+			elseif ($k -lt 0) { $insertTop += $op; $transferred += @{ Kind = 'insert' } }
+			else { if (-not $insertAfter.ContainsKey($k)) { $insertAfter[$k] = @() }; $insertAfter[$k] += $op; $transferred += @{ Kind = 'insert' } }
 		} else {
 			$keys = @(); for ($m = $op.Start; $m -le $op.End; $m++) { $keys += $v1norm[$m] }
 			$p = Find-UniqueRun $v2norm $keys
-			if ($p -ge 0) { $delStart[$p] = $true; $delEnd[$p + $keys.Count - 1] = $true; $transferred += @{ Kind = 'delete' } }
+			if ($p -ge 0) { $delStart[$p] = $op.Open; $delEnd[$p + $keys.Count - 1] = $op.Close; $transferred += @{ Kind = 'delete' } }
 			else {
 				# Nearest significant neighbours around the deleted block; adjacency in the significant
 				# projection means the block is already cut (blanks/comments left behind don't matter).
@@ -836,14 +845,16 @@ function Invoke-Resync {
 		return @{ Id = $methodId; Status = $st; ExtBsl = $extBsl; Transferred = $transferred.Count; Absorbed = $absorbed.Count; Disputed = $disputed.Count; Reason = $rsn; AbsorbedNotes = $absorbedNotes }
 	}
 
-	# assemble new marked body
+	# assemble new marked body. Marker lines come back as they were read (Open/Close); the keyword
+	# form is only a fallback for a block whose closing marker the module never had.
+	$mk = { param($orig, [string]$key) if ([string]::IsNullOrEmpty($orig)) { "#$($kw[$key])" } else { $orig } }
 	$newBody = @()
-	foreach ($blk in $insertTop) { $newBody += "#$($kw.Insert)"; foreach ($l in $blk) { $newBody += $l }; $newBody += "#$($kw.EndInsert)" }
+	foreach ($blk in $insertTop) { $newBody += (& $mk $blk.Open 'Insert'); foreach ($l in $blk.Lines) { $newBody += $l }; $newBody += (& $mk $blk.Close 'EndInsert') }
 	for ($k = 0; $k -lt $v2.Count; $k++) {
-		if ($delStart.ContainsKey($k)) { $newBody += "#$($kw.Delete)" }
+		if ($delStart.ContainsKey($k)) { $newBody += (& $mk $delStart[$k] 'Delete') }
 		$newBody += $v2[$k]
-		if ($delEnd.ContainsKey($k)) { $newBody += "#$($kw.EndDelete)" }
-		if ($insertAfter.ContainsKey($k)) { foreach ($blk in $insertAfter[$k]) { $newBody += "#$($kw.Insert)"; foreach ($l in $blk) { $newBody += $l }; $newBody += "#$($kw.EndInsert)" } }
+		if ($delEnd.ContainsKey($k)) { $newBody += (& $mk $delEnd[$k] 'EndDelete') }
+		if ($insertAfter.ContainsKey($k)) { foreach ($blk in $insertAfter[$k]) { $newBody += (& $mk $blk.Open 'Insert'); foreach ($l in $blk.Lines) { $newBody += $l }; $newBody += (& $mk $blk.Close 'EndInsert') } }
 	}
 	if ($disputed.Count -gt 0) {
 		$newBody += "`t// [РЕСИНК-КОНФЛИКТ] блоки ниже не легли автоматически — перенесите вручную (по № см. conflict.md / index.md в merge-воркспейсе, путь в выводе)."
@@ -852,7 +863,7 @@ function Invoke-Resync {
 			$cn++
 			if ($d.Kind -eq 'insert') {
 				$newBody += "`t// [РЕСИНК-КОНФЛИКТ №$cn] вставка — исходный якорь изменён в новом оригинале."
-				$newBody += "#$($kw.Insert)"; foreach ($l in $d.Lines) { $newBody += $l }; $newBody += "#$($kw.EndInsert)"
+				$newBody += (& $mk $d.Open 'Insert'); foreach ($l in $d.Lines) { $newBody += $l }; $newBody += (& $mk $d.Close 'EndInsert')
 			}
 			else {
 				$newBody += "`t// [РЕСИНК-КОНФЛИКТ №$cn] удаление — строки не найдены в новом оригинале:"

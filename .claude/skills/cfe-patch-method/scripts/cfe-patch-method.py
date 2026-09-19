@@ -616,14 +616,21 @@ def parse_marked_body(body_lines):
     while i < n:
         kind = bsl_marker_kind(body_lines[i])
         if kind == "Insert":
+            # Marker lines are kept verbatim: they carry the author's spelling, indent and — since
+            # a tail comment is legal — the note explaining the edit. Re-emitting a bare keyword
+            # would silently drop that note on -Actualize.
+            open_line = body_lines[i]
             ins = []
             i += 1
             while i < n and bsl_marker_kind(body_lines[i]) != "EndInsert":
                 ins.append(body_lines[i])
                 i += 1
+            close_line = body_lines[i] if i < n else None
             i += 1
-            ops.append({"kind": "insert", "after": len(v1) - 1, "lines": ins})
+            ops.append({"kind": "insert", "after": len(v1) - 1, "lines": ins,
+                        "open": open_line, "close": close_line})
         elif kind == "Delete":
+            open_line = body_lines[i]
             start_idx = len(v1)
             i += 1
             dels = []
@@ -631,8 +638,10 @@ def parse_marked_body(body_lines):
                 dels.append(body_lines[i])
                 v1.append(body_lines[i])
                 i += 1
+            close_line = body_lines[i] if i < n else None
             i += 1
-            ops.append({"kind": "delete", "start": start_idx, "end": len(v1) - 1, "lines": dels})
+            ops.append({"kind": "delete", "start": start_idx, "end": len(v1) - 1, "lines": dels,
+                        "open": open_line, "close": close_line})
         else:
             v1.append(body_lines[i])
             i += 1
@@ -1207,7 +1216,8 @@ def write_conflict_folder(folder, method_id, ext_bsl, existing_name, method, v1,
             if d.get("before"):
                 for l in d["before"]:
                     md.append(l)
-            md.append("#" + kw["Insert"]); md.extend(d["lines"]); md.append("#" + kw["EndInsert"])
+            md.append(d.get("open") or ("#" + kw["Insert"])); md.extend(d["lines"])
+            md.append(d.get("close") or ("#" + kw["EndInsert"]))
             if d.get("after"):
                 for l in d["after"]:
                     md.append(l)
@@ -1280,7 +1290,7 @@ def resync_one(ext_bsl, ext_lines, dup, method, logical_module, conflict_folder,
     if not params_drift and control_key(v1) == control_key(v2):
         return {"id": method_id, "status": "АКТУАЛЕН", "ext_bsl": ext_bsl}
 
-    insert_top = []; insert_after = {}; del_start = set(); del_end = set(); disputed = []; transferred = 0; absorbed = 0; absorbed_notes = []
+    insert_top = []; insert_after = {}; del_start = {}; del_end = {}; disputed = []; transferred = 0; absorbed = 0; absorbed_notes = []
     v2sig, v2map = significant_projection(v2norm)
     for op in ops:
         if op["kind"] == "insert":
@@ -1306,16 +1316,17 @@ def resync_one(ext_bsl, ext_lines, dup, method, logical_module, conflict_folder,
             elif k is None:
                 dbefore = v1[max(0, after - 2):after + 1] if after >= 0 else []
                 dafter = v1[after + 1:after + 4]
-                disputed.append({"kind": "insert", "lines": op["lines"], "before": dbefore, "after": dafter})
+                disputed.append({"kind": "insert", "lines": op["lines"], "open": op.get("open"),
+                                 "close": op.get("close"), "before": dbefore, "after": dafter})
             elif k < 0:
-                insert_top.append(op["lines"]); transferred += 1
+                insert_top.append(op); transferred += 1
             else:
-                insert_after.setdefault(k, []).append(op["lines"]); transferred += 1
+                insert_after.setdefault(k, []).append(op); transferred += 1
         else:
             keys = v1norm[op["start"]:op["end"] + 1]
             p = find_unique_run(v2norm, keys)
             if p >= 0:
-                del_start.add(p); del_end.add(p + len(keys) - 1); transferred += 1
+                del_start[p] = op.get("open"); del_end[p + len(keys) - 1] = op.get("close"); transferred += 1
             else:
                 # Nearest significant neighbours; adjacency in the significant projection means the
                 # block is already cut (blanks/comments left behind don't matter).
@@ -1347,18 +1358,25 @@ def resync_one(ext_bsl, ext_lines, dup, method, logical_module, conflict_folder,
         return {"id": method_id, "status": st, "ext_bsl": ext_bsl, "transferred": transferred,
                 "absorbed": absorbed, "disputed": len(disputed), "reason": rsn, "absorbed_notes": absorbed_notes}
 
+    # Marker lines come back as they were read (open/close); the keyword form is only a fallback
+    # for a block whose closing marker the module never had.
+    def mk(orig, key):
+        return ("#" + kw[key]) if not orig else orig
+
     new_body = []
     for blk in insert_top:
-        new_body.append("#" + kw["Insert"]); new_body.extend(blk); new_body.append("#" + kw["EndInsert"])
+        new_body.append(mk(blk.get("open"), "Insert")); new_body.extend(blk["lines"])
+        new_body.append(mk(blk.get("close"), "EndInsert"))
     for k in range(len(v2)):
         if k in del_start:
-            new_body.append("#" + kw["Delete"])
+            new_body.append(mk(del_start[k], "Delete"))
         new_body.append(v2[k])
         if k in del_end:
-            new_body.append("#" + kw["EndDelete"])
+            new_body.append(mk(del_end[k], "EndDelete"))
         if k in insert_after:
             for blk in insert_after[k]:
-                new_body.append("#" + kw["Insert"]); new_body.extend(blk); new_body.append("#" + kw["EndInsert"])
+                new_body.append(mk(blk.get("open"), "Insert")); new_body.extend(blk["lines"])
+                new_body.append(mk(blk.get("close"), "EndInsert"))
     if disputed:
         new_body.append("\t// [РЕСИНК-КОНФЛИКТ] блоки ниже не легли автоматически — перенесите вручную (по № см. conflict.md / index.md в merge-воркспейсе, путь в выводе).")
         cn = 0
@@ -1366,7 +1384,8 @@ def resync_one(ext_bsl, ext_lines, dup, method, logical_module, conflict_folder,
             cn += 1
             if d["kind"] == "insert":
                 new_body.append("\t// [РЕСИНК-КОНФЛИКТ №%d] вставка — исходный якорь изменён в новом оригинале." % cn)
-                new_body.append("#" + kw["Insert"]); new_body.extend(d["lines"]); new_body.append("#" + kw["EndInsert"])
+                new_body.append(mk(d.get("open"), "Insert")); new_body.extend(d["lines"])
+                new_body.append(mk(d.get("close"), "EndInsert"))
             else:
                 new_body.append("\t// [РЕСИНК-КОНФЛИКТ №%d] удаление — строки не найдены в новом оригинале:" % cn)
                 for l in d["lines"]:

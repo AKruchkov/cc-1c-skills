@@ -1304,7 +1304,7 @@ def main():
 
     # --- Breadcrumb: controlled methods (&ИзменениеИКонтроль) drift is not checked here ---
     ctrl_kw = bsl_keywords()
-    ctrl_re = re.compile(r'^\s*&(?:' + ctrl_kw["ru"]["Control"] + '|' + ctrl_kw["en"]["Control"] + r')\(')
+    ctrl_re = re.compile(r'^\s*&(?:' + ctrl_kw["ru"]["Control"] + '|' + ctrl_kw["en"]["Control"] + r')\(', re.IGNORECASE)
     ctrl_count = 0
     for dp, _dn, files in os.walk(config_dir):
         for fn in files:

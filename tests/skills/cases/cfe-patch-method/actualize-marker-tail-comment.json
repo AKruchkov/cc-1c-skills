@@ -1,0 +1,33 @@
+{
+  "name": "-Actualize: комментарий на строке маркера не теряется при перезаписи блока",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "CommonModule", "name": "ХвостМод", "properties": { "Server": true } },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "writeFile": {
+        "path": "CommonModules/ХвостМод/Ext/Module.bsl",
+        "content": "#Область ПрограммныйИнтерфейс\n\nПроцедура Записать(Спр) Экспорт\n\tНачатьТранзакцию();\n\tСпр.Записать();\n\tЗаписатьЖурнал();\n\tЗафиксироватьТранзакцию();\nКонецПроцедуры\n\n#КонецОбласти\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": { "-ExtensionPath": "{workDir}/cfe", "-ConfigPath": "{workDir}", "-Object": "CommonModule.ХвостМод" }
+    },
+    {
+      "writeFile": {
+        "path": "cfe/CommonModules/ХвостМод/Ext/Module.bsl",
+        "content": "#Область ПрограммныйИнтерфейс\n&ИзменениеИКонтроль(\"Записать\")\nПроцедура Тест_Записать(Спр)\n\tНачатьТранзакцию();\n\tСпр.Записать();\n#Вставка // проверка прав, ТЗ-142\n\tПроверитьПрава(Спр);\n#КонецВставки // конец проверки прав\n\tЗафиксироватьТранзакцию();\nКонецПроцедуры\n#КонецОбласти\n"
+      }
+    }
+  ],
+  "params": { "extensionPath": "cfe" },
+  "args_extra": ["-Actualize"],
+  "expect": { "stdoutContains": "актуализировано: 1" }
+}

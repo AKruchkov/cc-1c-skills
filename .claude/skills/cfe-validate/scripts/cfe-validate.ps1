@@ -1338,7 +1338,7 @@ function Get-BslKeywords {
 # --- Breadcrumb: controlled methods (&ИзменениеИКонтроль) drift is not checked here ---
 $extRootDir = Split-Path $resolvedPath -Parent
 $ctrlKw = Get-BslKeywords
-$ctrlRe = '(?m)^\s*&(?:' + $ctrlKw.ru.Control + '|' + $ctrlKw.en.Control + ')\('
+$ctrlRe = '(?im)^\s*&(?:' + $ctrlKw.ru.Control + '|' + $ctrlKw.en.Control + ')\('
 $ctrlCount = 0
 foreach ($bslFile in (Get-ChildItem -Path $extRootDir -Recurse -Filter *.bsl -File -ErrorAction SilentlyContinue)) {
 	$txt = [System.IO.File]::ReadAllText($bslFile.FullName, [System.Text.Encoding]::UTF8)
