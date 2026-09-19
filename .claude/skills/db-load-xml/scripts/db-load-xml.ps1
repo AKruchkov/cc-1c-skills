@@ -1,4 +1,4 @@
-﻿# db-load-xml v1.28 — Load 1C configuration from XML files
+﻿# db-load-xml v1.29 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -135,9 +135,10 @@ param(
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# --- Реквизиты хранилища из .v8-project.json ---
-# Модель их не передаёт: скрипт сопоставляет параметры соединения с записью в databases[]
-# и берёт repository оттуда. Тот же приём, что в cf-edit.ps1 (сопоставление по configSrc).
+# --- Запись базы в .v8-project.json ---
+# Модель не передаёт ни путь к платформе конкретной базы, ни реквизиты хранилища: скрипт
+# сопоставляет параметры соединения с записью в databases[] и берёт их оттуда. Тот же приём,
+# что в cf-edit.ps1 (сопоставление по configSrc).
 function Find-V8Project([string]$startDir) {
 	$d = $startDir
 	for ($i = 0; $i -lt 20 -and $d; $i++) {
@@ -448,6 +449,10 @@ Assert-InfoBaseExists $InfoBasePath
 
 # --- Resolve V8Path ---
 function Find-ProjectV8Path {
+    # v8path записи базы сильнее корневого: в одном проекте базы живут на разных версиях
+    # платформы, а версию формата выгрузки задаёт та платформа, которая выгружает.
+    $dbRec = Find-ProjectDatabase
+    if ($dbRec -and $dbRec.v8path) { return [string]$dbRec.v8path }
     $dir = (Get-Location).Path
     while ($dir) {
         $pf = Join-Path $dir ".v8-project.json"

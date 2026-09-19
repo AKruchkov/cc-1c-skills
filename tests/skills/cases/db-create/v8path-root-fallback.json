@@ -1,0 +1,21 @@
+{
+  "name": "У записи базы нет v8path — берётся корневой",
+  "fakePlatform": { "log": "" },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": ".v8-project.json",
+        "content": {
+          "v8path": "{fakePlatform}",
+          "databases": [
+            { "id": "dev", "name": "Dev", "type": "file", "path": "{workDir}/ib" }
+          ]
+        }
+      }
+    }
+  ],
+  "args_extra": ["-InfoBasePath", "{workDir}/ib"],
+  "cwd": "workDir",
+  "expect": { "stdoutContains": "Information base created successfully" },
+  "noSnapshot": "проверяется выбор платформы по stdout, файлов на выходе нет"
+}

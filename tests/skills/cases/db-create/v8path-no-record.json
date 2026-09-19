@@ -1,0 +1,22 @@
+{
+  "name": "Соединение не совпало ни с одной записью — берётся корневой v8path",
+  "fakePlatform": { "log": "" },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": ".v8-project.json",
+        "content": {
+          "v8path": "{workDir}/nowhere/1cv8.exe",
+          "databases": [
+            { "id": "other", "name": "Other", "type": "file", "path": "{workDir}/other", "v8path": "{fakePlatform}" }
+          ]
+        }
+      }
+    }
+  ],
+  "args_extra": ["-InfoBasePath", "{workDir}/ib"],
+  "cwd": "workDir",
+  "expectError": true,
+  "expect": { "stdoutContains": "1C executable not found at" },
+  "noSnapshot": "проверяется выбор платформы по stdout, файлов на выходе нет"
+}

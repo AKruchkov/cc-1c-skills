@@ -88,10 +88,12 @@ const FAMILIES = [
     variants: [
       // Имя с префиксом _sg_ историческое: функция просто ищет .v8-project.json обходом
       // вверх. Группа db-* использует её же, чтобы найти запись базы и взять реквизиты
-      // хранилища — задача одна, поэтому семья общая, а не вторая с тем же телом.
+      // хранилища и путь к платформе — задача одна, поэтому семья общая, а не вторая с тем же телом.
       { id: 'full', authority: 'cf-edit',
-        consumers: ['cfe-borrow', 'db-cfe-admin', 'db-dump-xml', 'db-load-cf', 'db-load-git', 'db-load-xml', 'db-repo', 'db-update',
-          'epf-build', 'form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
+        consumers: ['cfe-borrow', 'db-cfe-admin', 'db-create', 'db-dump-cf', 'db-dump-dt', 'db-dump-xml',
+          'db-load-cf', 'db-load-dt', 'db-load-git', 'db-load-xml', 'db-repo', 'db-run', 'db-update',
+          'epf-build', 'epf-dump', 'web-publish',
+          'form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
           'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'] },
     ],
@@ -387,6 +389,16 @@ const FAMILIES = [
     ],
   },
   {
+    // Обёртка выбора платформы: запись базы → корневой v8path → автопоиск. В PS1 её роль
+    // играет не функция, а блок кода после объявления Find-ProjectV8Path, поэтому ps1: null.
+    name: 'platform: resolve_v8path', py: 'resolve_v8path', ps1: null,
+    variants: [
+      { id: 'base', authority: 'db-create',
+        consumers: ['db-dump-cf', 'db-dump-dt', 'db-dump-xml', 'db-load-cf', 'db-load-dt', 'db-load-git',
+          'db-load-xml', 'db-repo', 'db-run', 'db-update', 'epf-build', 'epf-dump', 'db-cfe-admin'] },
+    ],
+  },
+  {
     name: 'platform: find_project_v8path', py: '_find_project_v8path', ps1: 'Find-ProjectV8Path',
     variants: [
       { id: 'base', authority: 'db-create',
@@ -399,18 +411,24 @@ const FAMILIES = [
     name: 'repository: load hints', py: 'write_repository_hints', ps1: 'Write-RepositoryHints',
     variants: [{ id: 'base', authority: 'db-load-xml', consumers: ['db-load-git'] }],
   },
-  // ─── Реквизиты хранилища конфигурации ────────────────────────────────────
-  // База под хранилищем не принимает ни одной операции конфигуратора без реквизитов
-  // доступа, и модель их не передаёт: скрипт сам сопоставляет параметры соединения с
-  // записью в databases[]. Блок копируется во все навыки группы, работающие с
-  // конфигурацией базы.
+  // ─── Запись базы в .v8-project.json ──────────────────────────────────────
+  // Модель не передаёт ни реквизиты хранилища (без них база под хранилищем не принимает
+  // ни одной операции конфигуратора), ни путь к платформе конкретной базы: скрипт сам
+  // сопоставляет параметры соединения с записью в databases[]. Матч один на обе задачи,
+  // поэтому блок копируется во все навыки, запускающие платформу.
   {
     name: 'repository: same_path', py: 'same_path', ps1: 'Test-SamePath',
-    variants: [{ id: 'base', authority: 'db-repo', consumers: ['db-dump-xml', 'db-load-git', 'db-load-xml', 'db-update', 'db-cfe-admin'] }],
+    variants: [{ id: 'base', authority: 'db-repo',
+      consumers: ['db-cfe-admin', 'db-create', 'db-dump-cf', 'db-dump-dt', 'db-dump-xml', 'db-load-cf',
+        'db-load-dt', 'db-load-git', 'db-load-xml', 'db-run', 'db-update', 'epf-build', 'epf-dump',
+        'web-publish'] }],
   },
   {
     name: 'repository: find_project_database', py: 'find_project_database', ps1: 'Find-ProjectDatabase',
-    variants: [{ id: 'base', authority: 'db-repo', consumers: ['db-dump-xml', 'db-load-git', 'db-load-xml', 'db-update', 'db-cfe-admin'] }],
+    variants: [{ id: 'base', authority: 'db-repo',
+      consumers: ['db-cfe-admin', 'db-create', 'db-dump-cf', 'db-dump-dt', 'db-dump-xml', 'db-load-cf',
+        'db-load-dt', 'db-load-git', 'db-load-xml', 'db-run', 'db-update', 'epf-build', 'epf-dump',
+        'web-publish'] }],
   },
   {
     name: 'repository: resolve_settings', py: 'resolve_repository_settings', ps1: 'Resolve-RepositorySettings',

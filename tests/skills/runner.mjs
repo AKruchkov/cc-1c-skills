@@ -274,6 +274,25 @@ function cleanupWorkspace(ws) {
 
 // ─── Arg building ───────────────────────────────────────────────────────────
 
+// Плейсхолдеры кейса: {workDir} — абсолютный путь рабочего каталога, {fakePlatform} — путь к
+// фейковой платформе, которую раскладывает writeFakePlatform (имя зависит от ОС, поэтому кейс
+// адресует её плейсхолдером и остаётся кроссплатформенным). Подстановка нужна не только в
+// аргументах: путь к фейку кладут и ВНУТРЬ подложенного .v8-project.json — иначе кейс про
+// выбор платформы пришлось бы писать двумя копиями под osOnly.
+function substPlaceholders(s, workDir) {
+  const fakePath = join(workDir, process.platform === 'win32' ? 'fake.cmd' : 'fake.sh');
+  return s.replaceAll('{workDir}', workDir).replaceAll('{fakePlatform}', fakePath);
+}
+
+function substDeep(value, workDir) {
+  if (typeof value === 'string') return substPlaceholders(value, workDir);
+  if (Array.isArray(value)) return value.map(v => substDeep(v, workDir));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, substDeep(v, workDir)]));
+  }
+  return value;
+}
+
 // Байты входного файла в заданной кодировке. Нужно для кейсов про кодировку: writeFileSync
 // пишет только UTF-8, а навык обязан одинаково вести себя на UTF-16 с BOM (принять) и на
 // cp1251 (отвергнуть, а не молча подменить кириллицу на U+FFFD). cp1251 в Node нет — кодируем
@@ -355,13 +374,8 @@ function buildArgs(skillConfig, caseData, workDir, inputFilePath, runtime) {
   }
 
   // Append extra args from case (for optional params like -Vendor, -Version).
-  // Supports {workDir} substitution for tests that need absolute paths inside the workspace,
-  // and {fakePlatform} — путь к фейковой платформе, которую раскладывает writeFakePlatform.
   if (caseData.args_extra) {
-    const fakePath = join(workDir, process.platform === 'win32' ? 'fake.cmd' : 'fake.sh');
-    args.push(...caseData.args_extra.map(a => typeof a === 'string'
-      ? a.replace('{workDir}', workDir).replace('{fakePlatform}', fakePath)
-      : a));
+    args.push(...caseData.args_extra.map(a => typeof a === 'string' ? substPlaceholders(a, workDir) : a));
   }
 
   return { scriptPath, args };
@@ -837,9 +851,11 @@ async function runCaseAsync(testCase, opts) {
         // writeFile step — записать произвольный файл в workDir перед запуском скрипта
         if (step.writeFile) {
           const wfPath = join(workDir, step.writeFile.path);
+          // Плейсхолдеры подставляются и здесь. В объектной форме — ДО JSON.stringify: иначе
+          // обратные слэши windows-пути попали бы в готовый JSON неэкранированными.
           const wfContent = typeof step.writeFile.content === 'string'
-            ? step.writeFile.content
-            : JSON.stringify(step.writeFile.content, null, 2);
+            ? substPlaceholders(step.writeFile.content, workDir)
+            : JSON.stringify(substDeep(step.writeFile.content, workDir), null, 2);
           mkdirSync(dirname(wfPath), { recursive: true });
           writeFileSync(wfPath, wfContent, 'utf8');
           // Бит исполнения: на *nix навык запускает платформу через exec, и фейк без +x

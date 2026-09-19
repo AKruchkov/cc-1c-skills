@@ -1,0 +1,24 @@
+{
+  "name": "Платформа берётся из v8path записи базы, а не из корневого",
+  "fakePlatform": { "log": "" },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": ".v8-project.json",
+        "content": {
+          "v8path": "{workDir}/nowhere/1cv8.exe",
+          "databases": [
+            { "id": "dev", "name": "Dev", "type": "file", "path": "{workDir}/ib", "v8path": "{fakePlatform}" }
+          ]
+        }
+      }
+    }
+  ],
+  "args_extra": ["-InfoBasePath", "{workDir}/ib"],
+  "cwd": "workDir",
+  "expect": {
+    "stdoutContains": "Information base created successfully",
+    "stdoutNotContains": "nowhere"
+  },
+  "noSnapshot": "проверяется выбор платформы по stdout, файлов на выходе нет"
+}
