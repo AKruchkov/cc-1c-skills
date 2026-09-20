@@ -994,8 +994,10 @@ function Emit-ValueType {
 # предупреждение, а не отказ: иначе навык не собрал бы того, что поставляет 1С. Соотношение в
 # корпусе erp+acc — 6500 единственных против 1 составного.
 function Warn-DefinedTypeInComposite([int]$fromLength) {
-	$frag = $script:xml.ToString().Substring($fromLength)
-	$members = [regex]::Matches($frag, '<v8:(Type|TypeSet)>').Count
+	$frag = $script:xml.ToString($fromLength, $script:xml.Length - $fromLength)
+	# После имени тега — либо '>', либо пробел: тип из чужого пространства имён несёт локальную
+	# xmlns прямо в теге (<v8:Type xmlns:mxl="…">), и без пробела в классе он не считался членом.
+	$members = [regex]::Matches($frag, '<v8:(Type|TypeSet)[ >]').Count
 	if ($members -lt 2) { return }
 	$dts = @()
 	foreach ($m in [regex]::Matches($frag, '<v8:TypeSet>cfg:(DefinedType\.[^<]+)</v8:TypeSet>')) { $dts += $m.Groups[1].Value }
@@ -1012,7 +1014,9 @@ function Warn-DefinedTypeInComposite([int]$fromLength) {
 # разъехалась бы с ним молча — ровно тот класс отказа, от которого держим гарды.
 function Get-EmittedTypeSets([int]$fromLength) {
 	$sets = @()
-	$frag = $script:xml.ToString().Substring($fromLength)
+	# Ranged-перегрузка, как в Emit-TypeContent: ToString() целиком копировал бы весь буфер
+	# на каждый реквизит — это O(n^2) на крупном объекте.
+	$frag = $script:xml.ToString($fromLength, $script:xml.Length - $fromLength)
 	foreach ($m in [regex]::Matches($frag, '<v8:TypeSet>cfg:([^<]+)</v8:TypeSet>')) { $sets += $m.Groups[1].Value }
 	return $sets
 }

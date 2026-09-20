@@ -1678,6 +1678,7 @@ if not bad_grammar and not not_storable and not unknown_vocab and types_seen:
 #          единственным. В корпусе erp+acc 6500 единственных против 1 составного — и этот один
 #          лежит в типовой ERP (Документ.НачислениеИСписаниеБонусныхБаллов.Баллы), поэтому не ошибка.
 dt_sets_seen = 0
+dt_sets_bad = False
 for tb in root.xpath("//md:Type | //md:ValueType", namespaces=NS):
     sets = tb.xpath("v8:TypeSet", namespaces=NS)
     if not sets:
@@ -1689,13 +1690,16 @@ for tb in root.xpath("//md:Type | //md:ValueType", namespaces=NS):
     for st in sets:
         raw = re.sub(r'^(?:cfg|d\d+p\d+):', '', (st.text or "").strip())
         if owner_kind == "DefinedType":
+            dt_sets_bad = True
             report_error(f"23. Определяемый тип '{obj_name}': в составе тип-множество '{raw}' — платформа не загрузит такой файл («Недопустимый тип»). Состав определяемого типа — только конкретные типы")
             continue
         if owner_kind == "ChartOfCharacteristicTypes" and not re.match(r'^(DefinedType|Characteristic)[.]', raw):
+            dt_sets_bad = True
             report_warn(f"23. План видов характеристик '{obj_name}': тип значения '{raw}' Конфигуратор не предлагает (в дереве выбора это папка без флажка); ЛюбаяСсылка на выгрузке вернётся как ЛюбаяСсылкаИБ")
         if members > 1 and re.match(r'^DefinedType[.]', raw):
+            dt_sets_bad = True
             report_warn(f"23. Составной тип содержит определяемый тип '{raw}' — Конфигуратор даёт выбрать его только единственным; платформа загрузит")
-if dt_sets_seen:
+if dt_sets_seen and not dt_sets_bad:
     report_ok(f"23. Type sets: {dt_sets_seen} block(s) checked")
 
 # ── Check 18: свойства, появившиеся в новых версиях формата ──

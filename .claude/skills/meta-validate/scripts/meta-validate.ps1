@@ -1738,6 +1738,7 @@ if ($badGrammar.Count -eq 0 -and $notStorable.Count -eq 0 -and $unknownVocab.Cou
 #          лежит в типовой ERP (Документ.НачислениеИСписаниеБонусныхБаллов.Баллы), поэтому не ошибка.
 $typeBlocks23 = @($xmlDoc.SelectNodes("//md:Type | //md:ValueType", $ns))
 $dtSetsSeen = 0
+$dtSetsBad = $false
 foreach ($tb in $typeBlocks23) {
 	$sets = @($tb.SelectNodes("v8:TypeSet", $ns))
 	if ($sets.Count -eq 0) { continue }
@@ -1747,18 +1748,21 @@ foreach ($tb in $typeBlocks23) {
 	foreach ($st in $sets) {
 		$raw = $st.InnerText.Trim() -replace '^(?:cfg|d\d+p\d+):', ''
 		if ($ownerKind -eq "DefinedType") {
+			$dtSetsBad = $true
 			Report-Error "23. Определяемый тип '$objName': в составе тип-множество '$raw' — платформа не загрузит такой файл («Недопустимый тип»). Состав определяемого типа — только конкретные типы"
 			continue
 		}
 		if ($ownerKind -eq "ChartOfCharacteristicTypes" -and $raw -notmatch '^(DefinedType|Characteristic)\.') {
+			$dtSetsBad = $true
 			Report-Warn "23. План видов характеристик '$objName': тип значения '$raw' Конфигуратор не предлагает (в дереве выбора это папка без флажка); ЛюбаяСсылка на выгрузке вернётся как ЛюбаяСсылкаИБ"
 		}
 		if ($members -gt 1 -and $raw -match '^DefinedType\.') {
+			$dtSetsBad = $true
 			Report-Warn "23. Составной тип содержит определяемый тип '$raw' — Конфигуратор даёт выбрать его только единственным; платформа загрузит"
 		}
 	}
 }
-if ($dtSetsSeen -gt 0) { Report-OK "23. Type sets: $dtSetsSeen block(s) checked" }
+if ($dtSetsSeen -gt 0 -and -not $dtSetsBad) { Report-OK "23. Type sets: $dtSetsSeen block(s) checked" }
 
 # --- Check 18: свойства, появившиеся в новых версиях формата ---
 # Реестр «тег → минимальная версия формата». Служит двум целям: (1) поймать свойство в файле со

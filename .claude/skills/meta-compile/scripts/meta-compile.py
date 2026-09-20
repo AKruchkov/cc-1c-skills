@@ -1103,7 +1103,9 @@ def emit_value_type(indent, type_str):
 # корпусе erp+acc — 6500 единственных против 1 составного.
 def warn_defined_type_in_composite(from_index):
     frag = chr(10).join(lines[from_index:])
-    if len(re.findall(r'<v8:(?:Type|TypeSet)>', frag)) < 2:
+    # После имени тега — либо '>', либо пробел: тип из чужого пространства имён несёт локальную
+    # xmlns прямо в теге (<v8:Type xmlns:mxl="…">), и без пробела в классе он не считался членом.
+    if len(re.findall(r'<v8:(?:Type|TypeSet)[ >]', frag)) < 2:
         return
     dts = re.findall(r'<v8:TypeSet>cfg:(DefinedType[.][^<]+)</v8:TypeSet>', frag)
     if dts:

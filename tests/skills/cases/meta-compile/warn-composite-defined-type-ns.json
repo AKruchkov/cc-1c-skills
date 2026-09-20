@@ -1,0 +1,15 @@
+{
+  "name": "Предупреждение о составном ловит и тип с локальной xmlns (мимо счётчика членов он не проходит)",
+  "input": {
+    "type": "DataProcessor",
+    "name": "Обработка",
+    "attributes": [
+      "Макет: DefinedType.Сумма + SpreadsheetDocument"
+    ]
+  },
+  "expect": {
+    "stderrContains": [
+      "Составной тип содержит определяемый тип (DefinedType.Сумма)"
+    ]
+  }
+}
