@@ -16,6 +16,7 @@ const GUARDS = [
   ['check-inline-drift.mjs', 'общие inline-реализации: копии совпадают с эталонами'],
   ['check-ps-define-before-call.mjs', 'порядок в .ps1: функция объявлена выше точки вызова'],
   ['check-type-maps.mjs', 'карты типов метаданных: согласованы со спецификацией'],
+  ['check-typeset-coverage.mjs', 'имена типов: вывод meta-info замыкается на вход meta-compile'],
   ['check-format-versions.mjs', 'проверенный диапазон версий формата: согласован со спецификацией'],
   ['check-form-purposes.mjs', 'назначения форм в form-add: согласованы со спецификацией и между портами'],
   ['check-positional-binding.mjs', 'read-only навыки: позиционным остаётся только путь ко входу'],
