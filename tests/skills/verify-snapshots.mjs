@@ -8,8 +8,9 @@
 //           cfe-init, cfe-borrow, cfe-patch-method
 // Работает и с кейсами навыков, которые сами ничего не пишут (info/validate), если у кейса
 // есть preRun: проверяется, что платформа принимает собранную им фикстуру.
-// Для кейсов на `setup: external:` проверка вырождается — 1С грузит собственную выгрузку
-// типовой конфигурации (~3 мин на кейс, ноль информации). Такие гонять через --case.
+// Кейсы на `setup: external:` платформой не проверяются: 1С грузила бы собственную выгрузку
+// типовой конфигурации — минуты на кейс и ноль информации о навыке. Отсеиваются сразу, ДО
+// копирования выгрузки, поэтому стоят доли секунды и полный прогон по навыку не тормозят.
 
 import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, unlinkSync, readFileSync, writeFileSync,
@@ -868,6 +869,27 @@ async function verifyCase(skillName, caseName, skillConfig, caseData, opts) {
     }
   }
 
+  // Кейс на `setup: external:` платформой не проверяется НИКОГДА: грузилась бы собственная
+  // выгрузка типовой — минуты на кейс и ноль информации о навыке. Решение принимаем ЗДЕСЬ, до
+  // Step 0. Раньше оно стояло в Step 7, а Step 0 успевал скопировать выгрузку целиком: 10 кейсов
+  // meta-info на real-* стоили ~32 минуты копирования ради результата, который тут же
+  // выбрасывался. Ни один шаг между Step 0 и Step 7 на вердикт для таких кейсов не влияет.
+  if (typeof caseData.setup === 'string' && caseData.setup.startsWith('external:')) {
+    const extPath = resolve(REPO_ROOT, caseData.setup.slice('external:'.length));
+    // Недоступная выгрузка — СКИП, как в runner.mjs (`ensureSetup`, ветка external): путь к
+    // дампу ERP/БП машинозависим, на маке его нет, и падение здесь красило бы исправный навык.
+    if (!existsSync(extPath)) {
+      result.skipped = true;
+      result.skipReason = `внешняя выгрузка недоступна на этой машине: ${extPath}`;
+      return result;
+    }
+    result.noPlatformReason = 'external: грузилась бы собственная выгрузка типовой (~3 мин, ноль информации о навыке)';
+    result.passed = true;
+    result.steps.push({ step: 'platform-load', ok: true, detail: 'skipped (external setup)' });
+    if (opts.verbose) console.log('    ✓ platform-load: skipped (external setup)');
+    return result;
+  }
+
   // caseFiles — файловый вход кейса (напр. XSD для xdto-compile), как в runner.mjs
   for (const rel of caseData.caseFiles || []) {
     const src = join(CASES, skillName, rel);
@@ -918,26 +940,12 @@ async function verifyCase(skillName, caseName, skillConfig, caseData, opts) {
       // configDir приходил только из скилл-уровневого setup (empty-config), поэтому у навыков
       // с setup: none фикстура до платформы не доезжала, а кейс всё равно получал PASS.
       if (existsSync(join(workDir, 'Configuration.xml'))) configDir = workDir;
-    } else if (typeof caseData.setup === 'string' && caseData.setup.startsWith('external:')) {
-      const extPath = resolve(REPO_ROOT, caseData.setup.slice('external:'.length));
-      // Недоступная внешняя выгрузка — СКИП, как в runner.mjs (`ensureSetup`, ветка
-      // external). Путь к дампу ERP/БП машинозависим: на маке его нет, и падение
-      // здесь красило набор при полностью исправном навыке — расхождение двух
-      // раннеров по одному и тому же ключу DSL.
-      if (!existsSync(extPath)) {
-        result.skipped = true;
-        result.skipReason = `внешняя выгрузка недоступна на этой машине: ${extPath}`;
-        return result;
-      }
-      copyTreeSync(extPath, workDir);
-      log(`external: ${extPath}`, true);
-      configDir = workDir;
     }
 
     // ── Step 1: Setup (cf-init for empty-config, nothing for 'none') ──
     // Skip cf-init if external/fixture setup already provided a complete config
-    const caseProvidedConfig = typeof caseData.setup === 'string' &&
-      (caseData.setup.startsWith('external:') || caseData.setup.startsWith('fixture:'));
+    // Только fixture: external сюда не доходит (отсеян до Step 0).
+    const caseProvidedConfig = typeof caseData.setup === 'string' && caseData.setup.startsWith('fixture:');
     // Skip setup for cf-init skill — the test itself creates the config
     if (configDir && setupType.startsWith('empty-config') && !CONFIG_INIT_SKILLS.has(skillName) && !caseProvidedConfig) {
       try {
@@ -1484,16 +1492,7 @@ async function verifyCase(skillName, caseName, skillConfig, caseData, opts) {
     }
 
     // ── Step 7: Platform load ──
-    // Skip platform load for external dumps (e.g. real ERP/БП configs):
-    // they're huge, version-sensitive, and the point of these test cases is
-    // to exercise the skill script against real-world XML, not to validate
-    // that an entire vendor config loads into a fresh DB.
-    if (caseProvidedConfig && caseData.setup.startsWith('external:')) {
-      result.noPlatformReason = 'external: грузилась бы собственная выгрузка типовой (~3 мин, ноль информации о навыке)';
-      result.passed = true;
-      log('platform-load', true, 'skipped (external setup)');
-      return result;
-    }
+    // Кейсы на external: сюда не доходят — они отсеяны до Step 0.
 
     const dbDir = join(workDir, 'testdb');
 
