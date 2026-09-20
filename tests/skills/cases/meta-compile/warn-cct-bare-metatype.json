@@ -1,0 +1,17 @@
+{
+  "name": "Предупреждение: голый метатип в типе значения ПВХ — Конфигуратор его не предлагает",
+  "input": {
+    "type": "ChartOfCharacteristicTypes",
+    "name": "Виды",
+    "valueTypes": [
+      "CatalogRef.Товары",
+      "DocumentRef"
+    ]
+  },
+  "expect": {
+    "stderrContains": [
+      "Конфигуратор не предлагает",
+      "AnyRef вернётся как AnyIBRef"
+    ]
+  }
+}

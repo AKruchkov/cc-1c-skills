@@ -1,4 +1,4 @@
-﻿# meta-compile v1.113 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.114 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -982,8 +982,39 @@ function Emit-TypeContent {
 function Emit-ValueType {
 	param([string]$indent, [string]$typeStr)
 	X "$indent<Type>"
+	$mark = $script:xml.Length
 	Emit-TypeContent "$indent`t" $typeStr
+	Warn-DefinedTypeInComposite $mark
 	X "$indent</Type>"
+}
+
+# Определяемый тип Конфигуратор даёт выбрать только ЕДИНСТВЕННЫМ, не одним из составного.
+# Загрузчик такое принимает, и в типовой ERP один такой реквизит есть
+# (Документ.НачислениеИСписаниеБонусныхБаллов.Баллы — два определяемых типа подряд), поэтому
+# предупреждение, а не отказ: иначе навык не собрал бы того, что поставляет 1С. Соотношение в
+# корпусе erp+acc — 6500 единственных против 1 составного.
+function Warn-DefinedTypeInComposite([int]$fromLength) {
+	$frag = $script:xml.ToString().Substring($fromLength)
+	$members = [regex]::Matches($frag, '<v8:(Type|TypeSet)>').Count
+	if ($members -lt 2) { return }
+	$dts = @()
+	foreach ($m in [regex]::Matches($frag, '<v8:TypeSet>cfg:(DefinedType\.[^<]+)</v8:TypeSet>')) { $dts += $m.Groups[1].Value }
+	if ($dts.Count -gt 0) {
+		# Прямо в stderr, а не Write-Warning: в PS 5.1 предупреждение уходит не в тот поток
+		# (см. cf-init) и до expect.stderrContains не доезжает.
+		[Console]::Error.WriteLine("WARNING: Составной тип содержит определяемый тип (" + ($dts -join ', ') +
+			"). Конфигуратор даёт выбрать определяемый тип только единственным — собрать такое руками не получится. Платформа загрузит.")
+	}
+}
+
+# Что из только что записанного фрагмента ушло МНОЖЕСТВОМ. Спрашиваем сам эмиттер, а не повторяем
+# его регулярки: список видов, дающих v8:TypeSet, живёт в Emit-TypeContent, и вторая копия
+# разъехалась бы с ним молча — ровно тот класс отказа, от которого держим гарды.
+function Get-EmittedTypeSets([int]$fromLength) {
+	$sets = @()
+	$frag = $script:xml.ToString().Substring($fromLength)
+	foreach ($m in [regex]::Matches($frag, '<v8:TypeSet>cfg:([^<]+)</v8:TypeSet>')) { $sets += $m.Groups[1].Value }
+	return $sets
 }
 
 # --- FillValue (значение заполнения реквизита) ---
@@ -3044,7 +3075,20 @@ function Emit-DefinedTypeProperties {
 	$vt = if ($def.valueType) { "$($def.valueType)" }
 	      elseif ($def.valueTypes) { (@($def.valueTypes) | ForEach-Object { "$_" }) -join ' + ' }
 	      else { '' }
-	if ($vt) { Emit-ValueType $i $vt } else { X "$i<Type/>" }
+	if ($vt) {
+		# Состав определяемого типа — только конкретные типы. Тип-множество внутри платформа не
+		# принимает: загрузка падает целиком с «ОпределяемыйТип.<Имя> - Недопустимый тип» (замерено
+		# на 8.3.24.1691 для ОпределяемыйТип, Характеристика, ЛюбаяСсылка и голых ссылок).
+		# Отказываем здесь, чтобы ошибка называла причину, а не приходила из Конфигуратора.
+		$mark = $script:xml.Length
+		Emit-ValueType $i $vt
+		$sets = @(Get-EmittedTypeSets $mark)
+		if ($sets.Count -gt 0) {
+			Write-Error ("Определяемый тип '$objName': в составе тип-множество — " + ($sets -join ', ') +
+				". Платформа такую конфигурацию не загрузит («Недопустимый тип»). Состав определяемого типа — только конкретные типы (CatalogRef.<Имя>, Number(15,2) и т.п.).")
+			exit 1
+		}
+	} else { X "$i<Type/>" }
 }
 
 function Emit-FunctionalOptionProperties {
@@ -3603,7 +3647,18 @@ function Emit-ChartOfCharacteristicTypesProperties {
 	$vt = $def.valueType; if (-not $vt -and $def.valueTypes) { $vt = ($def.valueTypes -join ' + ') }
 	if ($vt) {
 		X "$i<Type>"
+		$mark = $script:xml.Length
 		Emit-TypeContent "$i`t" "$vt"
+		# Определяемый тип и характеристику Конфигуратор в типе значения ПВХ предлагает, а голый
+		# метатип (СправочникСсылка/ДокументСсылка/…) и ЛюбаяСсылка — нет: в дереве выбора это
+		# папки без флажка. Загрузку платформа пропускает, но ЛюбаяСсылка молча превращается в
+		# ЛюбаяСсылкуИБ на выгрузке. Предупреждаем: не ошибка, но руками так не собрать.
+		Warn-DefinedTypeInComposite $mark
+		foreach ($ts in @(Get-EmittedTypeSets $mark)) {
+			if ($ts -notmatch '^(DefinedType|Characteristic)\.') {
+				[Console]::Error.WriteLine("WARNING: План видов характеристик '$objName': тип значения '$ts' Конфигуратор не предлагает (в дереве выбора это папка без флажка). Платформа загрузит, но AnyRef вернётся как AnyIBRef. Обычно нужен конкретный тип или ОпределяемыйТип.<Имя>.")
+			}
+		}
 		X "$i</Type>"
 	} else {
 		X "$i<Type>"

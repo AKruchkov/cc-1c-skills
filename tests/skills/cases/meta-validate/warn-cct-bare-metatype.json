@@ -1,0 +1,12 @@
+{
+  "name": "Валидатор предупреждает: голый метатип в типе значения ПВХ — Конфигуратор его не предлагает",
+  "setup": "fixture:cct-bare-metatype",
+  "params": {
+    "objectPath": "ChartsOfCharacteristicTypes/Виды.xml"
+  },
+  "expect": {
+    "stdoutContains": [
+      "23. План видов характеристик 'Виды': тип значения 'DocumentRef' Конфигуратор не предлагает"
+    ]
+  }
+}

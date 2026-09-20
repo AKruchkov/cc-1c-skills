@@ -1,4 +1,4 @@
-﻿# meta-validate v1.28 — Validate 1C metadata object structure
+﻿# meta-validate v1.29 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1724,6 +1724,41 @@ if ($unknownVocab.Count -gt 0) {
 if ($badGrammar.Count -eq 0 -and $notStorable.Count -eq 0 -and $unknownVocab.Count -eq 0 -and $typesSeen -gt 0) {
 	Report-OK "22. Type names: $typesSeen checked"
 }
+
+# --- Check 23: тип-множество там, где его не принимают ---
+# Три уровня строгости, все замерены загрузкой в базу на 8.3.24.1691:
+#  ERROR — множество в составе определяемого типа: платформа отвергает файл целиком
+#          («ОпределяемыйТип.<Имя> - Недопустимый тип»), проверено на ОпределяемыйТип,
+#          Характеристика, ЛюбаяСсылка и голых ссылках;
+#  WARN  — голый метатип в типе значения ПВХ: загрузка проходит, но Конфигуратор такой тип не
+#          предлагает (в дереве выбора это папка без флажка), а ЛюбаяСсылка на выгрузке
+#          возвращается как ЛюбаяСсылкаИБ;
+#  WARN  — определяемый тип одним из составного: Конфигуратор даёт выбрать его только
+#          единственным. В корпусе erp+acc 6500 единственных против 1 составного — и этот один
+#          лежит в типовой ERP (Документ.НачислениеИСписаниеБонусныхБаллов.Баллы), поэтому не ошибка.
+$typeBlocks23 = @($xmlDoc.SelectNodes("//md:Type | //md:ValueType", $ns))
+$dtSetsSeen = 0
+foreach ($tb in $typeBlocks23) {
+	$sets = @($tb.SelectNodes("v8:TypeSet", $ns))
+	if ($sets.Count -eq 0) { continue }
+	$dtSetsSeen++
+	$members = $tb.SelectNodes("v8:Type", $ns).Count + $sets.Count
+	$ownerKind = $tb.ParentNode.ParentNode.get_LocalName()   # <Type> → <Properties> → <DefinedType>/…
+	foreach ($st in $sets) {
+		$raw = $st.InnerText.Trim() -replace '^(?:cfg|d\d+p\d+):', ''
+		if ($ownerKind -eq "DefinedType") {
+			Report-Error "23. Определяемый тип '$objName': в составе тип-множество '$raw' — платформа не загрузит такой файл («Недопустимый тип»). Состав определяемого типа — только конкретные типы"
+			continue
+		}
+		if ($ownerKind -eq "ChartOfCharacteristicTypes" -and $raw -notmatch '^(DefinedType|Characteristic)\.') {
+			Report-Warn "23. План видов характеристик '$objName': тип значения '$raw' Конфигуратор не предлагает (в дереве выбора это папка без флажка); ЛюбаяСсылка на выгрузке вернётся как ЛюбаяСсылкаИБ"
+		}
+		if ($members -gt 1 -and $raw -match '^DefinedType\.') {
+			Report-Warn "23. Составной тип содержит определяемый тип '$raw' — Конфигуратор даёт выбрать его только единственным; платформа загрузит"
+		}
+	}
+}
+if ($dtSetsSeen -gt 0) { Report-OK "23. Type sets: $dtSetsSeen block(s) checked" }
 
 # --- Check 18: свойства, появившиеся в новых версиях формата ---
 # Реестр «тег → минимальная версия формата». Служит двум целям: (1) поймать свойство в файле со

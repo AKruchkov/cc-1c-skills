@@ -1,4 +1,4 @@
-# meta-validate v1.28 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.29 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -1665,6 +1665,38 @@ for uk in sorted(unknown_vocab):
                 "(список пополняется с версиями платформы)")
 if not bad_grammar and not not_storable and not unknown_vocab and types_seen:
     report_ok(f"22. Type names: {types_seen} checked")
+
+# ── Check 23: тип-множество там, где его не принимают ──
+# Три уровня строгости, все замерены загрузкой в базу на 8.3.24.1691:
+#  ERROR — множество в составе определяемого типа: платформа отвергает файл целиком
+#          («ОпределяемыйТип.<Имя> - Недопустимый тип»), проверено на ОпределяемыйТип,
+#          Характеристика, ЛюбаяСсылка и голых ссылках;
+#  WARN  — голый метатип в типе значения ПВХ: загрузка проходит, но Конфигуратор такой тип не
+#          предлагает (в дереве выбора это папка без флажка), а ЛюбаяСсылка на выгрузке
+#          возвращается как ЛюбаяСсылкаИБ;
+#  WARN  — определяемый тип одним из составного: Конфигуратор даёт выбрать его только
+#          единственным. В корпусе erp+acc 6500 единственных против 1 составного — и этот один
+#          лежит в типовой ERP (Документ.НачислениеИСписаниеБонусныхБаллов.Баллы), поэтому не ошибка.
+dt_sets_seen = 0
+for tb in root.xpath("//md:Type | //md:ValueType", namespaces=NS):
+    sets = tb.xpath("v8:TypeSet", namespaces=NS)
+    if not sets:
+        continue
+    dt_sets_seen += 1
+    members = len(tb.xpath("v8:Type", namespaces=NS)) + len(sets)
+    owner = tb.getparent().getparent()
+    owner_kind = etree.QName(owner.tag).localname if owner is not None else ""
+    for st in sets:
+        raw = re.sub(r'^(?:cfg|d\d+p\d+):', '', (st.text or "").strip())
+        if owner_kind == "DefinedType":
+            report_error(f"23. Определяемый тип '{obj_name}': в составе тип-множество '{raw}' — платформа не загрузит такой файл («Недопустимый тип»). Состав определяемого типа — только конкретные типы")
+            continue
+        if owner_kind == "ChartOfCharacteristicTypes" and not re.match(r'^(DefinedType|Characteristic)[.]', raw):
+            report_warn(f"23. План видов характеристик '{obj_name}': тип значения '{raw}' Конфигуратор не предлагает (в дереве выбора это папка без флажка); ЛюбаяСсылка на выгрузке вернётся как ЛюбаяСсылкаИБ")
+        if members > 1 and re.match(r'^DefinedType[.]', raw):
+            report_warn(f"23. Составной тип содержит определяемый тип '{raw}' — Конфигуратор даёт выбрать его только единственным; платформа загрузит")
+if dt_sets_seen:
+    report_ok(f"23. Type sets: {dt_sets_seen} block(s) checked")
 
 # ── Check 18: свойства, появившиеся в новых версиях формата ──
 # Реестр «тег → минимальная версия формата». Служит двум целям: (1) поймать свойство в файле со

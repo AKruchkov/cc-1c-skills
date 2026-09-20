@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.113 — Compile 1C metadata object from JSON
+# meta-compile v1.114 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -1091,8 +1091,34 @@ def emit_type_content(indent, type_str):
 
 def emit_value_type(indent, type_str):
     X(f'{indent}<Type>')
+    mark = len(lines)
     emit_type_content(f'{indent}\t', type_str)
+    warn_defined_type_in_composite(mark)
     X(f'{indent}</Type>')
+
+# Определяемый тип Конфигуратор даёт выбрать только ЕДИНСТВЕННЫМ, не одним из составного.
+# Загрузчик такое принимает, и в типовой ERP один такой реквизит есть
+# (Документ.НачислениеИСписаниеБонусныхБаллов.Баллы — два определяемых типа подряд), поэтому
+# предупреждение, а не отказ: иначе навык не собрал бы того, что поставляет 1С. Соотношение в
+# корпусе erp+acc — 6500 единственных против 1 составного.
+def warn_defined_type_in_composite(from_index):
+    frag = chr(10).join(lines[from_index:])
+    if len(re.findall(r'<v8:(?:Type|TypeSet)>', frag)) < 2:
+        return
+    dts = re.findall(r'<v8:TypeSet>cfg:(DefinedType[.][^<]+)</v8:TypeSet>', frag)
+    if dts:
+        print("WARNING: Составной тип содержит определяемый тип (" + ', '.join(dts) +
+              "). Конфигуратор даёт выбрать определяемый тип только единственным — собрать такое "
+              "руками не получится. Платформа загрузит.", file=sys.stderr)
+
+# Что из только что записанного фрагмента ушло МНОЖЕСТВОМ. Спрашиваем сам эмиттер, а не повторяем
+# его регулярки: список видов, дающих v8:TypeSet, живёт в emit_type_content, и вторая копия
+# разъехалась бы с ним молча — ровно тот класс отказа, от которого держим гарды.
+def get_emitted_type_sets(from_index):
+    out = []
+    for ln in lines[from_index:]:
+        out += re.findall(r'<v8:TypeSet>cfg:([^<]+)</v8:TypeSet>', ln)
+    return out
 
 # --- FillValue (значение заполнения реквизита) ---
 # Пара FillFromFillingValue+FillValue — единый блок «заполнения» (недоступен у реквизитов ТЧ).
@@ -3132,7 +3158,19 @@ def emit_defined_type_properties(indent):
     else:
         vt = ''
     if vt:
+        # Состав определяемого типа — только конкретные типы. Тип-множество внутри платформа не
+        # принимает: загрузка падает целиком с «ОпределяемыйТип.<Имя> - Недопустимый тип» (замерено
+        # на 8.3.24.1691 для ОпределяемыйТип, Характеристика, ЛюбаяСсылка и голых ссылок).
+        # Отказываем здесь, чтобы ошибка называла причину, а не приходила из Конфигуратора.
+        mark = len(lines)
         emit_value_type(i, vt)
+        sets = get_emitted_type_sets(mark)
+        if sets:
+            print(f"Определяемый тип '{obj_name}': в составе тип-множество — " + ', '.join(sets) +
+                  ". Платформа такую конфигурацию не загрузит («Недопустимый тип»). "
+                  "Состав определяемого типа — только конкретные типы (CatalogRef.<Имя>, Number(15,2) и т.п.).",
+                  file=sys.stderr)
+            sys.exit(1)
     else:
         X(f'{i}<Type/>')
 
@@ -3699,7 +3737,18 @@ def emit_chart_of_characteristic_types_properties(indent):
         vt = ' + '.join(defn['valueTypes'])
     if vt:
         X(f'{i}<Type>')
+        mark = len(lines)
         emit_type_content(f'{i}\t', str(vt))
+        # Определяемый тип и характеристику Конфигуратор в типе значения ПВХ предлагает, а голый
+        # метатип (СправочникСсылка/ДокументСсылка/…) и ЛюбаяСсылка — нет: в дереве выбора это
+        # папки без флажка. Загрузку платформа пропускает, но ЛюбаяСсылка молча превращается в
+        # ЛюбаяСсылкуИБ на выгрузке. Предупреждаем: не ошибка, но руками так не собрать.
+        warn_defined_type_in_composite(mark)
+        for ts in get_emitted_type_sets(mark):
+            if not re.match(r'^(DefinedType|Characteristic)[.]', ts):
+                print(f"WARNING: План видов характеристик '{obj_name}': тип значения '{ts}' Конфигуратор не предлагает "
+                      "(в дереве выбора это папка без флажка). Платформа загрузит, но AnyRef вернётся как AnyIBRef. "
+                      "Обычно нужен конкретный тип или ОпределяемыйТип.<Имя>.", file=sys.stderr)
         X(f'{i}</Type>')
     else:
         X(f'{i}<Type>')

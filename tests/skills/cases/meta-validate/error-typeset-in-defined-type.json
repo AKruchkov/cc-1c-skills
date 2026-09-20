@@ -1,0 +1,14 @@
+{
+  "name": "Валидатор находит ошибку: тип-множество в составе определяемого типа",
+  "setup": "fixture:defined-type-typeset",
+  "params": {
+    "objectPath": "DefinedTypes/Любой.xml"
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "23. Определяемый тип 'Любой': в составе тип-множество 'AnyRef'",
+      "платформа не загрузит такой файл"
+    ]
+  }
+}
