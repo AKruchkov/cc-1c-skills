@@ -1,0 +1,16 @@
+{
+  "name": "Предупреждение: характеристика в типе значения ПВХ — Конфигуратор её не предлагает",
+  "input": {
+    "type": "ChartOfCharacteristicTypes",
+    "name": "Виды2",
+    "valueTypes": [
+      "CatalogRef.Товары",
+      "Characteristic.Прочие"
+    ]
+  },
+  "expect": {
+    "stderrContains": [
+      "тип значения 'Characteristic.Прочие' Конфигуратор не предлагает"
+    ]
+  }
+}

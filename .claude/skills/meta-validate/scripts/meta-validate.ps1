@@ -1752,7 +1752,7 @@ foreach ($tb in $typeBlocks23) {
 			Report-Error "23. Определяемый тип '$objName': в составе тип-множество '$raw' — платформа не загрузит такой файл («Недопустимый тип»). Состав определяемого типа — только конкретные типы"
 			continue
 		}
-		if ($ownerKind -eq "ChartOfCharacteristicTypes" -and $raw -notmatch '^(DefinedType|Characteristic)\.') {
+		if ($ownerKind -eq "ChartOfCharacteristicTypes" -and $raw -notmatch '^DefinedType\.') {
 			$dtSetsBad = $true
 			Report-Warn "23. План видов характеристик '$objName': тип значения '$raw' Конфигуратор не предлагает (в дереве выбора это папка без флажка); ЛюбаяСсылка на выгрузке вернётся как ЛюбаяСсылкаИБ"
 		}

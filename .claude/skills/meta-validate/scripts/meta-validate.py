@@ -1693,7 +1693,7 @@ for tb in root.xpath("//md:Type | //md:ValueType", namespaces=NS):
             dt_sets_bad = True
             report_error(f"23. Определяемый тип '{obj_name}': в составе тип-множество '{raw}' — платформа не загрузит такой файл («Недопустимый тип»). Состав определяемого типа — только конкретные типы")
             continue
-        if owner_kind == "ChartOfCharacteristicTypes" and not re.match(r'^(DefinedType|Characteristic)[.]', raw):
+        if owner_kind == "ChartOfCharacteristicTypes" and not re.match(r'^DefinedType[.]', raw):
             dt_sets_bad = True
             report_warn(f"23. План видов характеристик '{obj_name}': тип значения '{raw}' Конфигуратор не предлагает (в дереве выбора это папка без флажка); ЛюбаяСсылка на выгрузке вернётся как ЛюбаяСсылкаИБ")
         if members > 1 and re.match(r'^DefinedType[.]', raw):
