@@ -1,0 +1,48 @@
+{
+  "name": "Реквизит на определяемом типе-псевдониме: глоссарий показывает, что это число",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DefinedType",
+        "name": "ДенежнаяСумма",
+        "valueType": "Number(15,2)"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Договоры",
+        "attributes": [
+          "Сумма: DefinedType.ДенежнаяСумма",
+          "СуммаАванса: DefinedType.ДенежнаяСумма"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Договоры"
+  },
+  "args_extra": [
+    "-Mode",
+    "overview"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "Сумма",
+      "ОпределяемыйТип.ДенежнаяСумма",
+      "Множества типов в составе:",
+      "  ОпределяемыйТип.ДенежнаяСумма → Число(15,2)"
+    ]
+  }
+}

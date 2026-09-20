@@ -1,0 +1,123 @@
+{
+  "name": "Подписка: явных источников больше порога — overview сворачивает их в счётчик",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonModule",
+        "name": "Обработчики",
+        "server": true
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Д1"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Д2"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Д3"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Д4"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Д5"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Д6"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "EventSubscription",
+        "name": "Многие",
+        "event": "BeforeWrite",
+        "handler": "Обработчики.ПередЗаписью",
+        "source": [
+          "DocumentObject.Д1",
+          "DocumentObject.Д2",
+          "DocumentObject.Д3",
+          "DocumentObject.Д4",
+          "DocumentObject.Д5",
+          "DocumentObject.Д6",
+          "CatalogObject"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "EventSubscriptions/Многие.xml"
+  },
+  "args_extra": [
+    "-Mode",
+    "overview"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "Источники (7):",
+      "  СправочникОбъект (все)",
+      "  и ещё явных типов: 6 (-Mode full)"
+    ],
+    "stdoutNotContains": [
+      "ДокументОбъект.Д3"
+    ]
+  }
+}

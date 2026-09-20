@@ -1,0 +1,122 @@
+{
+  "name": "Определяемый тип выше порога: вместо состава счётчик и команда раскрытия",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "К1"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "К2"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "К3"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "К4"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "К5"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "К6"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DefinedType",
+        "name": "ХозяинФайла",
+        "valueTypes": [
+          "CatalogRef.К1",
+          "CatalogRef.К2",
+          "CatalogRef.К3",
+          "CatalogRef.К4",
+          "CatalogRef.К5",
+          "CatalogRef.К6"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Файлы",
+        "attributes": [
+          "ХозяинФайла: DefinedType.ХозяинФайла"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Файлы"
+  },
+  "args_extra": [
+    "-Mode",
+    "full"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "ОпределяемыйТип.ХозяинФайла",
+      "  ОпределяемыйТип.ХозяинФайла — типов: 6",
+      "    раскрыть: meta-info -ObjectPath DefinedTypes/ХозяинФайла.xml -Mode full"
+    ],
+    "stdoutNotContains": [
+      "СправочникСсылка.К3"
+    ]
+  }
+}

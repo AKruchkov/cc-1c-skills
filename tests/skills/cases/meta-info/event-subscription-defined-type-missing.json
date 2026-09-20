@@ -1,0 +1,49 @@
+{
+  "name": "Определяемого типа нет в выгрузке: глоссарий говорит это прямо, а не молчит",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonModule",
+        "name": "Обработчики",
+        "server": true
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "EventSubscription",
+        "name": "БезФайлаТипа",
+        "event": "BeforeWrite",
+        "handler": "Обработчики.ПередЗаписью",
+        "source": [
+          "DefinedType.ЕгоНетВВыгрузке"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "EventSubscriptions/БезФайлаТипа.xml"
+  },
+  "args_extra": [
+    "-Mode",
+    "full"
+  ],
+  "skipPlatformVerify": "частичная выгрузка по построению: подписка ссылается на определяемый тип, которого в конфигурации нет — платформа такую загрузить не может, а проверяем мы именно этот случай",
+  "expect": {
+    "stdoutContains": [
+      "Источники (1):",
+      "  ОпределяемыйТип.ЕгоНетВВыгрузке",
+      "  ОпределяемыйТип.ЕгоНетВВыгрузке — файла типа нет в выгрузке"
+    ]
+  }
+}

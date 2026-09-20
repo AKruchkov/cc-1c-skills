@@ -1,0 +1,46 @@
+{
+  "name": "Определяемый тип содержит множество: счётчик «Типы (N)» его не теряет",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Товары"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DefinedType",
+        "name": "Любой",
+        "valueTypes": [
+          "CatalogRef.Товары",
+          "AnyRef"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "DefinedTypes/Любой.xml"
+  },
+  "args_extra": [
+    "-Mode",
+    "full"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "Типы (2):",
+      "  СправочникСсылка.Товары",
+      "  ЛюбаяСсылка"
+    ]
+  }
+}

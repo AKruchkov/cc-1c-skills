@@ -1,0 +1,92 @@
+{
+  "name": "Подписка: множества в overview — источники названы, глоссарий раскрывает состав",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Товары"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Заказ"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonModule",
+        "name": "Обработчики",
+        "server": true
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DefinedType",
+        "name": "Коллекция",
+        "valueTypes": [
+          "CatalogObject.Товары",
+          "DocumentObject.Заказ"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "EventSubscription",
+        "name": "Смешанная",
+        "source": [
+          "DocumentObject.Заказ",
+          "DefinedType.Коллекция",
+          "DocumentObject",
+          "ConstantValueManager"
+        ],
+        "event": "BeforeWrite",
+        "handler": "Обработчики.ПередЗаписью"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "EventSubscriptions/Смешанная.xml"
+  },
+  "args_extra": [
+    "-Mode",
+    "overview"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "Источники (4):",
+      "  ДокументОбъект.Заказ",
+      "  ОпределяемыйТип.Коллекция",
+      "  ДокументОбъект (все)",
+      "  КонстантаМенеджерЗначения (все)",
+      "Множества типов в составе:",
+      "  ОпределяемыйТип.Коллекция → СправочникОбъект.Товары | ДокументОбъект.Заказ"
+    ]
+  }
+}

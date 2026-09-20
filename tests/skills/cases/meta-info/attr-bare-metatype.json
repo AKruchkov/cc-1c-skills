@@ -1,0 +1,45 @@
+{
+  "name": "Голый метатип в типе реквизита: суффикс «(все)» отличает класс от конкретного типа",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Заказ"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Связи",
+        "attributes": [
+          "Основание: DocumentRef + CatalogRef",
+          "Конкретный: DocumentRef.Заказ"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Связи"
+  },
+  "args_extra": [
+    "-Mode",
+    "overview"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "ДокументСсылка (все) | СправочникСсылка (все)",
+      "ДокументСсылка.Заказ"
+    ]
+  }
+}
