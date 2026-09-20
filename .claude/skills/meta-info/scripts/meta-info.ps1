@@ -250,7 +250,6 @@ function Resolve-DefinedType([string]$dtName) {
 				$dtNs.AddNamespace("v8", "http://v8.1c.ru/8.1/data/core")
 				$tn = $dtDoc.SelectSingleNode("/md:MetaDataObject/md:DefinedType/md:Properties/md:Type", $dtNs)
 				if ($tn) {
-					$res.Found = $true
 					$members = @()
 					$script:inTypeSetExpansion = $true
 					try {
@@ -264,6 +263,9 @@ function Resolve-DefinedType([string]$dtName) {
 						}
 					} finally { $script:inTypeSetExpansion = $false }
 					$res.Members = $members
+					# Found только после успешного разбора: иначе упавшее раскрытие
+					# печаталось бы как «состав пуст» — ложь вместо «не разобран».
+					$res.Found = $true
 				}
 			} catch { $res.Broken = $true }
 			if (-not $res.Found) { $res.Broken = $true }
@@ -727,6 +729,12 @@ function Format-SourceType([string]$raw) {
 	if ($raw -match '^cfg:(\w+)\.(.+)$') {
 		$prefix = $Matches[1]; $name = $Matches[2]
 		if ($objectTypeMap.ContainsKey($prefix)) { return "$($objectTypeMap[$prefix]).$name" }
+	}
+	# Голый вид без точки тоже бывает источником: meta-compile пишет менеджера (ДокументМенеджер)
+	# обычным v8:Type. Суффикса «(все)» тут НЕ ставим — это сам тип менеджера, а не класс объектов;
+	# множеством голый вид приходит через v8:TypeSet, и его форматирует Format-SingleTypeSet.
+	if ($raw -match '^cfg:(\w+)$' -and $objectTypeMap.ContainsKey($Matches[1])) {
+		return $objectTypeMap[$Matches[1]]
 	}
 	if ($raw -match '^cfg:(.+)$') { return $Matches[1] }
 	return $raw
@@ -1440,12 +1448,10 @@ if (-not $drillDone) {
 					Out "Источники ($total):"
 					# full печатает всё: режим для этого и нужен, а длину держит постраничник.
 					# В overview явные типы сворачиваем в счётчик — их бывает больше тысячи.
-					$listTypes = ($Mode -eq "full") -or ($total -le $script:composedTypeThreshold)
+					$listTypes = ($Mode -eq "full") -or ($srcTypes.Count -le $script:composedTypeThreshold)
 					if ($listTypes) { foreach ($s in $srcTypes) { Out "  $s" } }
 					foreach ($s in $srcSets) { Out "  $s" }
-					if (-not $listTypes -and $srcTypes.Count -gt 0) {
-						Out "  и ещё явных типов: $($srcTypes.Count) (-Mode full)"
-					}
+					if (-not $listTypes) { Out "  явных типов: $($srcTypes.Count) (-Mode full)" }
 				}
 			}
 		}

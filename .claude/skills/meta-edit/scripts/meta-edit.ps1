@@ -625,9 +625,6 @@ function Resolve-TypeStr {
 	$typeStr = ($typeStr -replace '\s*\((?:все|all)\)\s*$', '').Trim()
 	$typeStr = ($typeStr -replace '\s*[—-]\s*(?:типов|types):\s*\d+\s*$', '').Trim()
 	$typeStr = ($typeStr -replace '\s*\((?:типов|types):\s*\d+\)\s*$', '').Trim()
-	# Строка глоссария целиком: «ОпределяемыйТип.X -> Число(15,2)». Имя множества стоит слева,
-	# раскрытие справа — берём левую часть, она и есть тип.
-	if ($typeStr -match '^(.+?)\s*(?:→|->)\s*.+$') { $typeStr = $Matches[1].Trim() }
 
 	# Параметризованные типы: Number(15,2), Строка(100)
 	if ($typeStr -match '^([^(]+)\((.+)\)$') {

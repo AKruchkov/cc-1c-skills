@@ -328,7 +328,6 @@ def resolve_defined_type(dt_name):
                 dt_root = etree.parse(dt_path, parser_xml).getroot()
                 tn = find(dt_root, "/md:MetaDataObject/md:DefinedType/md:Properties/md:Type")
                 if tn is not None:
-                    res["found"] = True
                     members = []
                     _in_type_set_expansion["on"] = True
                     try:
@@ -340,6 +339,9 @@ def resolve_defined_type(dt_name):
                     finally:
                         _in_type_set_expansion["on"] = False
                     res["members"] = members
+                    # found только после успешного разбора: иначе упавшее раскрытие
+                    # печаталось бы как «состав пуст» — ложь вместо «не разобран».
+                    res["found"] = True
             except Exception:
                 res["broken"] = True
             if not res["found"]:
@@ -793,6 +795,12 @@ def format_source_type(raw):
         name = m.group(2)
         if prefix in object_type_map:
             return f"{object_type_map[prefix]}.{name}"
+    # Голый вид без точки тоже бывает источником: meta-compile пишет менеджера (ДокументМенеджер)
+    # обычным v8:Type. Суффикса «(все)» тут НЕ ставим — это сам тип менеджера, а не класс объектов;
+    # множеством голый вид приходит через v8:TypeSet, и его форматирует format_single_type_set.
+    m = re.match(r'^cfg:(\w+)$', raw)
+    if m and m.group(1) in object_type_map:
+        return object_type_map[m.group(1)]
     m = re.match(r'^cfg:(.+)$', raw)
     if m:
         return m.group(1)
@@ -883,19 +891,9 @@ def get_object_support_status(obj_uuid):
     try:
         if _sg_is_external_root(object_path):
             return None
-        d = os.path.dirname(object_path)
-        bin_path = None
-        for _ in range(8):
-            if not d:
-                break
-            cand = os.path.join(d, "Ext", "ParentConfigurations.bin")
-            if os.path.exists(cand) or os.path.exists(os.path.join(d, "Configuration.xml")):
-                bin_path = cand
-                break
-            parent = os.path.dirname(d)
-            if parent == d:
-                break
-            d = parent
+        # Корень конфигурации ищем тем же климбом, что и состав определяемых типов.
+        root = get_config_root_dir()
+        bin_path = os.path.join(root, "Ext", "ParentConfigurations.bin") if root else None
         if not bin_path or not os.path.exists(bin_path):
             return "не на поддержке"
         data = open(bin_path, "rb").read()
@@ -1474,14 +1472,14 @@ if not drill_done:
                     out(f"Источники ({total}):")
                     # full печатает всё: режим для этого и нужен, а длину держит постраничник.
                     # В overview явные типы сворачиваем в счётчик — их бывает больше тысячи.
-                    list_types = mode == "full" or total <= COMPOSED_TYPE_THRESHOLD
+                    list_types = mode == "full" or len(src_types) <= COMPOSED_TYPE_THRESHOLD
                     if list_types:
                         for s in src_types:
                             out(f"  {s}")
                     for s in src_sets:
                         out(f"  {s}")
-                    if not list_types and src_types:
-                        out(f"  и ещё явных типов: {len(src_types)} (-Mode full)")
+                    if not list_types:
+                        out(f"  явных типов: {len(src_types)} (-Mode full)")
 
         # HTTPService
         if md_type == "HTTPService":
