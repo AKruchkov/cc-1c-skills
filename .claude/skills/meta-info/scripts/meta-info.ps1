@@ -1158,9 +1158,11 @@ if (-not $drillDone) {
 		if ($mdType -eq "DefinedType") {
 			$typeNode2 = $props.SelectSingleNode("md:Type", $ns)
 			if ($typeNode2) {
-				# Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
-				# типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
-				# «Типы (N)» врал.
+				# Оба узла, одним XPath и в порядке документа. v8:TypeSet внутри определяемого
+				# типа платформа НЕ принимает («Недопустимый тип», замерено на 8.3.24.1691 для
+				# AnyRef, голого CatalogRef, Characteristic.X и вложенного DefinedType.X),
+				# поэтому в выгрузке его не бывает — но в рукотворном файле бывает, и тогда
+				# чтение только v8:Type МОЛЧА теряло узел, а счётчик «Типы (N)» врал.
 				$types = @()
 				foreach ($t in $typeNode2.SelectNodes("v8:Type|v8:TypeSet", $ns)) {
 					if ($t.get_LocalName() -eq 'TypeSet') { $types += Format-SingleTypeSet $t.InnerText }
@@ -1360,9 +1362,11 @@ if (-not $drillDone) {
 		if ($mdType -eq "DefinedType") {
 			$typeNode2 = $props.SelectSingleNode("md:Type", $ns)
 			if ($typeNode2) {
-				# Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
-				# типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
-				# «Типы (N)» врал.
+				# Оба узла, одним XPath и в порядке документа. v8:TypeSet внутри определяемого
+				# типа платформа НЕ принимает («Недопустимый тип», замерено на 8.3.24.1691 для
+				# AnyRef, голого CatalogRef, Characteristic.X и вложенного DefinedType.X),
+				# поэтому в выгрузке его не бывает — но в рукотворном файле бывает, и тогда
+				# чтение только v8:Type МОЛЧА теряло узел, а счётчик «Типы (N)» врал.
 				$types = @()
 				foreach ($t in $typeNode2.SelectNodes("v8:Type|v8:TypeSet", $ns)) {
 					if ($t.get_LocalName() -eq 'TypeSet') { $types += Format-SingleTypeSet $t.InnerText }

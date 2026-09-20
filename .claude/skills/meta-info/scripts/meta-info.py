@@ -1216,9 +1216,11 @@ if not drill_done:
         if md_type == "DefinedType":
             type_node2 = find(props, "md:Type")
             if type_node2 is not None:
-                # Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
-                # типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
-                # «Типы (N)» врал.
+                # Оба узла, одним XPath и в порядке документа. v8:TypeSet внутри определяемого
+                # типа платформа НЕ принимает («Недопустимый тип», замерено на 8.3.24.1691 для
+                # AnyRef, голого CatalogRef, Characteristic.X и вложенного DefinedType.X),
+                # поэтому в выгрузке его не бывает — но в рукотворном файле бывает, и тогда
+                # чтение только v8:Type МОЛЧА теряло узел, а счётчик «Типы (N)» врал.
                 types = []
                 for t in find_all(type_node2, "v8:Type|v8:TypeSet"):
                     if local_name(t) == "TypeSet":
@@ -1396,9 +1398,11 @@ if not drill_done:
         if md_type == "DefinedType":
             type_node2 = find(props, "md:Type")
             if type_node2 is not None:
-                # Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
-                # типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
-                # «Типы (N)» врал.
+                # Оба узла, одним XPath и в порядке документа. v8:TypeSet внутри определяемого
+                # типа платформа НЕ принимает («Недопустимый тип», замерено на 8.3.24.1691 для
+                # AnyRef, голого CatalogRef, Characteristic.X и вложенного DefinedType.X),
+                # поэтому в выгрузке его не бывает — но в рукотворном файле бывает, и тогда
+                # чтение только v8:Type МОЛЧА теряло узел, а счётчик «Типы (N)» врал.
                 types = []
                 for t in find_all(type_node2, "v8:Type|v8:TypeSet"):
                     if local_name(t) == "TypeSet":

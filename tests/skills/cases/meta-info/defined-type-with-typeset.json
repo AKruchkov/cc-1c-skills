@@ -1,34 +1,6 @@
 {
-  "name": "Определяемый тип содержит множество: счётчик «Типы (N)» его не теряет",
-  "setup": "empty-config",
-  "preRun": [
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "Catalog",
-        "name": "Товары"
-      },
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    },
-    {
-      "script": "meta-compile/scripts/meta-compile",
-      "input": {
-        "type": "DefinedType",
-        "name": "Любой",
-        "valueTypes": [
-          "CatalogRef.Товары",
-          "AnyRef"
-        ]
-      },
-      "args": {
-        "-JsonPath": "{inputFile}",
-        "-OutputDir": "{workDir}"
-      }
-    }
-  ],
+  "name": "Множество внутри определяемого типа: счётчик «Типы (N)» его не теряет",
+  "setup": "fixture:defined-type-with-typeset",
   "params": {
     "objectPath": "DefinedTypes/Любой.xml"
   },
@@ -36,6 +8,7 @@
     "-Mode",
     "full"
   ],
+  "skipPlatformVerify": "v8:TypeSet внутри определяемого типа платформа не принимает — «ОпределяемыйТип.Любой - Недопустимый тип», замерено на 8.3.24.1691 для AnyRef, голого CatalogRef, Characteristic.X и вложенного DefinedType.X. Фикстура собрана вручную именно поэтому: проверяем, что читалка не теряет узел молча, а такой файл бывает только рукотворным",
   "expect": {
     "stdoutContains": [
       "Типы (2):",
