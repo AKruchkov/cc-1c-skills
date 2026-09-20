@@ -134,6 +134,19 @@ JSON DSL для описания объектов метаданных конф�
   `ExchangePlanRef`, `BusinessProcessRef`, `TaskRef`, а также `AnyRef` (любая ссылка) и `AnyIBRef` (любая ссылка ИБ).
   Отличается от именованного `CatalogRef.Xxx` (конкретный тип через `v8:Type`) отсутствием точки. В составном типе —
   каждый через `+`: `DocumentRef + CatalogRef`.
+- **Голый ОБЪЕКТНЫЙ метатип** — то же самое для объектных типов, а не ссылочных: `CatalogObject`,
+  `DocumentObject`, `ChartOfAccountsObject`, `ChartOfCharacteristicTypesObject`,
+  `ChartOfCalculationTypesObject`, `ExchangePlanObject`, `BusinessProcessObject`, `TaskObject`,
+  наборы записей `InformationRegisterRecordSet` / `AccumulationRegisterRecordSet` /
+  `AccountingRegisterRecordSet` / `CalculationRegisterRecordSet` / `SequenceRecordSet` /
+  `RecalculationRecordSet`, а также `ConstantValueManager`. Встречается прежде всего в `Source`
+  подписки на событие: в `erp_8.3.24` так задана треть подписок (151 из 492 — вообще без `v8:Type`).
+  Прочие менеджеры (`CatalogManager`, `DocumentManager`, …) множеством НЕ являются: голый менеджер
+  пишется обычным `v8:Type`.
+
+Вывод `meta-info` печатает голое множество с суффиксом «(все)» (`ДокументОбъект (все)`) — отличать
+«все» от «один» по наличию точки посреди длинного имени ненадёжно. Суффикс принимается и на входе
+`meta-compile`, так что строку из вывода можно подать обратно.
 
 ### 3.3 Русские синонимы типов
 
