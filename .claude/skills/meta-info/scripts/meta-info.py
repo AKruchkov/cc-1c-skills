@@ -1,4 +1,4 @@
-# meta-info v1.14 — Compact summary of 1C metadata object (Python port)
+# meta-info v1.15 — Compact summary of 1C metadata object (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -180,6 +180,9 @@ type_name_map = {
     "ExternalDataSource": "Внешний источник данных", "Table": "Таблица внешнего источника",
 }
 
+# Долгие виды сокращаем (ПВХ, РС/РН/РБ/РР): в списке на сорок реквизитов повторяющийся префикс
+# съедает колонку и прячет отличающуюся часть — имя объекта. Аббревиатуры приняты как ВВОД в
+# meta-compile/meta-edit (словарь typeSynonyms), поэтому строку из вывода можно подать обратно.
 ref_type_map = {
     "CatalogRef": "СправочникСсылка", "DocumentRef": "ДокументСсылка",
     "EnumRef": "ПеречислениеСсылка", "ChartOfAccountsRef": "ПланСчетовСсылка",
@@ -219,11 +222,32 @@ object_type_map = {
     "CatalogObject": "СправочникОбъект", "DocumentObject": "ДокументОбъект",
     "ChartOfAccountsObject": "ПланСчетовОбъект",
     "ChartOfCharacteristicTypesObject": "ПВХОбъект",
+    "ChartOfCalculationTypesObject": "ПВРОбъект",
     "BusinessProcessObject": "БизнесПроцессОбъект", "TaskObject": "ЗадачаОбъект",
     "ExchangePlanObject": "ПланОбменаОбъект",
     "InformationRegisterRecordSet": "НаборЗаписейРС",
     "AccumulationRegisterRecordSet": "НаборЗаписейРН",
     "AccountingRegisterRecordSet": "НаборЗаписейРБ",
+    "CalculationRegisterRecordSet": "НаборЗаписейРР",
+    "SequenceRecordSet": "НаборЗаписейПоследовательности",
+    "RecalculationRecordSet": "НаборЗаписейПерерасчета",
+    # Менеджеры встречаются в источниках подписок. Сиблинга-аббревиатуры у них нет
+    # (единственный ориентир — КонстантаМенеджерЗначения), поэтому имена полные.
+    "CatalogManager": "СправочникМенеджер", "DocumentManager": "ДокументМенеджер",
+    "DocumentJournalManager": "ЖурналДокументовМенеджер",
+    "EnumManager": "ПеречислениеМенеджер",
+    "ConstantValueManager": "КонстантаМенеджерЗначения",
+    "InformationRegisterManager": "РегистрСведенийМенеджер",
+    "AccumulationRegisterManager": "РегистрНакопленияМенеджер",
+    "AccountingRegisterManager": "РегистрБухгалтерииМенеджер",
+    "CalculationRegisterManager": "РегистрРасчетаМенеджер",
+    "ChartOfAccountsManager": "ПланСчетовМенеджер",
+    "ChartOfCharacteristicTypesManager": "ПВХМенеджер",
+    "ChartOfCalculationTypesManager": "ПВРМенеджер",
+    "ExchangePlanManager": "ПланОбменаМенеджер",
+    "BusinessProcessManager": "БизнесПроцессМенеджер",
+    "TaskManager": "ЗадачаМенеджер",
+    "DataProcessorManager": "ОбработкаМенеджер", "ReportManager": "ОтчетМенеджер",
 }
 
 number_period_map = {
@@ -251,28 +275,141 @@ def get_ml_text(node):
     return ""
 
 
-# Тип-множество: голое имя метатипа без `.Имя` означает ВСЕ ссылки этого класса
-# (см. docs/meta-dsl-spec.md §«Тип-множество»). Конкретный тип всегда пишется с точкой,
-# поэтому «СправочникСсылка» без точки читается однозначно как обобщённый.
+# Корень конфигурации — ближайший каталог выше объекта, где лежит Configuration.xml (или
+# Ext/ParentConfigurations.bin у выгрузки на поддержке). Фиксированное «на два уровня выше» тут
+# неверно: объект бывает подан из другого места дерева, а у внешней обработки корня нет вовсе.
+def find_config_root_dir():
+    d = os.path.dirname(object_path)
+    for _ in range(8):
+        if not d:
+            break
+        if (os.path.exists(os.path.join(d, "Ext", "ParentConfigurations.bin"))
+                or os.path.exists(os.path.join(d, "Configuration.xml"))):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return None
+
+
+# Множество типов (v8:TypeSet) — индирекция: в строке типа стоит имя, а состав лежит в другом
+# файле (определяемый тип) или определяется данными (характеристика ПВХ). Раскрывать состав в
+# строке типа нельзя дважды: один псевдоним встречается в объекте десятками раз (в АвансовомОтчете
+# `ДенежнаяСумма*` — 12 раз), а в корпусе есть определяемые типы на 596 типов — вывод упёрся бы в
+# постраничник и съел хвост объекта. Поэтому имя стоит встроенно, а раскрытие идёт ровно одной
+# записью на уникальное множество, глоссарием в конце вывода.
+type_set_glossary = {}
+defined_type_cache = {}
+_config_root_state = {"probed": False, "dir": None}
+# Состав определяемого типа сам может содержать множество. Внутрь раскрытия не углубляемся: там
+# имя уже достаточно, а рекурсия по самоссылочному типу не завершилась бы.
+_in_type_set_expansion = {"on": False}
+
+
+def get_config_root_dir():
+    if not _config_root_state["probed"]:
+        _config_root_state["probed"] = True
+        _config_root_state["dir"] = find_config_root_dir()
+    return _config_root_state["dir"]
+
+
+def resolve_defined_type(dt_name):
+    if dt_name in defined_type_cache:
+        return defined_type_cache[dt_name]
+    # broken отличаем от found: файл на месте, но не разобрался — сказать «файла нет» было бы
+    # враньём, а молчать — тем же тихим отказом, от которого лечим.
+    res = {"found": False, "broken": False, "members": []}
+    root = get_config_root_dir()
+    if root:
+        dt_path = os.path.join(root, "DefinedTypes", f"{dt_name}.xml")
+        if os.path.isfile(dt_path):
+            try:
+                dt_root = etree.parse(dt_path, parser_xml).getroot()
+                tn = find(dt_root, "/md:MetaDataObject/md:DefinedType/md:Properties/md:Type")
+                if tn is not None:
+                    res["found"] = True
+                    members = []
+                    _in_type_set_expansion["on"] = True
+                    try:
+                        for c in tn.xpath("v8:Type|v8:TypeSet", namespaces=NS):
+                            if local_name(c) == "TypeSet":
+                                members.append(format_single_type_set(inner_text(c)))
+                            else:
+                                members.append(format_single_type(inner_text(c), tn))
+                    finally:
+                        _in_type_set_expansion["on"] = False
+                    res["members"] = members
+            except Exception:
+                res["broken"] = True
+            if not res["found"]:
+                res["broken"] = True
+    defined_type_cache[dt_name] = res
+    return res
+
+
+def register_type_set(label, kind, name):
+    if _in_type_set_expansion["on"]:
+        return
+    if label in type_set_glossary:
+        return
+    type_set_glossary[label] = {"kind": kind, "name": name}
+
+
+# Тип-множество: голое имя метатипа без `.Имя` означает ВСЕ объекты этого класса
+# (см. docs/meta-dsl-spec.md §«Тип-множество»). Конкретный тип всегда пишется с точкой, но
+# отличать «все» от «один» по наличию точки посреди длинного имени — сигнал низкой различимости,
+# поэтому обобщённый метатип получает суффикс «(все)»: разница становится словом, а не пунктуацией.
 def format_single_type_set(raw):
     raw = re.sub(r'^d\d+p\d+:', 'cfg:', raw)
     m = re.match(r'^cfg:DefinedType\.(.+)$', raw)
     if m:
-        return f"ОпределяемыйТип.{m.group(1)}"
+        label = f"ОпределяемыйТип.{m.group(1)}"
+        register_type_set(label, "DefinedType", m.group(1))
+        return label
     m = re.match(r'^cfg:Characteristic\.(.+)$', raw)
     if m:
-        return f"Характеристика.{m.group(1)}"
+        label = f"Характеристика.{m.group(1)}"
+        register_type_set(label, "Characteristic", m.group(1))
+        return label
     if raw == "cfg:AnyRef":
         return "ЛюбаяСсылка"
     if raw == "cfg:AnyIBRef":
         return "ЛюбаяСсылкаИБ"
     m = re.match(r'^cfg:(\w+Ref)$', raw)
     if m and m.group(1) in ref_type_map:
-        return ref_type_map[m.group(1)]
+        return f"{ref_type_map[m.group(1)]} (все)"
+    m = re.match(r'^cfg:(\w+)$', raw)
+    if m and m.group(1) in object_type_map:
+        return f"{object_type_map[m.group(1)]} (все)"
     m = re.match(r'^cfg:(.+)$', raw)
     if m:
         return m.group(1)
     return raw
+
+
+# Глоссарий множеств: одна запись на уникальное множество, в порядке первого упоминания.
+def get_type_set_glossary_lines():
+    lines = []
+    for label, e in type_set_glossary.items():
+        if e["kind"] == "Characteristic":
+            lines.append(f"  {label} — набор определяется данными ПВХ")
+            continue
+        dt = resolve_defined_type(e["name"])
+        if not dt["found"]:
+            lines.append(f"  {label} — файл типа не разобран" if dt["broken"]
+                         else f"  {label} — файла типа нет в выгрузке")
+            continue
+        members = dt["members"]
+        if len(members) == 0:
+            lines.append(f"  {label} — состав пуст")
+            continue
+        if len(members) <= COMPOSED_TYPE_THRESHOLD:
+            lines.append(f"  {label} → {' | '.join(members)}")
+        else:
+            lines.append(f"  {label} — типов: {len(members)}")
+            lines.append(f"    раскрыть: meta-info -ObjectPath DefinedTypes/{e['name']}.xml -Mode full")
+    return lines
 
 
 def format_type(type_node_el):
@@ -347,6 +484,12 @@ def format_single_type(raw, parent_node):
     m = re.match(r'^cfg:DefinedType\.(.+)$', raw)
     if m:
         return f"ОпределяемыйТип.{m.group(1)}"
+    # cfg:DocumentObject.Xxx / cfg:InformationRegisterRecordSet.Xxx — объектные типы.
+    # Без карты они уходили в ветку «снять cfg:» и печатались по-английски, хотя в
+    # источниках подписки те же типы печатались по-русски: одно понятие двумя видами.
+    m = re.match(r'^cfg:(\w+)\.(.+)$', raw)
+    if m and m.group(1) in object_type_map:
+        return f"{object_type_map[m.group(1)]}.{m.group(2)}"
     # Strip cfg: prefix
     m = re.match(r'^cfg:(.+)$', raw)
     if m:
@@ -654,6 +797,26 @@ def format_source_type(raw):
     if m:
         return m.group(1)
     return raw
+
+
+# Источники подписки задаются и списком типов (v8:Type), и множеством (v8:TypeSet — определяемый
+# тип или целый класс «все документы»). В корпусе множеством задана треть подписок (в erp_8.3.24
+# 151 из 492 — вообще без v8:Type), поэтому чтение только v8:Type оставляло их без строки
+# «Источники»: подписка выглядела так, будто ни на что не срабатывает. Оба узла читаем одним
+# XPath, в порядке документа — так же, как meta-decompile.
+#
+# Множества и явные типы возвращаем врозь: явных бывает много (в корпусе до 1353 в одной
+# подписке), а множеств — не больше восьми. Поэтому в сводке множества называем всегда, а
+# явные типы сворачиваем в счётчик: по одному числу не видно, что подписка бьёт по целому классу.
+def get_subscription_source_list(source_node):
+    types = []
+    sets = []
+    for t in find_all(source_node, "v8:Type|v8:TypeSet"):
+        if local_name(t) == "TypeSet":
+            sets.append(format_single_type_set(inner_text(t)))
+        else:
+            types.append(format_source_type(inner_text(t)))
+    return types, sets
 
 
 def get_http_endpoints(child_objs):
@@ -1053,9 +1216,15 @@ if not drill_done:
         if md_type == "DefinedType":
             type_node2 = find(props, "md:Type")
             if type_node2 is not None:
+                # Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
+                # типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
+                # «Типы (N)» врал.
                 types = []
-                for t in find_all(type_node2, "v8:Type"):
-                    types.append(format_single_type(inner_text(t), type_node2))
+                for t in find_all(type_node2, "v8:Type|v8:TypeSet"):
+                    if local_name(t) == "TypeSet":
+                        types.append(format_single_type_set(inner_text(t)))
+                    else:
+                        types.append(format_single_type(inner_text(t), type_node2))
                 if types:
                     out(f"Типы ({len(types)}): {', '.join(types)}")
 
@@ -1114,9 +1283,15 @@ if not drill_done:
                 es_parts.append(f"Обработчик: {h_name}")
             source = find(props, "md:Source")
             if source is not None:
-                src_count = len(find_all(source, "v8:Type"))
-                if src_count > 0:
-                    es_parts.append(f"Источники: {src_count}")
+                # brief называет множества, а явные типы считает: по одному числу не видно, что
+                # подписка срабатывает на целый класс документов или на состав определяемого типа.
+                src_types, src_sets = get_subscription_source_list(source)
+                total = len(src_types) + len(src_sets)
+                if total > 0:
+                    parts2 = list(src_sets)
+                    if src_types:
+                        parts2.append(f"явных типов: {len(src_types)}")
+                    es_parts.append(f"Источники ({total}): {', '.join(parts2)}")
             if es_parts:
                 out(" | ".join(es_parts))
 
@@ -1221,9 +1396,15 @@ if not drill_done:
         if md_type == "DefinedType":
             type_node2 = find(props, "md:Type")
             if type_node2 is not None:
+                # Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
+                # типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
+                # «Типы (N)» врал.
                 types = []
-                for t in find_all(type_node2, "v8:Type"):
-                    types.append(format_single_type(inner_text(t), type_node2))
+                for t in find_all(type_node2, "v8:Type|v8:TypeSet"):
+                    if local_name(t) == "TypeSet":
+                        types.append(format_single_type_set(inner_text(t)))
+                    else:
+                        types.append(format_single_type(inner_text(t), type_node2))
                 if types:
                     out(f"Типы ({len(types)}):")
                     for t in types:
@@ -1283,16 +1464,20 @@ if not drill_done:
                 out(f"Обработчик: {h_name}")
             source = find(props, "md:Source")
             if source is not None:
-                src_types = []
-                for t in find_all(source, "v8:Type"):
-                    src_types.append(format_source_type(inner_text(t)))
-                if src_types:
-                    if mode == "full":
-                        out(f"Источники ({len(src_types)}):")
+                src_types, src_sets = get_subscription_source_list(source)
+                total = len(src_types) + len(src_sets)
+                if total > 0:
+                    out(f"Источники ({total}):")
+                    # full печатает всё: режим для этого и нужен, а длину держит постраничник.
+                    # В overview явные типы сворачиваем в счётчик — их бывает больше тысячи.
+                    list_types = mode == "full" or total <= COMPOSED_TYPE_THRESHOLD
+                    if list_types:
                         for s in src_types:
                             out(f"  {s}")
-                    else:
-                        out(f"Источники ({len(src_types)})")
+                    for s in src_sets:
+                        out(f"  {s}")
+                    if not list_types and src_types:
+                        out(f"  и ещё явных типов: {len(src_types)} (-Mode full)")
 
         # HTTPService
         if md_type == "HTTPService":
@@ -1541,6 +1726,17 @@ if not drill_done:
         hints = ", ".join(f"-Name {n}" for n in collapsed_names)
         out("")
         out(f"Полный состав типов: {hints}")
+
+# Глоссарий множеств — после всего остального: в строках типов стоят только имена, и это
+# единственное место, где имя превращается в состав. brief не глоссируем: там типов реквизитов
+# нет вовсе, а множества источников подписки он называет прямо в строке.
+if mode != "brief" and type_set_glossary:
+    glossary = get_type_set_glossary_lines()
+    if glossary:
+        out("")
+        out("Множества типов в составе:")
+        for l in glossary:
+            out(l)
 
 # ── Pagination and output ────────────────────────────────────
 

@@ -1,4 +1,4 @@
-﻿# meta-info v1.14 — Compact summary of 1C metadata object
+﻿# meta-info v1.15 — Compact summary of 1C metadata object
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -107,6 +107,9 @@ $typeNameMap = @{
 	"ExternalDataSource"="Внешний источник данных"; "Table"="Таблица внешнего источника"
 }
 
+# Долгие виды сокращаем (ПВХ, РС/РН/РБ/РР): в списке на сорок реквизитов повторяющийся префикс
+# съедает колонку и прячет отличающуюся часть — имя объекта. Аббревиатуры приняты как ВВОД в
+# meta-compile/meta-edit (словарь typeSynonyms), поэтому строку из вывода можно подать обратно.
 $refTypeMap = @{
 	"CatalogRef"="СправочникСсылка"; "DocumentRef"="ДокументСсылка"
 	"EnumRef"="ПеречислениеСсылка"; "ChartOfAccountsRef"="ПланСчетовСсылка"
@@ -146,11 +149,32 @@ $objectTypeMap = @{
 	"CatalogObject"="СправочникОбъект"; "DocumentObject"="ДокументОбъект"
 	"ChartOfAccountsObject"="ПланСчетовОбъект"
 	"ChartOfCharacteristicTypesObject"="ПВХОбъект"
+	"ChartOfCalculationTypesObject"="ПВРОбъект"
 	"BusinessProcessObject"="БизнесПроцессОбъект"; "TaskObject"="ЗадачаОбъект"
 	"ExchangePlanObject"="ПланОбменаОбъект"
 	"InformationRegisterRecordSet"="НаборЗаписейРС"
 	"AccumulationRegisterRecordSet"="НаборЗаписейРН"
 	"AccountingRegisterRecordSet"="НаборЗаписейРБ"
+	"CalculationRegisterRecordSet"="НаборЗаписейРР"
+	"SequenceRecordSet"="НаборЗаписейПоследовательности"
+	"RecalculationRecordSet"="НаборЗаписейПерерасчета"
+	# Менеджеры встречаются в источниках подписок. Сиблинга-аббревиатуры у них нет
+	# (единственный ориентир — КонстантаМенеджерЗначения), поэтому имена полные.
+	"CatalogManager"="СправочникМенеджер"; "DocumentManager"="ДокументМенеджер"
+	"DocumentJournalManager"="ЖурналДокументовМенеджер"
+	"EnumManager"="ПеречислениеМенеджер"
+	"ConstantValueManager"="КонстантаМенеджерЗначения"
+	"InformationRegisterManager"="РегистрСведенийМенеджер"
+	"AccumulationRegisterManager"="РегистрНакопленияМенеджер"
+	"AccountingRegisterManager"="РегистрБухгалтерииМенеджер"
+	"CalculationRegisterManager"="РегистрРасчетаМенеджер"
+	"ChartOfAccountsManager"="ПланСчетовМенеджер"
+	"ChartOfCharacteristicTypesManager"="ПВХМенеджер"
+	"ChartOfCalculationTypesManager"="ПВРМенеджер"
+	"ExchangePlanManager"="ПланОбменаМенеджер"
+	"BusinessProcessManager"="БизнесПроцессМенеджер"
+	"TaskManager"="ЗадачаМенеджер"
+	"DataProcessorManager"="ОбработкаМенеджер"; "ReportManager"="ОтчетМенеджер"
 }
 
 $numberPeriodMap = @{
@@ -173,20 +197,140 @@ function Get-MLText($node) {
 	return ""
 }
 
-# Тип-множество: голое имя метатипа без `.Имя` означает ВСЕ ссылки этого класса
-# (см. docs/meta-dsl-spec.md §«Тип-множество»). Конкретный тип всегда пишется с точкой,
-# поэтому «СправочникСсылка» без точки читается однозначно как обобщённый.
+# Корень конфигурации — ближайший каталог выше объекта, где лежит Configuration.xml (или
+# Ext/ParentConfigurations.bin у выгрузки на поддержке). Фиксированное «на два уровня выше» тут
+# неверно: объект бывает подан из другого места дерева, а у внешней обработки корня нет вовсе.
+function Find-ConfigRootDir {
+	$d = [System.IO.Path]::GetDirectoryName($ObjectPath)
+	for ($i = 0; $i -lt 8 -and $d; $i++) {
+		if ((Test-Path (Join-Path (Join-Path $d "Ext") "ParentConfigurations.bin")) -or
+		    (Test-Path (Join-Path $d "Configuration.xml"))) { return $d }
+		$parent = [System.IO.Path]::GetDirectoryName($d)
+		if ($parent -eq $d) { break }
+		$d = $parent
+	}
+	return $null
+}
+
+# Множество типов (v8:TypeSet) — индирекция: в строке типа стоит имя, а состав лежит в другом
+# файле (определяемый тип) или определяется данными (характеристика ПВХ). Раскрывать состав в
+# строке типа нельзя дважды: один псевдоним встречается в объекте десятками раз (в АвансовомОтчете
+# `ДенежнаяСумма*` — 12 раз), а в корпусе есть определяемые типы на 596 типов — вывод упёрся бы в
+# постраничник и съел хвост объекта. Поэтому имя стоит встроенно, а раскрытие идёт ровно одной
+# записью на уникальное множество, глоссарием в конце вывода.
+$script:typeSetGlossary = New-Object System.Collections.Specialized.OrderedDictionary
+$script:definedTypeCache = @{}
+$script:configRootProbed = $false
+$script:configRootDir = $null
+# Состав определяемого типа сам может содержать множество. Внутрь раскрытия не углубляемся: там
+# имя уже достаточно, а рекурсия по самоссылочному типу не завершилась бы.
+$script:inTypeSetExpansion = $false
+
+function Get-ConfigRootDir {
+	if (-not $script:configRootProbed) {
+		$script:configRootProbed = $true
+		$script:configRootDir = Find-ConfigRootDir
+	}
+	return $script:configRootDir
+}
+
+function Resolve-DefinedType([string]$dtName) {
+	if ($script:definedTypeCache.ContainsKey($dtName)) { return $script:definedTypeCache[$dtName] }
+	# Broken отличаем от Found: файл на месте, но не разобрался — сказать «файла нет» было бы
+	# враньём, а молчать — тем же тихим отказом, от которого лечим.
+	$res = @{ Found = $false; Broken = $false; Members = @() }
+	$root = Get-ConfigRootDir
+	if ($root) {
+		$dtPath = Join-Path (Join-Path $root "DefinedTypes") "$dtName.xml"
+		if (Test-Path -LiteralPath $dtPath) {
+			try {
+				[xml]$dtDoc = Get-Content -LiteralPath $dtPath -Encoding UTF8
+				$dtNs = New-Object System.Xml.XmlNamespaceManager($dtDoc.NameTable)
+				$dtNs.AddNamespace("md", "http://v8.1c.ru/8.3/MDClasses")
+				$dtNs.AddNamespace("v8", "http://v8.1c.ru/8.1/data/core")
+				$tn = $dtDoc.SelectSingleNode("/md:MetaDataObject/md:DefinedType/md:Properties/md:Type", $dtNs)
+				if ($tn) {
+					$res.Found = $true
+					$members = @()
+					$script:inTypeSetExpansion = $true
+					try {
+						foreach ($c in $tn.ChildNodes) {
+							if ($c.NodeType -ne 'Element') { continue }
+							# .LocalName у XML-адаптера PS перекрывается одноимённым атрибутом — get_LocalName().
+							switch ($c.get_LocalName()) {
+								'Type'    { $members += Format-SingleType $c.InnerText $tn }
+								'TypeSet' { $members += Format-SingleTypeSet $c.InnerText }
+							}
+						}
+					} finally { $script:inTypeSetExpansion = $false }
+					$res.Members = $members
+				}
+			} catch { $res.Broken = $true }
+			if (-not $res.Found) { $res.Broken = $true }
+		}
+	}
+	$script:definedTypeCache[$dtName] = $res
+	return $res
+}
+
+function Register-TypeSet([string]$label, [string]$kind, [string]$name) {
+	if ($script:inTypeSetExpansion) { return }
+	if ($script:typeSetGlossary.Contains($label)) { return }
+	$script:typeSetGlossary.Add($label, @{ Kind = $kind; Name = $name })
+}
+
+# Тип-множество: голое имя метатипа без `.Имя` означает ВСЕ объекты этого класса
+# (см. docs/meta-dsl-spec.md §«Тип-множество»). Конкретный тип всегда пишется с точкой, но
+# отличать «все» от «один» по наличию точки посреди длинного имени — сигнал низкой различимости,
+# поэтому обобщённый метатип получает суффикс «(все)»: разница становится словом, а не пунктуацией.
 function Format-SingleTypeSet([string]$raw) {
 	$raw = $raw -replace '^d\d+p\d+:', 'cfg:'
-	if ($raw -match '^cfg:DefinedType\.(.+)$')   { return "ОпределяемыйТип.$($Matches[1])" }
-	if ($raw -match '^cfg:Characteristic\.(.+)$') { return "Характеристика.$($Matches[1])" }
+	if ($raw -match '^cfg:DefinedType\.(.+)$') {
+		$label = "ОпределяемыйТип.$($Matches[1])"
+		Register-TypeSet $label 'DefinedType' $Matches[1]
+		return $label
+	}
+	if ($raw -match '^cfg:Characteristic\.(.+)$') {
+		$label = "Характеристика.$($Matches[1])"
+		Register-TypeSet $label 'Characteristic' $Matches[1]
+		return $label
+	}
 	if ($raw -eq 'cfg:AnyRef')   { return "ЛюбаяСсылка" }
 	if ($raw -eq 'cfg:AnyIBRef') { return "ЛюбаяСсылкаИБ" }
 	if ($raw -match '^cfg:(\w+Ref)$' -and $refTypeMap.ContainsKey($Matches[1])) {
-		return $refTypeMap[$Matches[1]]
+		return "$($refTypeMap[$Matches[1]]) (все)"
+	}
+	if ($raw -match '^cfg:(\w+)$' -and $objectTypeMap.ContainsKey($Matches[1])) {
+		return "$($objectTypeMap[$Matches[1]]) (все)"
 	}
 	if ($raw -match '^cfg:(.+)$') { return $Matches[1] }
 	return $raw
+}
+
+# Глоссарий множеств: одна запись на уникальное множество, в порядке первого упоминания.
+function Get-TypeSetGlossaryLines {
+	$lines = @()
+	foreach ($label in $script:typeSetGlossary.Keys) {
+		$e = $script:typeSetGlossary[$label]
+		if ($e.Kind -eq 'Characteristic') {
+			$lines += "  $label — набор определяется данными ПВХ"
+			continue
+		}
+		$dt = Resolve-DefinedType $e.Name
+		if (-not $dt.Found) {
+			$lines += if ($dt.Broken) { "  $label — файл типа не разобран" } else { "  $label — файла типа нет в выгрузке" }
+			continue
+		}
+		$members = @($dt.Members)
+		if ($members.Count -eq 0) { $lines += "  $label — состав пуст"; continue }
+		if ($members.Count -le $script:composedTypeThreshold) {
+			$lines += "  $label → $($members -join ' | ')"
+		} else {
+			$lines += "  $label — типов: $($members.Count)"
+			$lines += "    раскрыть: meta-info -ObjectPath DefinedTypes/$($e.Name).xml -Mode full"
+		}
+	}
+	return $lines
 }
 
 function Format-Type($typeNode) {
@@ -260,6 +404,12 @@ function Format-SingleType([string]$raw, $parentNode) {
 			# cfg:DefinedType.Xxx
 			if ($raw -match '^cfg:DefinedType\.(.+)$') {
 				return "ОпределяемыйТип.$($Matches[1])"
+			}
+			# cfg:DocumentObject.Xxx / cfg:InformationRegisterRecordSet.Xxx — объектные типы.
+			# Без карты они уходили в ветку «снять cfg:» и печатались по-английски, хотя в
+			# источниках подписки те же типы печатались по-русски: одно понятие двумя видами.
+			if ($raw -match '^cfg:(\w+)\.(.+)$' -and $objectTypeMap.ContainsKey($Matches[1])) {
+				return "$($objectTypeMap[$Matches[1]]).$($Matches[2])"
 			}
 			# Strip cfg: prefix for unknown
 			if ($raw -match '^cfg:(.+)$') {
@@ -582,6 +732,25 @@ function Format-SourceType([string]$raw) {
 	return $raw
 }
 
+# Источники подписки задаются и списком типов (v8:Type), и множеством (v8:TypeSet — определяемый
+# тип или целый класс «все документы»). В корпусе множеством задана треть подписок (в erp_8.3.24
+# 151 из 492 — вообще без v8:Type), поэтому чтение только v8:Type оставляло их без строки
+# «Источники»: подписка выглядела так, будто ни на что не срабатывает. Оба узла читаем одним
+# XPath, в порядке документа — так же, как meta-decompile.
+#
+# Множества и явные типы возвращаем врозь: явных бывает много (в корпусе до 1353 в одной
+# подписке), а множеств — не больше восьми. Поэтому в сводке множества называем всегда, а
+# явные типы сворачиваем в счётчик: по одному числу не видно, что подписка бьёт по целому классу.
+function Get-SubscriptionSourceList($sourceNode) {
+	$types = @()
+	$sets = @()
+	foreach ($t in $sourceNode.SelectNodes("v8:Type|v8:TypeSet", $ns)) {
+		if ($t.get_LocalName() -eq 'TypeSet') { $sets  += Format-SingleTypeSet $t.InnerText }
+		else                                  { $types += Format-SourceType   $t.InnerText }
+	}
+	return [pscustomobject]@{ Types = $types; Sets = $sets }
+}
+
 function Get-HTTPEndpoints($childObjs) {
 	$result = @()
 	foreach ($tpl in $childObjs.SelectNodes("md:URLTemplate", $ns)) {
@@ -646,16 +815,9 @@ function Test-ExternalObjectRoot([string]$xmlPath) {
 function Get-ObjectSupportStatus([string]$objUuid) {
 	try {
 		if (Test-ExternalObjectRoot $ObjectPath) { return $null }
-		# Walk up to the config root (dir with Configuration.xml or Ext/ParentConfigurations.bin).
-		$d = [System.IO.Path]::GetDirectoryName($ObjectPath)
-		$binPath = $null
-		for ($i = 0; $i -lt 8 -and $d; $i++) {
-			$cand = Join-Path (Join-Path $d "Ext") "ParentConfigurations.bin"
-			if ((Test-Path $cand) -or (Test-Path (Join-Path $d "Configuration.xml"))) { $binPath = $cand; break }
-			$parent = [System.IO.Path]::GetDirectoryName($d)
-			if ($parent -eq $d) { break }
-			$d = $parent
-		}
+		# Корень конфигурации ищем тем же климбом, что и состав определяемых типов.
+		$root = Get-ConfigRootDir
+		$binPath = if ($root) { Join-Path (Join-Path $root "Ext") "ParentConfigurations.bin" } else { $null }
 		if (-not $binPath -or -not (Test-Path $binPath)) { return "не на поддержке" }
 		$bytes = [System.IO.File]::ReadAllBytes($binPath)
 		if ($bytes.Length -le 32) { return "снято с поддержки (правки свободны)" }
@@ -996,9 +1158,13 @@ if (-not $drillDone) {
 		if ($mdType -eq "DefinedType") {
 			$typeNode2 = $props.SelectSingleNode("md:Type", $ns)
 			if ($typeNode2) {
+				# Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
+				# типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
+				# «Типы (N)» врал.
 				$types = @()
-				foreach ($t in $typeNode2.SelectNodes("v8:Type", $ns)) {
-					$types += Format-SingleType $t.InnerText $typeNode2
+				foreach ($t in $typeNode2.SelectNodes("v8:Type|v8:TypeSet", $ns)) {
+					if ($t.get_LocalName() -eq 'TypeSet') { $types += Format-SingleTypeSet $t.InnerText }
+					else { $types += Format-SingleType $t.InnerText $typeNode2 }
 				}
 				if ($types.Count -gt 0) {
 					Out "Типы ($($types.Count)): $($types -join ', ')"
@@ -1061,8 +1227,17 @@ if (-not $drillDone) {
 			}
 			$source = $props.SelectSingleNode("md:Source", $ns)
 			if ($source) {
-				$srcCount = $source.SelectNodes("v8:Type", $ns).Count
-				if ($srcCount -gt 0) { $esParts += "Источники: $srcCount" }
+				# brief называет множества, а явные типы считает: по одному числу не видно, что
+				# подписка срабатывает на целый класс документов или на состав определяемого типа.
+				$src = Get-SubscriptionSourceList $source
+				$srcTypes = @($src.Types); $srcSets = @($src.Sets)
+				$total = $srcTypes.Count + $srcSets.Count
+				if ($total -gt 0) {
+					$parts2 = @()
+					if ($srcSets.Count -gt 0) { $parts2 += $srcSets }
+					if ($srcTypes.Count -gt 0) { $parts2 += "явных типов: $($srcTypes.Count)" }
+					$esParts += "Источники ($total): $($parts2 -join ', ')"
+				}
 			}
 			if ($esParts.Count -gt 0) { Out ($esParts -join " | ") }
 		}
@@ -1185,9 +1360,13 @@ if (-not $drillDone) {
 		if ($mdType -eq "DefinedType") {
 			$typeNode2 = $props.SelectSingleNode("md:Type", $ns)
 			if ($typeNode2) {
+				# Оба узла, одним XPath и в порядке документа: v8:TypeSet внутри определяемого
+				# типа платформа допускает, а чтение только v8:Type МОЛЧА теряло его — счётчик
+				# «Типы (N)» врал.
 				$types = @()
-				foreach ($t in $typeNode2.SelectNodes("v8:Type", $ns)) {
-					$types += Format-SingleType $t.InnerText $typeNode2
+				foreach ($t in $typeNode2.SelectNodes("v8:Type|v8:TypeSet", $ns)) {
+					if ($t.get_LocalName() -eq 'TypeSet') { $types += Format-SingleTypeSet $t.InnerText }
+					else { $types += Format-SingleType $t.InnerText $typeNode2 }
 				}
 				if ($types.Count -gt 0) {
 					Out "Типы ($($types.Count)):"
@@ -1250,16 +1429,18 @@ if (-not $drillDone) {
 			}
 			$source = $props.SelectSingleNode("md:Source", $ns)
 			if ($source) {
-				$srcTypes = @()
-				foreach ($t in $source.SelectNodes("v8:Type", $ns)) {
-					$srcTypes += Format-SourceType $t.InnerText
-				}
-				if ($srcTypes.Count -gt 0) {
-					if ($Mode -eq "full") {
-						Out "Источники ($($srcTypes.Count)):"
-						foreach ($s in $srcTypes) { Out "  $s" }
-					} else {
-						Out "Источники ($($srcTypes.Count))"
+				$src = Get-SubscriptionSourceList $source
+				$srcTypes = @($src.Types); $srcSets = @($src.Sets)
+				$total = $srcTypes.Count + $srcSets.Count
+				if ($total -gt 0) {
+					Out "Источники ($total):"
+					# full печатает всё: режим для этого и нужен, а длину держит постраничник.
+					# В overview явные типы сворачиваем в счётчик — их бывает больше тысячи.
+					$listTypes = ($Mode -eq "full") -or ($total -le $script:composedTypeThreshold)
+					if ($listTypes) { foreach ($s in $srcTypes) { Out "  $s" } }
+					foreach ($s in $srcSets) { Out "  $s" }
+					if (-not $listTypes -and $srcTypes.Count -gt 0) {
+						Out "  и ещё явных типов: $($srcTypes.Count) (-Mode full)"
 					}
 				}
 			}
@@ -1529,6 +1710,18 @@ if (-not $drillDone) {
 		$hints = ($script:collapsedNames | ForEach-Object { "-Name $_" }) -join ", "
 		Out ""
 		Out "Полный состав типов: $hints"
+	}
+}
+
+# Глоссарий множеств — после всего остального: в строках типов стоят только имена, и это
+# единственное место, где имя превращается в состав. brief не глоссируем: там типов реквизитов
+# нет вовсе, а множества источников подписки он называет прямо в строке.
+if ($Mode -ne "brief" -and $script:typeSetGlossary.Count -gt 0) {
+	$glossary = @(Get-TypeSetGlossaryLines)
+	if ($glossary.Count -gt 0) {
+		Out ""
+		Out "Множества типов в составе:"
+		foreach ($l in $glossary) { Out $l }
 	}
 }
 
