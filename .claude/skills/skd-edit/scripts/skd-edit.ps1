@@ -1,4 +1,4 @@
-﻿# skd-edit v1.40 — Atomic 1C DCS editor
+﻿# skd-edit v1.41 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: парный .py собирает выражения автодат вне f-string ради совместимости с python 3.9 (PEP 701).
 [CmdletBinding(PositionalBinding=$false)]
@@ -266,6 +266,17 @@ function Resolve-TypeStr {
 	} elseif ($typeStr.Contains('.') -and $typeStr -match '^d\d+p\d+:') {
 		$typeStr = $typeStr.Substring($typeStr.IndexOf(':') + 1)
 	}
+
+	# Хвосты, которые дописывает вывод meta-info к множествам типов: суффикс обобщённого метатипа
+	# и счётчик состава. Копипаста строки оттуда — обычный путь, поэтому хвост снимаем молча.
+	# Срезаем ТОЛЬКО эти известные формы: круглые скобки заняты параметризованными типами
+	# (Число(15,2)), слепой срез скобок сломал бы их.
+	$typeStr = ($typeStr -replace '\s*\((?:все|all)\)\s*$', '').Trim()
+	$typeStr = ($typeStr -replace '\s*[—-]\s*(?:типов|types):\s*\d+\s*$', '').Trim()
+	$typeStr = ($typeStr -replace '\s*\((?:типов|types):\s*\d+\)\s*$', '').Trim()
+	# Строка глоссария целиком: «ОпределяемыйТип.X -> Число(15,2)». Имя множества стоит слева,
+	# раскрытие справа — берём левую часть, она и есть тип.
+	if ($typeStr -match '^(.+?)\s*(?:→|->)\s*.+$') { $typeStr = $Matches[1].Trim() }
 
 	# Параметризованные типы: Number(15,2), Строка(100)
 	if ($typeStr -match '^([^(]+)\((.+)\)$') {

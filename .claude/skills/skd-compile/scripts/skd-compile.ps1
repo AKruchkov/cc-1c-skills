@@ -1,4 +1,4 @@
-﻿# skd-compile v1.122 — Compile 1C DCS from JSON (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# skd-compile v1.123 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -435,6 +435,17 @@ function Resolve-TypeStr {
 	} elseif ($typeStr.Contains('.') -and $typeStr -match '^d\d+p\d+:') {
 		$typeStr = $typeStr.Substring($typeStr.IndexOf(':') + 1)
 	}
+
+	# Хвосты, которые дописывает вывод meta-info к множествам типов: суффикс обобщённого метатипа
+	# и счётчик состава. Копипаста строки оттуда — обычный путь, поэтому хвост снимаем молча.
+	# Срезаем ТОЛЬКО эти известные формы: круглые скобки заняты параметризованными типами
+	# (Число(15,2)), слепой срез скобок сломал бы их.
+	$typeStr = ($typeStr -replace '\s*\((?:все|all)\)\s*$', '').Trim()
+	$typeStr = ($typeStr -replace '\s*[—-]\s*(?:типов|types):\s*\d+\s*$', '').Trim()
+	$typeStr = ($typeStr -replace '\s*\((?:типов|types):\s*\d+\)\s*$', '').Trim()
+	# Строка глоссария целиком: «ОпределяемыйТип.X -> Число(15,2)». Имя множества стоит слева,
+	# раскрытие справа — берём левую часть, она и есть тип.
+	if ($typeStr -match '^(.+?)\s*(?:→|->)\s*.+$') { $typeStr = $Matches[1].Trim() }
 
 	# Параметризованные типы: Number(15,2), Строка(100)
 	if ($typeStr -match '^([^(]+)\((.+)\)$') {

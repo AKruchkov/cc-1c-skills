@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# meta-compile v1.112 — Compile 1C metadata object from JSON
+﻿#!/usr/bin/env python3
+# meta-compile v1.113 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -775,6 +775,49 @@ type_synonyms = {
     'задачассылка': 'TaskRef',
     'определяемыйтип': 'DefinedType',
     'definedtype': 'DefinedType',
+    # Русские имена объектных типов, менеджеров и наборов записей — те самые метки, которые
+    # печатает meta-info. Без них раундтрип «прочитал вывод → подал на вход» рвался:
+    # `ДокументОбъект.Заказ` из источников подписки компилятор отвергал с «Неизвестный тип»,
+    # хотя сам же печатал эту форму через meta-info. Аббревиатуры (ПВХ/ПВР, РС/РН/РБ/РР) приняты
+    # наравне с полными именами: вывод навыка сокращает долгие виды, чтобы в списке на сорок
+    # реквизитов не терялось имя объекта.
+    # Состав держит гард tests/skills/check-typeset-coverage.mjs.
+    'бизнеспроцессменеджер': 'BusinessProcessManager',
+    'бизнеспроцессобъект': 'BusinessProcessObject',
+    'документменеджер': 'DocumentManager',
+    'документобъект': 'DocumentObject',
+    'журналдокументовменеджер': 'DocumentJournalManager',
+    'задачаменеджер': 'TaskManager',
+    'задачаобъект': 'TaskObject',
+    'константаменеджерзначения': 'ConstantValueManager',
+    'любаяссылка': 'AnyRef',
+    'любаяссылкаиб': 'AnyIBRef',
+    'наборзаписейперерасчета': 'RecalculationRecordSet',
+    'наборзаписейпоследовательности': 'SequenceRecordSet',
+    'наборзаписейрб': 'AccountingRegisterRecordSet',
+    'наборзаписейрн': 'AccumulationRegisterRecordSet',
+    'наборзаписейрр': 'CalculationRegisterRecordSet',
+    'наборзаписейрс': 'InformationRegisterRecordSet',
+    'обработкаменеджер': 'DataProcessorManager',
+    'отчетменеджер': 'ReportManager',
+    'пврменеджер': 'ChartOfCalculationTypesManager',
+    'пвробъект': 'ChartOfCalculationTypesObject',
+    'пврссылка': 'ChartOfCalculationTypesRef',
+    'пвхменеджер': 'ChartOfCharacteristicTypesManager',
+    'пвхобъект': 'ChartOfCharacteristicTypesObject',
+    'пвхссылка': 'ChartOfCharacteristicTypesRef',
+    'перечислениеменеджер': 'EnumManager',
+    'планобменаменеджер': 'ExchangePlanManager',
+    'планобменаобъект': 'ExchangePlanObject',
+    'плансчетовменеджер': 'ChartOfAccountsManager',
+    'плансчетовобъект': 'ChartOfAccountsObject',
+    'регистрбухгалтериименеджер': 'AccountingRegisterManager',
+    'регистрнакопленияменеджер': 'AccumulationRegisterManager',
+    'регистррасчетаменеджер': 'CalculationRegisterManager',
+    'регистрсведенийменеджер': 'InformationRegisterManager',
+    'справочникменеджер': 'CatalogManager',
+    'справочникобъект': 'CatalogObject',
+    'характеристика': 'Characteristic',
     # English lowercase ref synonyms
     'catalogref': 'CatalogRef',
     'documentref': 'DocumentRef',
@@ -826,6 +869,18 @@ def resolve_type_str(type_str):
         type_str = type_str[4:]
     elif '.' in type_str and re.match(r'^d\d+p\d+:', type_str):
         type_str = type_str[type_str.index(':') + 1:]
+    # Хвосты, которые дописывает вывод meta-info к множествам типов: суффикс обобщённого метатипа
+    # и счётчик состава. Копипаста строки оттуда — обычный путь, поэтому хвост снимаем молча.
+    # Срезаем ТОЛЬКО эти известные формы: круглые скобки заняты параметризованными типами
+    # (Число(15,2)), слепой срез скобок сломал бы их.
+    type_str = re.sub(r'\s*\((?:все|all)\)\s*$', '', type_str).strip()
+    type_str = re.sub(r'\s*[—-]\s*(?:типов|types):\s*\d+\s*$', '', type_str).strip()
+    type_str = re.sub(r'\s*\((?:типов|types):\s*\d+\)\s*$', '', type_str).strip()
+    # Строка глоссария целиком: «ОпределяемыйТип.X -> Число(15,2)». Имя множества стоит слева,
+    # раскрытие справа — берём левую часть, она и есть тип.
+    m = re.match(r'^(.+?)\s*(?:→|->)\s*.+$', type_str)
+    if m:
+        type_str = m.group(1).strip()
     # Параметризованные типы: Number(15,2), Строка(100)
     m = re.match(r'^([^(]+)\((.+)\)$', type_str)
     if m:

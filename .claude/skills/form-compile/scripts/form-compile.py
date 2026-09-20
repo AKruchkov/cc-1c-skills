@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# form-compile v1.198 — Compile 1C managed form from JSON or object metadata (гвард на группу additionalColumns без ключа columns)
+﻿#!/usr/bin/env python3
+# form-compile v1.199 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -3908,6 +3908,18 @@ def resolve_type_str(type_str):
         type_str = type_str[4:]
     elif '.' in type_str and re.match(r'^d\d+p\d+:', type_str):
         type_str = type_str[type_str.index(':') + 1:]
+    # Хвосты, которые дописывает вывод meta-info к множествам типов: суффикс обобщённого метатипа
+    # и счётчик состава. Копипаста строки оттуда — обычный путь, поэтому хвост снимаем молча.
+    # Срезаем ТОЛЬКО эти известные формы: круглые скобки заняты параметризованными типами
+    # (Число(15,2)), слепой срез скобок сломал бы их.
+    type_str = re.sub(r'\s*\((?:все|all)\)\s*$', '', type_str).strip()
+    type_str = re.sub(r'\s*[—-]\s*(?:типов|types):\s*\d+\s*$', '', type_str).strip()
+    type_str = re.sub(r'\s*\((?:типов|types):\s*\d+\)\s*$', '', type_str).strip()
+    # Строка глоссария целиком: «ОпределяемыйТип.X -> Число(15,2)». Имя множества стоит слева,
+    # раскрытие справа — берём левую часть, она и есть тип.
+    m = re.match(r'^(.+?)\s*(?:→|->)\s*.+$', type_str)
+    if m:
+        type_str = m.group(1).strip()
     # Параметризованные типы: Number(15,2), Строка(100)
     m = re.match(r'^([^(]+)\((.+)\)$', type_str)
     if m:

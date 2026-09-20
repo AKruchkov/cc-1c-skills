@@ -1,4 +1,4 @@
-﻿# meta-edit v1.52 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.53 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -498,6 +498,48 @@ $script:typeSynonyms["бизнеспроцессссылка"]            = "Bus
 $script:typeSynonyms["задачассылка"]                   = "TaskRef"
 $script:typeSynonyms["определяемыйтип"]              = "DefinedType"
 $script:typeSynonyms["definedtype"]                   = "DefinedType"
+# Русские имена объектных типов, менеджеров и наборов записей — те самые метки, которые печатает
+# meta-info. Без них раундтрип «прочитал вывод → подал на вход» рвался: `ДокументОбъект.Заказ` из
+# источников подписки компилятор отвергал с «Неизвестный тип», хотя сам же печатал эту форму
+# через meta-info. Аббревиатуры (ПВХ/ПВР, РС/РН/РБ/РР) приняты наравне с полными именами: вывод
+# навыка сокращает долгие виды, чтобы в списке на сорок реквизитов не терялось имя объекта.
+# Состав держит гард tests/skills/check-typeset-coverage.mjs.
+$script:typeSynonyms["бизнеспроцессменеджер"]           = "BusinessProcessManager"
+$script:typeSynonyms["бизнеспроцессобъект"]             = "BusinessProcessObject"
+$script:typeSynonyms["документменеджер"]                = "DocumentManager"
+$script:typeSynonyms["документобъект"]                  = "DocumentObject"
+$script:typeSynonyms["журналдокументовменеджер"]        = "DocumentJournalManager"
+$script:typeSynonyms["задачаменеджер"]                  = "TaskManager"
+$script:typeSynonyms["задачаобъект"]                    = "TaskObject"
+$script:typeSynonyms["константаменеджерзначения"]       = "ConstantValueManager"
+$script:typeSynonyms["любаяссылка"]                     = "AnyRef"
+$script:typeSynonyms["любаяссылкаиб"]                   = "AnyIBRef"
+$script:typeSynonyms["наборзаписейперерасчета"]         = "RecalculationRecordSet"
+$script:typeSynonyms["наборзаписейпоследовательности"]  = "SequenceRecordSet"
+$script:typeSynonyms["наборзаписейрб"]                  = "AccountingRegisterRecordSet"
+$script:typeSynonyms["наборзаписейрн"]                  = "AccumulationRegisterRecordSet"
+$script:typeSynonyms["наборзаписейрр"]                  = "CalculationRegisterRecordSet"
+$script:typeSynonyms["наборзаписейрс"]                  = "InformationRegisterRecordSet"
+$script:typeSynonyms["обработкаменеджер"]               = "DataProcessorManager"
+$script:typeSynonyms["отчетменеджер"]                   = "ReportManager"
+$script:typeSynonyms["пврменеджер"]                     = "ChartOfCalculationTypesManager"
+$script:typeSynonyms["пвробъект"]                       = "ChartOfCalculationTypesObject"
+$script:typeSynonyms["пврссылка"]                       = "ChartOfCalculationTypesRef"
+$script:typeSynonyms["пвхменеджер"]                     = "ChartOfCharacteristicTypesManager"
+$script:typeSynonyms["пвхобъект"]                       = "ChartOfCharacteristicTypesObject"
+$script:typeSynonyms["пвхссылка"]                       = "ChartOfCharacteristicTypesRef"
+$script:typeSynonyms["перечислениеменеджер"]            = "EnumManager"
+$script:typeSynonyms["планобменаменеджер"]              = "ExchangePlanManager"
+$script:typeSynonyms["планобменаобъект"]                = "ExchangePlanObject"
+$script:typeSynonyms["плансчетовменеджер"]              = "ChartOfAccountsManager"
+$script:typeSynonyms["плансчетовобъект"]                = "ChartOfAccountsObject"
+$script:typeSynonyms["регистрбухгалтериименеджер"]      = "AccountingRegisterManager"
+$script:typeSynonyms["регистрнакопленияменеджер"]       = "AccumulationRegisterManager"
+$script:typeSynonyms["регистррасчетаменеджер"]          = "CalculationRegisterManager"
+$script:typeSynonyms["регистрсведенийменеджер"]         = "InformationRegisterManager"
+$script:typeSynonyms["справочникменеджер"]              = "CatalogManager"
+$script:typeSynonyms["справочникобъект"]                = "CatalogObject"
+$script:typeSynonyms["характеристика"]                  = "Characteristic"
 $script:typeSynonyms["catalogref"]                    = "CatalogRef"
 $script:typeSynonyms["documentref"]                   = "DocumentRef"
 $script:typeSynonyms["enumref"]                       = "EnumRef"
@@ -575,6 +617,17 @@ function Resolve-TypeStr {
 	} elseif ($typeStr.Contains('.') -and $typeStr -match '^d\d+p\d+:') {
 		$typeStr = $typeStr.Substring($typeStr.IndexOf(':') + 1)
 	}
+
+	# Хвосты, которые дописывает вывод meta-info к множествам типов: суффикс обобщённого метатипа
+	# и счётчик состава. Копипаста строки оттуда — обычный путь, поэтому хвост снимаем молча.
+	# Срезаем ТОЛЬКО эти известные формы: круглые скобки заняты параметризованными типами
+	# (Число(15,2)), слепой срез скобок сломал бы их.
+	$typeStr = ($typeStr -replace '\s*\((?:все|all)\)\s*$', '').Trim()
+	$typeStr = ($typeStr -replace '\s*[—-]\s*(?:типов|types):\s*\d+\s*$', '').Trim()
+	$typeStr = ($typeStr -replace '\s*\((?:типов|types):\s*\d+\)\s*$', '').Trim()
+	# Строка глоссария целиком: «ОпределяемыйТип.X -> Число(15,2)». Имя множества стоит слева,
+	# раскрытие справа — берём левую часть, она и есть тип.
+	if ($typeStr -match '^(.+?)\s*(?:→|->)\s*.+$') { $typeStr = $Matches[1].Trim() }
 
 	# Параметризованные типы: Number(15,2), Строка(100)
 	if ($typeStr -match '^([^(]+)\((.+)\)$') {
