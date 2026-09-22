@@ -460,15 +460,11 @@ def title_from_name(name):
     s = re.sub(r'([А-ЯA-Z])([А-ЯA-Z][а-яa-z])', r'\1 \2', name)
     s = re.sub(r'([а-яa-z0-9])([А-ЯA-Z])', r'\1 \2', s)
     parts = s.split(' ')
-    if len(parts) == 0:
+    if not parts:
         return s
     out = [parts[0]]
-    for i in range(1, len(parts)):
-        p = parts[i]
-        if len(p) > 1 and p == p.upper():
-            out.append(p)
-        else:
-            out.append(p.lower())
+    for p in parts[1:]:
+        out.append(p if (len(p) > 1 and p.isupper()) else p.lower())
     return ' '.join(out)
 
 

@@ -413,8 +413,11 @@ function Title-FromName {
 	[void]$out.Add($parts[0])
 	for ($i = 1; $i -lt $parts.Count; $i++) {
 		$p = $parts[$i]
-		if ($p.Length -gt 1 -and $p -ceq $p.ToUpper()) { [void]$out.Add($p) }
-		else { [void]$out.Add($p.ToLower()) }
+		if ($p.Length -gt 1 -and $p -ceq $p.ToUpper()) {
+			[void]$out.Add($p)
+		} else {
+			[void]$out.Add($p.ToLower())
+		}
 	}
 	return ($out -join ' ')
 }
