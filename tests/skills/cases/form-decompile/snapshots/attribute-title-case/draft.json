@@ -1,0 +1,9 @@
+{
+  "title": "Регистр",
+  "elements": [{ "input": "Организации", "path": "ОрганизацииВЕТИС" }],
+  "attributes": [
+    { "name": "Объект", "type": "DataProcessorObject.Регистр", "main": true },
+    { "name": "ОрганизацииВЕТИС", "type": "string", "title": "Организации ВетИС" },
+    { "name": "СуммаДокумента", "type": "string", "title": "Сумма­ документа" }
+  ]
+}

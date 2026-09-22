@@ -1,0 +1,45 @@
+{
+  "name": "Заголовок параметра динамического списка, отличающийся от авто-вывода только регистром, не теряется",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "DataProcessor", "name": "Регистр" },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": { "-ObjectPath": "{workDir}/DataProcessors/Регистр.xml", "-FormName": "Форма" }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "title": "Регистр",
+        "attributes": [
+          { "name": "Объект", "type": "DataProcessorObject.Регистр", "main": true },
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "settings": {
+              "query": "ВЫБРАТЬ 1 КАК Поле ГДЕ 1 = &ОрганизацииВЕТИС",
+              "keyType": "RowNumber",
+              "parameters": [
+                { "name": "ОрганизацииВЕТИС", "title": "Организации ВетИС", "type": "string" }
+              ]
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/DataProcessors/Регистр/Forms/Форма/Ext/Form.xml"
+      }
+    }
+  ],
+  "params": {
+    "formPath": "DataProcessors/Регистр/Forms/Форма/Ext/Form.xml",
+    "outputPath": "draft.json"
+  },
+  "expect": {
+    "files": ["draft.json"]
+  }
+}

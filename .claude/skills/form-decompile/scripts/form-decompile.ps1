@@ -1,4 +1,4 @@
-﻿# form-decompile v0.150 — Decompile 1C managed Form.xml to JSON DSL (draft)
+﻿# form-decompile v0.151 — Decompile 1C managed Form.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # ВНИМАНИЕ: раундтрип не гарантируется. Навык исключён из авто-использования моделью.
 [CmdletBinding(PositionalBinding=$false)]
@@ -1493,8 +1493,13 @@ function Build-DLParameter {
 	if ($titleNode) {
 		$t = Get-LangText $titleNode
 		if ($null -ne $t) {
+			# Сравнение байт в байт: эталон — компилятор, он пишет заголовок как есть. -eq
+			# регистронезависим, и заголовок, отличающийся от авто-вывода только регистром
+			# («Организации ВетИС» при авто «Организации ВЕТИС»), терялся молча. Даже -ceq мало:
+			# он культурный, мягкий перенос и NFD-разложение для него — ноль. Нужен Ordinal,
+			# он же и есть зеркало питоновского ==.
 			$auto = Title-FromName -name $name
-			if (-not (($t -is [string]) -and ($t -eq $auto))) { $o['title'] = $t }
+			if (-not (($t -is [string]) -and [string]::Equals($t, $auto, [StringComparison]::Ordinal))) { $o['title'] = $t }
 		}
 	}
 	# valueType
@@ -2691,7 +2696,10 @@ if ($attrsNode) {
 		if ($tNode) {
 			$t = Get-LangTextWS $tNode   # восстановление значимого пробела (whitespace-заголовок реквизита)
 			if ($null -ne $t) {
-				if ($isMain -or -not ($t -is [string]) -or $t -ne (Title-FromName $ao['name'])) { $ao['title'] = $t }
+				# Ordinal, а не -ne/-ceq: заголовок опускаем только при ТОЧНОМ, побайтовом совпадении
+				# с авто-выводом — компилятор восстановит его как есть, значим и регистр, и мягкий
+				# перенос, и форма нормализации.
+				if ($isMain -or -not ($t -is [string]) -or -not [string]::Equals($t, (Title-FromName $ao['name']), [StringComparison]::Ordinal)) { $ao['title'] = $t }
 			}
 		} elseif (-not $isMain) {
 			$ao['title'] = ''

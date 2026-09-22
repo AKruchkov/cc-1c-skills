@@ -1,0 +1,37 @@
+{
+  "name": "Заголовок реквизита, отличающийся от авто-вывода только регистром или невидимым символом, не теряется",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "DataProcessor", "name": "Регистр" },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": { "-ObjectPath": "{workDir}/DataProcessors/Регистр.xml", "-FormName": "Форма" }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "title": "Регистр",
+        "elements": [{ "input": "Организации", "path": "ОрганизацииВЕТИС" }],
+        "attributes": [
+          { "name": "Объект", "type": "DataProcessorObject.Регистр", "main": true },
+          { "name": "ОрганизацииВЕТИС", "type": "string", "title": "Организации ВетИС" },
+          { "name": "СуммаДокумента", "type": "string", "title": "Сумма­ документа" }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/DataProcessors/Регистр/Forms/Форма/Ext/Form.xml"
+      }
+    }
+  ],
+  "params": {
+    "formPath": "DataProcessors/Регистр/Forms/Форма/Ext/Form.xml",
+    "outputPath": "draft.json"
+  },
+  "expect": {
+    "files": ["draft.json"]
+  }
+}

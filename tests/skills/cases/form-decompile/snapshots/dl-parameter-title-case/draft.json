@@ -1,0 +1,15 @@
+{
+  "title": "Регистр",
+  "attributes": [
+    { "name": "Объект", "type": "DataProcessorObject.Регистр", "main": true },
+    {
+      "name": "Список",
+      "type": "DynamicList",
+      "settings": {
+        "keyType": "RowNumber",
+        "query": "ВЫБРАТЬ 1 КАК Поле ГДЕ 1 = &ОрганизацииВЕТИС",
+        "parameters": [{ "name": "ОрганизацииВЕТИС", "title": "Организации ВетИС", "type": "string" }]
+      }
+    }
+  ]
+}
