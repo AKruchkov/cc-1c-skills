@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-decompile v0.151 — Decompile 1C managed Form.xml to JSON DSL (draft)
+# form-decompile v0.152 — Decompile 1C managed Form.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # ВНИМАНИЕ: раундтрип не гарантируется. Навык исключён из авто-использования моделью.
 #
@@ -1677,7 +1677,9 @@ def build_dl_parameter(p_node):
     # title — опускаем, если совпадает с авто-выводом из имени (ru-only)
     title_node = p_node.find('dcssch:title', NS)
     if title_node is not None:
-        t = get_lang_text(title_node)
+        # get_lang_text_ws, а не get_lang_text: заголовком-пробелом гасят подпись, а обычное
+        # чтение схлопывает whitespace-only в '' — и компилятор подставил бы авто-вывод.
+        t = get_lang_text_ws(title_node)
         if t is not None:
             # Сравнение байт в байт (в ps1 — [string]::Equals(..., Ordinal)): эталон — компилятор,
             # он пишет заголовок как есть. Регистронезависимое сравнение теряло заголовок,

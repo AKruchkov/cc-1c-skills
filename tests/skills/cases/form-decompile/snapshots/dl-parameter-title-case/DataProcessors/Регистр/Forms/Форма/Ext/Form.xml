@@ -28,13 +28,31 @@
 			<Settings xsi:type="DynamicList">
 				<ManualQuery>true</ManualQuery>
 				<DynamicDataRead>true</DynamicDataRead>
-				<QueryText>ВЫБРАТЬ 1 КАК Поле ГДЕ 1 = &amp;ОрганизацииВЕТИС</QueryText>
+				<QueryText>ВЫБРАТЬ 1 КАК Поле ГДЕ 1 = &amp;ОрганизацииВЕТИС И 2 = &amp;СуммаДокумента</QueryText>
 				<Parameter>
 					<dcssch:name>ОрганизацииВЕТИС</dcssch:name>
 					<dcssch:title xsi:type="v8:LocalStringType">
 						<v8:item>
 							<v8:lang>ru</v8:lang>
 							<v8:content>Организации ВетИС</v8:content>
+						</v8:item>
+					</dcssch:title>
+					<dcssch:valueType>
+						<v8:Type>xs:string</v8:Type>
+						<v8:StringQualifiers>
+							<v8:Length>0</v8:Length>
+							<v8:AllowedLength>Variable</v8:AllowedLength>
+						</v8:StringQualifiers>
+					</dcssch:valueType>
+					<dcssch:value xsi:nil="true"/>
+					<dcssch:useRestriction>true</dcssch:useRestriction>
+				</Parameter>
+				<Parameter>
+					<dcssch:name>СуммаДокумента</dcssch:name>
+					<dcssch:title xsi:type="v8:LocalStringType">
+						<v8:item>
+							<v8:lang>ru</v8:lang>
+							<v8:content> </v8:content>
 						</v8:item>
 					</dcssch:title>
 					<dcssch:valueType>

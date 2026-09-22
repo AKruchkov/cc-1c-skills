@@ -1,4 +1,4 @@
-﻿# form-decompile v0.151 — Decompile 1C managed Form.xml to JSON DSL (draft)
+﻿# form-decompile v0.152 — Decompile 1C managed Form.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # ВНИМАНИЕ: раундтрип не гарантируется. Навык исключён из авто-использования моделью.
 [CmdletBinding(PositionalBinding=$false)]
@@ -1494,7 +1494,7 @@ function Build-DLParameter {
 	# title — опускаем, если совпадает с авто-выводом из имени (ru-only)
 	$titleNode = $pNode.SelectSingleNode("dcssch:title", $ns)
 	if ($titleNode) {
-		$t = Get-LangText $titleNode
+		$t = Get-LangTextWS $titleNode   # восстановление значимого пробела: заголовком-пробелом гасят подпись
 		if ($null -ne $t) {
 			# Сравнение байт в байт: эталон — компилятор, он пишет заголовок как есть. -eq
 			# регистронезависим, и заголовок, отличающийся от авто-вывода только регистром
