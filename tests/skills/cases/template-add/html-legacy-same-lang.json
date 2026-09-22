@@ -1,0 +1,52 @@
+{
+  "name": "Старая раскладка + язык по умолчанию: дескриптор создаётся, содержимое сохраняется",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "script": "template-add/scripts/add-template",
+      "args": {
+        "-ObjectName": "МояОбработка",
+        "-TemplateName": "МакетHTML",
+        "-TemplateType": "HTML",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "deletePath": "МояОбработка/Templates/МакетHTML/Ext/Template"
+    },
+    {
+      "deletePath": "МояОбработка/Templates/МакетHTML/Ext/Template.xml"
+    },
+    {
+      "writeFile": {
+        "path": "МояОбработка/Templates/МакетHTML/Ext/Template.html",
+        "content": "<!DOCTYPE html>\n<html><body>\nЦЕННОЕ_СОДЕРЖИМОЕ\n</body></html>"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка",
+    "templateName": "МакетHTML",
+    "templateType": "HTML"
+  },
+  "expect": {
+    "stdoutContains": [
+      "[WARN]",
+      "старой раскладке",
+      "Добавлена страница макета"
+    ],
+    "filesAbsent": [
+      "МояОбработка/Templates/МакетHTML/Ext/Template.html"
+    ],
+    "fileContains": {
+      "file": "МояОбработка/Templates/МакетHTML/Ext/Template/ru.html",
+      "text": "ЦЕННОЕ_СОДЕРЖИМОЕ"
+    }
+  }
+}

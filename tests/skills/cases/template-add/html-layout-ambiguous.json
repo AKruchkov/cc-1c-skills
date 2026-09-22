@@ -1,0 +1,45 @@
+{
+  "name": "Разобранный макет (и Template.html, и Template/ru.html): отказ без изменений",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "script": "template-add/scripts/add-template",
+      "args": {
+        "-ObjectName": "МояОбработка",
+        "-TemplateName": "МакетHTML",
+        "-TemplateType": "HTML",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "deletePath": "МояОбработка/Templates/МакетHTML/Ext/Template"
+    },
+    {
+      "deletePath": "МояОбработка/Templates/МакетHTML/Ext/Template.xml"
+    },
+    {
+      "writeFile": {
+        "path": "МояОбработка/Templates/МакетHTML/Ext/Template.html",
+        "content": "<!DOCTYPE html>\n<html><body>\nЦЕННОЕ_СОДЕРЖИМОЕ\n</body></html>"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "МояОбработка/Templates/МакетHTML/Ext/Template/ru.html",
+        "content": "ДРУГАЯ_СТРАНИЦА"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка",
+    "templateName": "МакетHTML",
+    "templateType": "HTML"
+  },
+  "expectError": "Макет разобран"
+}

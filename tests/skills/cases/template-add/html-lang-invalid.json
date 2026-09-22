@@ -1,0 +1,22 @@
+{
+  "name": "Недопустимый код языка отвергается до записи",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка",
+    "templateName": "МакетHTML",
+    "templateType": "HTML"
+  },
+  "args_extra": [
+    "-Lang",
+    "../evil"
+  ],
+  "expectError": "Недопустимый код языка"
+}

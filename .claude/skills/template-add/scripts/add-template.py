@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# template-add v1.25 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# template-add v1.26 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -379,6 +379,14 @@ def main():
     templates_dir = os.path.join(processor_dir, "Templates")
     template_meta_path = os.path.join(templates_dir, f"{template_name}.xml")
 
+    # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
+    # пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
+    # запись мимо каталога Ext/Template. Оба отказа платформы были бы тихими.
+    if not re.match(r"^[A-Za-z0-9_-]+$", lang):
+        print(f"Недопустимый код языка: '{lang}'", file=sys.stderr)
+        print("Ожидается код вида ru, en (буквы, цифры, дефис, подчёркивание)", file=sys.stderr)
+        sys.exit(1)
+
     # Существующий HTML-макет — не всегда повод отказать: в один макет платформа кладёт
     # несколько языков (<Page> на каждый, страницы рядом), и повторный вызов с другим -Lang
     # добавляет страницу. Для остальных типов поведение прежнее — отказ.
@@ -469,6 +477,12 @@ def main():
         langs = []
         desc_version = format_version
 
+        # Сначала РАЗБОР состояния, и только в самом конце запись: иначе отказ на полпути
+        # оставляет макет разобранным (страница есть, дескриптора нет) — а такую раскладку
+        # платформа снова молча игнорирует.
+        legacy_pending = False
+        page_path = os.path.join(page_dir, f"{lang}.html")
+
         if os.path.exists(desc_path):
             with open(desc_path, "r", encoding="utf-8-sig") as f:
                 desc_text = f.read()
@@ -480,21 +494,27 @@ def main():
         elif os.path.exists(legacy_page_path):
             # Раскладка до v1.24 — одиночный Ext/Template.html, который платформа молча игнорирует.
             # Языка у него нет, но создать его могла только версия навыка без параметра -Lang,
-            # то есть это страница на языке по умолчанию. Переносим и говорим об этом вслух.
-            os.makedirs(page_dir, exist_ok=True)
-            os.replace(legacy_page_path, os.path.join(page_dir, "ru.html"))
+            # то есть это страница на языке по умолчанию.
+            if os.path.exists(os.path.join(page_dir, "ru.html")):
+                print("Макет разобран: есть и старый Ext/Template.html, и Template/ru.html — что из них актуально, решать не навыку.", file=sys.stderr)
+                print("Оставьте один файл и повторите.", file=sys.stderr)
+                sys.exit(1)
+            legacy_pending = True
             langs = ["ru"]
-            print("[WARN] Макет был в старой раскладке (Ext/Template.html) — платформа её игнорирует.")
-            print("       Страница считана как ru и перенесена в Template/ru.html, создан дескриптор.")
 
-        page_path = os.path.join(page_dir, f"{lang}.html")
+        # Файл страницы НИКОГДА не перезаписываем: в нём может лежать текст макета.
+        # Ошибка — только когда добавлять нечего: язык уже в дескрипторе И страница на диске.
         # Сравнение без учёта регистра — зеркало -contains в PS, который регистр не различает.
-        if lang.lower() in [x.lower() for x in langs]:
+        lang_known = lang.lower() in [x.lower() for x in langs]
+        page_exists = os.path.exists(page_path) or (legacy_pending and lang.lower() == "ru")
+        if lang_known and page_exists and not legacy_pending:
             print(f"Страница макета на языке '{lang}' уже существует: {page_path}", file=sys.stderr)
             sys.exit(1)
 
         # Порядок страниц — по коду языка (в выгрузке ERP так во всех 54 двуязычных макетах).
-        langs = sorted(langs + [lang])
+        if not lang_known:
+            langs = langs + [lang]
+        langs = sorted(langs)
 
         pages_xml = '\n'.join(f"\t<Page>{x}</Page>" for x in langs)
         desc_xml = (
@@ -506,10 +526,20 @@ def main():
             f'{pages_xml}\n'
             '</Help>'
         )
-        write_xml_file(desc_path, desc_xml)
 
+        # --- запись ---
         os.makedirs(page_dir, exist_ok=True)
-        write_utf8_bom(page_path, html_skeleton)
+        if legacy_pending:
+            os.replace(legacy_page_path, os.path.join(page_dir, "ru.html"))
+            print("[WARN] Макет был в старой раскладке (Ext/Template.html) — платформа её игнорирует.")
+            print("       Страница считана как ru и перенесена в Template/ru.html.")
+        write_xml_file(desc_path, desc_xml)
+        if os.path.exists(page_path):
+            # При миграции про сохранённое содержимое уже сказано выше — не повторяемся.
+            if not legacy_pending:
+                print(f"[WARN] Страница {lang}.html уже лежала на диске — содержимое сохранено, дописан только <Page>.")
+        else:
+            write_utf8_bom(page_path, html_skeleton)
 
         print(f"[OK] Добавлена страница макета: {template_name} ({lang})")
         print(f"     Содержимое: {page_path}")

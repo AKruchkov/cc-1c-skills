@@ -1,4 +1,4 @@
-﻿# template-add v1.25 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# template-add v1.26 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -201,6 +201,14 @@ $processorDir = Join-Path $SrcDir $ObjectName
 $templatesDir = Join-Path $processorDir "Templates"
 $templateMetaPath = Join-Path $templatesDir "$TemplateName.xml"
 
+# Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
+# пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
+# запись мимо каталога Ext/Template. Оба отказа платформы были бы тихими.
+if ($Lang -notmatch '^[A-Za-z0-9_-]+$') {
+	Write-Error "Недопустимый код языка: '$Lang'`nОжидается код вида ru, en (буквы, цифры, дефис, подчёркивание)"
+	exit 1
+}
+
 # Существующий HTML-макет — не всегда повод отказать: в один макет платформа кладёт
 # несколько языков (<Page> на каждый, страницы рядом), и повторный вызов с другим -Lang
 # добавляет страницу. Для остальных типов поведение прежнее — отказ.
@@ -339,6 +347,12 @@ if ($addLangMode) {
 	$langs = @()
 	$descVersion = $formatVersion
 
+	# Сначала РАЗБОР состояния, и только в самом конце запись: иначе отказ на полпути
+	# оставляет макет разобранным (страница есть, дескриптора нет) — а такую раскладку
+	# платформа снова молча игнорирует.
+	$legacyPending = $false
+	$pagePath = Join-Path $pageDir "$Lang.html"
+
 	if (Test-Path $descPath) {
 		$descText = [System.IO.File]::ReadAllText((Resolve-Path $descPath).Path, [System.Text.Encoding]::UTF8)
 		# Версию берём из самого дескриптора: правка чужой выгрузки не должна менять формат.
@@ -347,23 +361,26 @@ if ($addLangMode) {
 	} elseif (Test-Path $legacyPagePath) {
 		# Раскладка до v1.24 — одиночный Ext/Template.html, который платформа молча игнорирует.
 		# Языка у него нет, но создать его могла только версия навыка без параметра -Lang,
-		# то есть это страница на языке по умолчанию. Переносим и говорим об этом вслух.
-		New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
-		Move-Item -LiteralPath $legacyPagePath -Destination (Join-Path $pageDir "ru.html") -Force
+		# то есть это страница на языке по умолчанию.
+		if (Test-Path (Join-Path $pageDir "ru.html")) {
+			Write-Error "Макет разобран: есть и старый Ext/Template.html, и Template/ru.html — что из них актуально, решать не навыку.`nОставьте один файл и повторите."
+			exit 1
+		}
+		$legacyPending = $true
 		$langs = @("ru")
-		Write-Host "[WARN] Макет был в старой раскладке (Ext/Template.html) — платформа её игнорирует."
-		Write-Host "       Страница считана как ru и перенесена в Template/ru.html, создан дескриптор."
 	}
 
-	$pagePath = Join-Path $pageDir "$Lang.html"
-	if ($langs -contains $Lang) {
+	# Файл страницы НИКОГДА не перезаписываем: в нём может лежать текст макета.
+	# Ошибка — только когда добавлять нечего: язык уже в дескрипторе И страница на диске.
+	$pageExists = (Test-Path $pagePath) -or ($legacyPending -and $Lang -eq "ru")
+	if (($langs -contains $Lang) -and $pageExists -and -not $legacyPending) {
 		Write-Error "Страница макета на языке '$Lang' уже существует: $pagePath"
 		exit 1
 	}
 
 	# Порядок страниц — по коду языка (в выгрузке ERP так во всех 54 двуязычных макетах).
 	# Сравнение ordinal, а не культурное: иначе порты разойдутся на ровном месте.
-	$langs = @($langs + $Lang)
+	if (-not ($langs -contains $Lang)) { $langs = @($langs + $Lang) }
 	[Array]::Sort($langs, [System.StringComparer]::Ordinal)
 
 	$pagesXml = ($langs | ForEach-Object { "`t<Page>$_</Page>" }) -join "`n"
@@ -373,11 +390,23 @@ if ($addLangMode) {
 $pagesXml
 </Help>
 "@
-	Write-XmlFile $descPath $descXml $encBom
 
+	# --- запись ---
 	New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
-	$pageContent = ($htmlSkeleton -replace "`r`n", "`n")
-	[System.IO.File]::WriteAllText($pagePath, $pageContent, $encBom)
+	if ($legacyPending) {
+		Move-Item -LiteralPath $legacyPagePath -Destination (Join-Path $pageDir "ru.html")
+		Write-Host "[WARN] Макет был в старой раскладке (Ext/Template.html) — платформа её игнорирует."
+		Write-Host "       Страница считана как ru и перенесена в Template/ru.html."
+	}
+	Write-XmlFile $descPath $descXml $encBom
+	if (Test-Path $pagePath) {
+		# При миграции про сохранённое содержимое уже сказано выше — не повторяемся.
+		if (-not $legacyPending) {
+			Write-Host "[WARN] Страница $Lang.html уже лежала на диске — содержимое сохранено, дописан только <Page>."
+		}
+	} else {
+		[System.IO.File]::WriteAllText($pagePath, ($htmlSkeleton -replace "`r`n", "`n"), $encBom)
+	}
 
 	Write-Host "[OK] Добавлена страница макета: $TemplateName ($Lang)"
 	Write-Host "     Содержимое: $pagePath"

@@ -1,0 +1,46 @@
+{
+  "name": "Страница есть на диске, но не в дескрипторе: содержимое не затирается",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "script": "template-add/scripts/add-template",
+      "args": {
+        "-ObjectName": "МояОбработка",
+        "-TemplateName": "МакетHTML",
+        "-TemplateType": "HTML",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "МояОбработка/Templates/МакетHTML/Ext/Template/en.html",
+        "content": "РУЧНАЯ_АНГЛИЙСКАЯ_СТРАНИЦА"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка",
+    "templateName": "МакетHTML",
+    "templateType": "HTML"
+  },
+  "args_extra": [
+    "-Lang",
+    "en"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "[WARN]",
+      "уже лежала на диске"
+    ],
+    "fileContains": {
+      "file": "МояОбработка/Templates/МакетHTML/Ext/Template/en.html",
+      "text": "РУЧНАЯ_АНГЛИЙСКАЯ_СТРАНИЦА"
+    }
+  }
+}
