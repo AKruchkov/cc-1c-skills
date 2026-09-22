@@ -246,6 +246,7 @@
 		</Properties>
 		<ChildObjects>
 			<Language>Русский</Language>
+			<Catalog>Организации</Catalog>
 			<DataProcessor>Регистр</DataProcessor>
 		</ChildObjects>
 	</Configuration>

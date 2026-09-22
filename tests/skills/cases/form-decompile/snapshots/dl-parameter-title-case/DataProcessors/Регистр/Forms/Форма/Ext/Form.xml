@@ -28,7 +28,7 @@
 			<Settings xsi:type="DynamicList">
 				<ManualQuery>true</ManualQuery>
 				<DynamicDataRead>true</DynamicDataRead>
-				<QueryText>ВЫБРАТЬ 1 КАК Поле ГДЕ 1 = &amp;ОрганизацииВЕТИС И 2 = &amp;СуммаДокумента</QueryText>
+				<QueryText>ВЫБРАТЬ Т.Ссылка КАК Ссылка, Т.Наименование КАК Наименование ИЗ Справочник.Организации КАК Т ГДЕ Т.Наименование ПОДОБНО &amp;ОрганизацииВЕТИС И Т.Код ПОДОБНО &amp;СуммаДокумента</QueryText>
 				<Parameter>
 					<dcssch:name>ОрганизацииВЕТИС</dcssch:name>
 					<dcssch:title xsi:type="v8:LocalStringType">
@@ -65,7 +65,7 @@
 					<dcssch:value xsi:nil="true"/>
 					<dcssch:useRestriction>true</dcssch:useRestriction>
 				</Parameter>
-				<KeyType>RowNumber</KeyType>
+				<MainTable>Catalog.Организации</MainTable>
 				<ListSettings>
 					<dcsset:filter>
 						<dcsset:viewMode>Normal</dcsset:viewMode>

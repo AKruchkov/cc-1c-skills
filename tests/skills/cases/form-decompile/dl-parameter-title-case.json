@@ -7,6 +7,11 @@
       "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
     },
     {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "Catalog", "name": "Организации" },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
       "script": "form-add/scripts/form-add",
       "args": { "-ObjectPath": "{workDir}/DataProcessors/Регистр.xml", "-FormName": "Форма" }
     },
@@ -20,8 +25,8 @@
             "name": "Список",
             "type": "DynamicList",
             "settings": {
-              "query": "ВЫБРАТЬ 1 КАК Поле ГДЕ 1 = &ОрганизацииВЕТИС И 2 = &СуммаДокумента",
-              "keyType": "RowNumber",
+              "mainTable": "Catalog.Организации",
+              "query": "ВЫБРАТЬ Т.Ссылка КАК Ссылка, Т.Наименование КАК Наименование ИЗ Справочник.Организации КАК Т ГДЕ Т.Наименование ПОДОБНО &ОрганизацииВЕТИС И Т.Код ПОДОБНО &СуммаДокумента",
               "parameters": [
                 { "name": "ОрганизацииВЕТИС", "title": "Организации ВетИС", "type": "string" },
                 { "name": "СуммаДокумента", "title": " ", "type": "string" }
