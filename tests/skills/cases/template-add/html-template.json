@@ -6,5 +6,25 @@
       "args": { "-Name": "МояОбработка", "-SrcDir": "{workDir}" }
     }
   ],
-  "params": { "objectName": "МояОбработка", "templateName": "МакетHTML", "templateType": "HTML" }
+  "params": { "objectName": "МояОбработка", "templateName": "МакетHTML", "templateType": "HTML" },
+  "expect": {
+    "stdoutContains": ["Содержимое:", "ru.html", "Дескриптор:"],
+    "preserves": [
+      {
+        "file": "МояОбработка/Templates/МакетHTML/Ext/Template.xml",
+        "bom": true,
+        "eol": "crlf",
+        "encoding": "UTF-8",
+        "finalNewline": false,
+        "noCR13": true,
+        "selfClose": "tight"
+      },
+      {
+        "file": "МояОбработка/Templates/МакетHTML/Ext/Template/ru.html",
+        "bom": true,
+        "eol": "lf",
+        "finalNewline": false
+      }
+    ]
+  }
 }

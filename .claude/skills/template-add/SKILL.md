@@ -27,13 +27,14 @@ allowed-tools:
 | TemplateName  | да           | —               | Имя макета                                       |
 | TemplateType  | да           | —               | Тип: HTML, Text, SpreadsheetDocument, BinaryData, DataCompositionSchema |
 | Synonym       | нет          | = TemplateName  | Синоним макета                                   |
+| Lang          | нет          | `ru`            | Код языка страницы — только для типа HTML        |
 | SrcDir        | нет          | `src`           | Путь к папке типа объектов (`Reports`, `DataProcessors`, `Catalogs`, `Documents`...), внутри которой лежит `<ObjectName>.xml`. Дефолт `src` подходит для каталогов с внешними обработками/отчётами, лежащими рядом |
 | -SetMainSKD   | нет          | —               | Принудительно установить MainDataCompositionSchema |
 
 ## Команда
 
 ```powershell
-powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/add-template.ps1" -ObjectName "<ObjectName>" -TemplateName "<TemplateName>" -TemplateType "<TemplateType>" [-Synonym "<Synonym>"] [-SrcDir "<SrcDir>"] [-SetMainSKD]
+powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/add-template.ps1" -ObjectName "<ObjectName>" -TemplateName "<TemplateName>" -TemplateType "<TemplateType>" [-Synonym "<Synonym>"] [-Lang "<Lang>"] [-SrcDir "<SrcDir>"] [-SetMainSKD]
 ```
 
 ## Пример
@@ -50,7 +51,7 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/add-template.ps1" -
 
 | Пользователь пишет                          | TemplateType        | Расширение | Содержимое              |
 |---------------------------------------------|---------------------|------------|-------------------------|
-| HTML                                        | HTMLDocument        | `.html`    | Пустой HTML-документ    |
+| HTML                                        | HTMLDocument        | `Template/<lang>.html` | Пустой HTML-документ |
 | Text, текстовый документ, текст             | TextDocument        | `.txt`     | Пустой файл             |
 | SpreadsheetDocument, табличный документ, MXL | SpreadsheetDocument | `.xml`     | Минимальный spreadsheet |
 | BinaryData, двоичные данные                 | BinaryData          | `.bin`     | Пустой файл             |
@@ -80,7 +81,8 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/add-template.ps1" -
 ├── <TemplateName>.xml              # Метаданные макета (1 UUID)
 └── <TemplateName>/
     └── Ext/
-        └── Template.<ext>          # Содержимое макета
+        ├── Template.<ext>          # Содержимое макета
+        └── Template/<lang>.html    # HTML: содержимое (Template.xml — дескриптор)
 ```
 
 ## Что модифицируется

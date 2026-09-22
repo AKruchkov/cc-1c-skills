@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# template-add v1.23 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# template-add v1.24 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -212,7 +212,7 @@ def assert_edit_allowed(target_path, require):
         return
 
 TYPE_MAP = {
-    "HTML": {"TemplateType": "HTMLDocument", "Ext": ".html"},
+    "HTML": {"TemplateType": "HTMLDocument", "Ext": ".xml"},
     "Text": {"TemplateType": "TextDocument", "Ext": ".txt"},
     "SpreadsheetDocument": {"TemplateType": "SpreadsheetDocument", "Ext": ".xml"},
     "BinaryData": {"TemplateType": "BinaryData", "Ext": ".bin"},
@@ -282,7 +282,7 @@ def write_xml_file(path, content):
     Копия этой функции есть в каждом навыке-эмиттере (навыки автономны). Держать
     копии одинаковыми — сознательно: разошедшиеся копии сводят на нет весь смысл.
 
-    HTML-макет сюда НЕ идёт — платформа хранит его с LF.
+    HTML-страница макета сюда НЕ идёт — платформа хранит её с LF.
     """
     text = content.replace('\r\n', '\n').replace('\n', '\r\n').rstrip('\r\n')
     write_utf8_bom(path, text)
@@ -329,6 +329,7 @@ def main():
     parser.add_argument("-TemplateType", required=True,
                         choices=["HTML", "Text", "SpreadsheetDocument", "BinaryData", "DataCompositionSchema"])
     parser.add_argument("-Synonym", default=None)
+    parser.add_argument("-Lang", default="ru")
     parser.add_argument("-SrcDir", default="src")
     parser.add_argument("-SetMainSKD", action="store_true")
     args = ci_parse_args(parser)
@@ -337,6 +338,7 @@ def main():
     template_name = args.TemplateName
     template_type = args.TemplateType
     synonym = args.Synonym if args.Synonym is not None else template_name
+    lang = args.Lang
     src_dir = args.SrcDir
     set_main_skd = args.SetMainSKD
 
@@ -457,20 +459,41 @@ def main():
     # --- 2. Template content (Templates/<TemplateName>/Ext/Template.<ext>) ---
 
     template_file_path = os.path.join(template_ext_dir, f"Template{tmpl['Ext']}")
+    # Куда класть текст макета. Совпадает с template_file_path у всех типов, кроме HTML:
+    # там содержимое живёт в отдельной странице, а Template.xml — только дескриптор.
+    template_body_path = template_file_path
 
     if template_type == "HTML":
-        content = (
-            '<!DOCTYPE html>\n'
-            '<html>\n'
-            '<head>\n'
-            '\t<meta charset="UTF-8">\n'
-            '\t<title></title>\n'
-            '</head>\n'
-            '<body>\n'
-            '</body>\n'
-            '</html>'
+        # HTML-макет платформа хранит парой, как справку: дескриптор Ext/Template.xml
+        # со списком страниц и сама страница Ext/Template/<язык>.html (картинки —
+        # рядом в _files/). Одиночный Ext/Template.html платформа молча игнорирует:
+        # загрузка проходит без ошибок, а макет в базе пустой.
+        page_xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Help xmlns="http://v8.1c.ru/8.3/xcf/extrnprops"'
+            ' xmlns:xs="http://www.w3.org/2001/XMLSchema"'
+            ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+            f' version="{format_version}">\n'
+            f'\t<Page>{lang}</Page>\n'
+            '</Help>'
         )
-        write_utf8_bom(template_file_path, content)
+        write_xml_file(template_file_path, page_xml)
+
+        page_dir = os.path.join(template_ext_dir, "Template")
+        os.makedirs(page_dir, exist_ok=True)
+        template_body_path = os.path.join(page_dir, f"{lang}.html")
+
+        # Шапка — в том же виде, в каком её пишет редактор платформы (одной строкой,
+        # парный </meta>): первое сохранение в Конфигураторе даст минимальный дифф.
+        # Страница — с LF: платформа хранит HTML именно так.
+        content = (
+            '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">'
+            '<html><head>'
+            '<meta http-equiv="Content-Type" content="text/html; charset=utf-8"></meta>'
+            '</head><body>\n'
+            '</body></html>'
+        )
+        write_utf8_bom(template_body_path, content)
 
     elif template_type == "Text":
         write_utf8_bom(template_file_path, "")
@@ -584,7 +607,9 @@ def main():
     if already_registered:
         print(f"     Already registered: <Template>{template_name}</Template> in ChildObjects (skipped duplicate)")
     print(f"     Метаданные: {template_meta_path}")
-    print(f"     Содержимое: {template_file_path}")
+    print(f"     Содержимое: {template_body_path}")
+    if template_type == "HTML":
+        print(f"     Дескриптор: {template_file_path}")
     if main_dcs_updated:
         print(f"     MainDataCompositionSchema: {main_dcs.text}")
 

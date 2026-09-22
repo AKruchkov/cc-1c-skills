@@ -1,4 +1,4 @@
-﻿# template-add v1.23 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# template-add v1.24 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -13,6 +13,8 @@ param(
 	[string]$TemplateType,
 
 	[string]$Synonym = $TemplateName,
+
+	[string]$Lang = "ru",
 
 	[string]$SrcDir = "src",
 
@@ -157,7 +159,7 @@ function Assert-EditAllowed([string]$targetPath, [string]$require) {
 # --- Маппинг типов ---
 
 $typeMap = @{
-	"HTML"                = @{ TemplateType = "HTMLDocument";        Ext = ".html" }
+	"HTML"                = @{ TemplateType = "HTMLDocument";        Ext = ".xml" }
 	"Text"                = @{ TemplateType = "TextDocument";        Ext = ".txt" }
 	"SpreadsheetDocument" = @{ TemplateType = "SpreadsheetDocument"; Ext = ".xml" }
 	"BinaryData"          = @{ TemplateType = "BinaryData";          Ext = ".bin" }
@@ -297,7 +299,7 @@ $templateMetaXml = @"
 # Копия этой функции есть в каждом навыке-эмиттере (навыки автономны). Держать
 # копии одинаковыми — сознательно: разошедшиеся копии сводят на нет весь смысл.
 #
-# HTML-макет сюда НЕ идёт — платформа хранит его с LF.
+# HTML-страница макета сюда НЕ идёт — платформа хранит её с LF.
 function Write-XmlFile([string]$path, [string]$text, $encoding) {
 	$t = ($text -replace "`r`n", "`n") -replace "`n", "`r`n"
 	[System.IO.File]::WriteAllText($path, $t.TrimEnd("`r", "`n"), $encoding)
@@ -308,21 +310,37 @@ Write-XmlFile $templateMetaPath $templateMetaXml $encBom
 # --- 2. Содержимое макета (Templates/<TemplateName>/Ext/Template.<ext>) ---
 
 $templateFilePath = Join-Path $templateExtDir "Template$($tmpl.Ext)"
+# Куда класть текст макета. Совпадает с $templateFilePath у всех типов, кроме HTML:
+# там содержимое живёт в отдельной странице, а Template.xml — только дескриптор.
+$templateBodyPath = $templateFilePath
 
 switch ($TemplateType) {
 	"HTML" {
-		$content = @"
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="UTF-8">
-	<title></title>
-</head>
-<body>
-</body>
-</html>
+		# HTML-макет платформа хранит парой, как справку: дескриптор Ext/Template.xml
+		# со списком страниц и сама страница Ext/Template/<язык>.html (картинки —
+		# рядом в _files/). Одиночный Ext/Template.html платформа молча игнорирует:
+		# загрузка проходит без ошибок, а макет в базе пустой.
+		$pageXml = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<Help xmlns="http://v8.1c.ru/8.3/xcf/extrnprops" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="$formatVersion">
+	<Page>$Lang</Page>
+</Help>
 "@
-		[System.IO.File]::WriteAllText($templateFilePath, $content, $encBom)
+		Write-XmlFile $templateFilePath $pageXml $encBom
+
+		$pageDir = Join-Path $templateExtDir "Template"
+		New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
+		$templateBodyPath = Join-Path $pageDir "$Lang.html"
+
+		# Шапка — в том же виде, в каком её пишет редактор платформы (одной строкой,
+		# парный </meta>): первое сохранение в Конфигураторе даст минимальный дифф.
+		$content = @"
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"><html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></meta></head><body>
+</body></html>
+"@
+		# Страница — с LF: платформа хранит HTML именно так.
+		$content = ($content -replace "`r`n", "`n")
+		[System.IO.File]::WriteAllText($templateBodyPath, $content, $encBom)
 	}
 	"Text" {
 		[System.IO.File]::WriteAllText($templateFilePath, "", $encBom)
@@ -463,7 +481,10 @@ if ($alreadyRegistered) {
 	Write-Host "     Already registered: <Template>$TemplateName</Template> in ChildObjects (skipped duplicate)"
 }
 Write-Host "     Метаданные: $templateMetaPath"
-Write-Host "     Содержимое: $templateFilePath"
+Write-Host "     Содержимое: $templateBodyPath"
+if ($TemplateType -eq "HTML") {
+	Write-Host "     Дескриптор: $templateFilePath"
+}
 if ($mainDCSUpdated) {
 	Write-Host "     MainDataCompositionSchema: $($mainDCS.InnerText)"
 }
