@@ -28,7 +28,7 @@
 			<Settings xsi:type="DynamicList">
 				<ManualQuery>true</ManualQuery>
 				<DynamicDataRead>true</DynamicDataRead>
-				<QueryText>ВЫБРАТЬ Т.Ссылка КАК Ссылка, Т.Наименование КАК Наименование ИЗ Справочник.Организации КАК Т ГДЕ Т.Наименование ПОДОБНО &amp;ОрганизацииВЕТИС И Т.Код ПОДОБНО &amp;СуммаДокумента</QueryText>
+				<QueryText>ВЫБРАТЬ Т.Ссылка КАК Ссылка, Т.Наименование КАК Наименование ИЗ Справочник.Организации КАК Т ГДЕ Т.Наименование ПОДОБНО &amp;ОрганизацииВЕТИС И Т.Код ПОДОБНО &amp;КодОрганизации</QueryText>
 				<Parameter>
 					<dcssch:name>ОрганизацииВЕТИС</dcssch:name>
 					<dcssch:title xsi:type="v8:LocalStringType">
@@ -48,7 +48,7 @@
 					<dcssch:useRestriction>true</dcssch:useRestriction>
 				</Parameter>
 				<Parameter>
-					<dcssch:name>СуммаДокумента</dcssch:name>
+					<dcssch:name>КодОрганизации</dcssch:name>
 					<dcssch:title xsi:type="v8:LocalStringType">
 						<v8:item>
 							<v8:lang>ru</v8:lang>
