@@ -184,6 +184,15 @@ const FAMILIES = [
         consumersPy: ['cfe-borrow'] },
     ],
   },
+  // ─── Код языка страницы ──────────────────────────────────────────────────
+  // Формат «дескриптор + страница» общий у справки объекта и HTML-макета, поэтому проверка
+  // кода языка обязана быть одна и та же: он идёт и в текст XML, и в имя файла.
+  {
+    name: 'is_valid_lang', py: 'is_valid_lang', ps1: 'Test-LangCode',
+    variants: [
+      { id: 'base', authority: 'template-add', consumers: ['help-add'] },
+    ],
+  },
   {
     name: 'write_utf8_bom', py: 'write_utf8_bom', ps1: null,
     variants: [

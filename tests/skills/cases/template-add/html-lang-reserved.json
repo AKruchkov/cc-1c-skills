@@ -1,0 +1,22 @@
+{
+  "name": "Зарезервированное имя устройства как код языка отвергается",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка",
+    "templateName": "МакетHTML",
+    "templateType": "HTML"
+  },
+  "args_extra": [
+    "-Lang",
+    "nul"
+  ],
+  "expectError": "Недопустимый код языка"
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# template-add v1.26 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# template-add v1.27 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -276,6 +276,26 @@ def write_utf8_bom(path, content):
 
 
 
+def is_valid_lang(code):
+    """Код языка идёт и в текст XML, и в имя файла страницы.
+
+    Пустое значение дало бы файл «.html» и пустой <Page></Page>, разделитель пути — запись
+    мимо каталога страниц, а зарезервированное имя устройства (nul, con, prn, aux, com1…, lpt1…)
+    на Windows уводит запись в само устройство: при -Lang nul этот порт молча писал
+    <Page>nul</Page> и пустой каталог с кодом 0. Все отказы платформы были бы тихими.
+
+    fullmatch, а не match: последний с `$` допускает перевод строки в конце.
+
+    Копия этой функции есть в help-add (навыки автономны, формат «дескриптор + страница»
+    у них общий). Держать копии одинаковыми — сознательно; за дрейфом следит check-inline-drift.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", code):
+        return False
+    if re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])", code):
+        return False
+    return True
+
+
 def write_xml_file(path, content):
     """XML в каноне выгрузки Конфигуратора: CRLF в разделителях, без перевода в конце.
 
@@ -379,12 +399,9 @@ def main():
     templates_dir = os.path.join(processor_dir, "Templates")
     template_meta_path = os.path.join(templates_dir, f"{template_name}.xml")
 
-    # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
-    # пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
-    # запись мимо каталога Ext/Template. Оба отказа платформы были бы тихими.
-    if not re.match(r"^[A-Za-z0-9_-]+$", lang):
+    if not is_valid_lang(lang):
         print(f"Недопустимый код языка: '{lang}'", file=sys.stderr)
-        print("Ожидается код вида ru, en (буквы, цифры, дефис, подчёркивание)", file=sys.stderr)
+        print("Ожидается код вида ru, en (буквы, цифры, дефис, подчёркивание; имена устройств Windows недопустимы)", file=sys.stderr)
         sys.exit(1)
 
     # Существующий HTML-макет — не всегда повод отказать: в один макет платформа кладёт
@@ -491,6 +508,11 @@ def main():
             if m_dv:
                 desc_version = m_dv.group(1)
             langs = re.findall(r"<Page>([^<]+)</Page>", desc_text)
+            # Полумигрированное дерево: дескриптор уже есть, а старый Ext/Template.html остался рядом.
+            # Платформа его игнорирует, поэтому текст в нём пропадёт незаметно — говорим вслух.
+            if os.path.exists(legacy_page_path):
+                print("[WARN] Рядом лежит старый Ext/Template.html — платформа его игнорирует.")
+                print("       Перенесите нужное в Template/<язык>.html и удалите его.")
         elif os.path.exists(legacy_page_path):
             # Раскладка до v1.24 — одиночный Ext/Template.html, который платформа молча игнорирует.
             # Языка у него нет, но создать его могла только версия навыка без параметра -Lang,
@@ -506,7 +528,13 @@ def main():
         # Ошибка — только когда добавлять нечего: язык уже в дескрипторе И страница на диске.
         # Сравнение без учёта регистра — зеркало -contains в PS, который регистр не различает.
         lang_known = lang.lower() in [x.lower() for x in langs]
-        page_exists = os.path.exists(page_path) or (legacy_pending and lang.lower() == "ru")
+        # Существование страницы — тоже без учёта регистра: os.path.exists на Linux различает
+        # регистр, а PS -contains и Test-Path на Windows — нет, и порты разошлись бы на -Lang RU.
+        page_exists = False
+        if os.path.isdir(page_dir):
+            want = f"{lang}.html".lower()
+            page_exists = any(f.lower() == want for f in os.listdir(page_dir))
+        # При миграции проверять нечего: langs там задан нами же, а страница появится переносом.
         if lang_known and page_exists and not legacy_pending:
             print(f"Страница макета на языке '{lang}' уже существует: {page_path}", file=sys.stderr)
             sys.exit(1)

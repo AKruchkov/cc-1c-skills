@@ -1,0 +1,42 @@
+{
+  "name": "Дескриптор есть, старый Template.html остался рядом: предупреждение",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "script": "template-add/scripts/add-template",
+      "args": {
+        "-ObjectName": "МояОбработка",
+        "-TemplateName": "МакетHTML",
+        "-TemplateType": "HTML",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "МояОбработка/Templates/МакетHTML/Ext/Template.html",
+        "content": "ЗАБЫТЫЙ_ФАЙЛ"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка",
+    "templateName": "МакетHTML",
+    "templateType": "HTML"
+  },
+  "args_extra": [
+    "-Lang",
+    "en"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "[WARN]",
+      "Рядом лежит старый"
+    ]
+  }
+}

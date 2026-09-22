@@ -1,0 +1,41 @@
+{
+  "name": "Страница справки без дескриптора: содержимое не затирается",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": {
+        "-Name": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "script": "help-add/scripts/add-help",
+      "args": {
+        "-ObjectName": "МояОбработка",
+        "-SrcDir": "{workDir}"
+      }
+    },
+    {
+      "deletePath": "МояОбработка/Ext/Help.xml"
+    },
+    {
+      "writeFile": {
+        "path": "МояОбработка/Ext/Help/ru.html",
+        "content": "ЖИВОЙ_ТЕКСТ_СПРАВКИ"
+      }
+    }
+  ],
+  "params": {
+    "objectName": "МояОбработка"
+  },
+  "expect": {
+    "stdoutContains": [
+      "[WARN]",
+      "содержимое сохранено"
+    ],
+    "fileContains": {
+      "file": "МояОбработка/Ext/Help/ru.html",
+      "text": "ЖИВОЙ_ТЕКСТ_СПРАВКИ"
+    }
+  }
+}

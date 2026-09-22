@@ -1,4 +1,4 @@
-﻿# help-add v1.21 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# help-add v1.22 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -185,13 +185,22 @@ if (-not (Test-Path $extDir)) {
 }
 
 # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
-# пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
-# запись мимо каталога Ext/Help. Оба отказа платформы были бы тихими.
+# пустое значение дало бы файл «.html» и пустой <Page></Page>, разделитель пути — запись мимо
+# каталога страниц, а зарезервированное имя устройства (nul, con, prn, aux, com1…, lpt1…) на
+# Windows уводит запись в само устройство. Все отказы платформы были бы тихими.
 #
-# Копия этой проверки есть в template-add (навыки автономны, формат «дескриптор +
-# страница» у них общий). Держать копии одинаковыми — сознательно.
-if ($Lang -notmatch '^[A-Za-z0-9_-]+$') {
-	Write-Error "Недопустимый код языка: '$Lang'`nОжидается код вида ru, en (буквы, цифры, дефис, подчёркивание)"
+# Якоря `\A…\z`, а не `^…$`: последние в обоих языках допускают перевод строки в конце.
+#
+# Копия этой функции есть в template-add (навыки автономны, формат «дескриптор + страница»
+# у них общий). Держать копии одинаковыми — сознательно; за дрейфом следит check-inline-drift.
+function Test-LangCode([string]$code) {
+	if ($code -notmatch '\A[A-Za-z0-9_-]+\z') { return $false }
+	if ($code -match '\A(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])\z') { return $false }
+	return $true
+}
+
+if (-not (Test-LangCode $Lang)) {
+	Write-Error "Недопустимый код языка: '$Lang'`nОжидается код вида ru, en (буквы, цифры, дефис, подчёркивание; имена устройств Windows недопустимы)"
 	exit 1
 }
 
@@ -250,7 +259,14 @@ $helpHtml = @"
 </html>
 "@
 
-[System.IO.File]::WriteAllText($helpHtmlPath, $helpHtml, $encBom)
+# Файл страницы НЕ перезаписываем: отказ выше смотрит только на Help.xml, а страница может
+# пережить его (удалённый дескриптор, частичная выгрузка, справка, сделанная руками) — и тогда
+# безусловная запись молча стирала бы текст справки с кодом 0.
+if (Test-Path $helpHtmlPath) {
+	Write-Host "[WARN] Страница $Lang.html уже лежала на диске — содержимое сохранено, создан только дескриптор."
+} else {
+	[System.IO.File]::WriteAllText($helpHtmlPath, $helpHtml, $encBom)
+}
 
 # --- 3. Проверка IncludeHelpInContents в метаданных форм ---
 

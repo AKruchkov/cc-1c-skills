@@ -202,10 +202,23 @@ $templatesDir = Join-Path $processorDir "Templates"
 $templateMetaPath = Join-Path $templatesDir "$TemplateName.xml"
 
 # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
-# пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
-# запись мимо каталога Ext/Template. Оба отказа платформы были бы тихими.
-if ($Lang -notmatch '^[A-Za-z0-9_-]+$') {
-	Write-Error "Недопустимый код языка: '$Lang'`nОжидается код вида ru, en (буквы, цифры, дефис, подчёркивание)"
+# пустое значение дало бы файл «.html» и пустой <Page></Page>, разделитель пути — запись мимо
+# каталога страниц, а зарезервированное имя устройства (nul, con, prn, aux, com1…, lpt1…) на
+# Windows уводит запись в само устройство: py-порт при -Lang nul молча писал <Page>nul</Page>
+# и пустой каталог с кодом 0. Все отказы платформы были бы тихими.
+#
+# Якоря `\A…\z`, а не `^…$`: последние в обоих языках допускают перевод строки в конце.
+#
+# Копия этой функции есть в help-add (навыки автономны, формат «дескриптор + страница» у них
+# общий). Держать копии одинаковыми — сознательно; за дрейфом следит check-inline-drift.
+function Test-LangCode([string]$code) {
+	if ($code -notmatch '\A[A-Za-z0-9_-]+\z') { return $false }
+	if ($code -match '\A(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])\z') { return $false }
+	return $true
+}
+
+if (-not (Test-LangCode $Lang)) {
+	Write-Error "Недопустимый код языка: '$Lang'`nОжидается код вида ru, en (буквы, цифры, дефис, подчёркивание; имена устройств Windows недопустимы)"
 	exit 1
 }
 
@@ -358,6 +371,12 @@ if ($addLangMode) {
 		# Версию берём из самого дескриптора: правка чужой выгрузки не должна менять формат.
 		if ($descText -match '<Help[^>]+version="(\d+\.\d+)"') { $descVersion = $Matches[1] }
 		$langs = @([regex]::Matches($descText, '<Page>([^<]+)</Page>') | ForEach-Object { $_.Groups[1].Value })
+		# Полумигрированное дерево: дескриптор уже есть, а старый Ext/Template.html остался рядом.
+		# Платформа его игнорирует, поэтому текст в нём пропадёт незаметно — говорим вслух.
+		if (Test-Path $legacyPagePath) {
+			Write-Host "[WARN] Рядом лежит старый Ext/Template.html — платформа его игнорирует."
+			Write-Host "       Перенесите нужное в Template/<язык>.html и удалите его."
+		}
 	} elseif (Test-Path $legacyPagePath) {
 		# Раскладка до v1.24 — одиночный Ext/Template.html, который платформа молча игнорирует.
 		# Языка у него нет, но создать его могла только версия навыка без параметра -Lang,
@@ -372,8 +391,8 @@ if ($addLangMode) {
 
 	# Файл страницы НИКОГДА не перезаписываем: в нём может лежать текст макета.
 	# Ошибка — только когда добавлять нечего: язык уже в дескрипторе И страница на диске.
-	$pageExists = (Test-Path $pagePath) -or ($legacyPending -and $Lang -eq "ru")
-	if (($langs -contains $Lang) -and $pageExists -and -not $legacyPending) {
+	# При миграции проверять нечего: langs там задан нами же, а страница появится переносом.
+	if (($langs -contains $Lang) -and (Test-Path $pagePath) -and -not $legacyPending) {
 		Write-Error "Страница макета на языке '$Lang' уже существует: $pagePath"
 		exit 1
 	}
