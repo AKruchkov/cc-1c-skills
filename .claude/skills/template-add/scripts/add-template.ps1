@@ -1,4 +1,4 @@
-﻿# template-add v1.24 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# template-add v1.25 — Add template to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -201,9 +201,24 @@ $processorDir = Join-Path $SrcDir $ObjectName
 $templatesDir = Join-Path $processorDir "Templates"
 $templateMetaPath = Join-Path $templatesDir "$TemplateName.xml"
 
+# Существующий HTML-макет — не всегда повод отказать: в один макет платформа кладёт
+# несколько языков (<Page> на каждый, страницы рядом), и повторный вызов с другим -Lang
+# добавляет страницу. Для остальных типов поведение прежнее — отказ.
+$addLangMode = $false
 if (Test-Path $templateMetaPath) {
-	Write-Error "Макет уже существует: $templateMetaPath"
-	exit 1
+	$existingType = $null
+	$metaText = [System.IO.File]::ReadAllText((Resolve-Path $templateMetaPath).Path, [System.Text.Encoding]::UTF8)
+	if ($metaText -match '<TemplateType>([^<]+)</TemplateType>') { $existingType = $Matches[1] }
+
+	if ($TemplateType -eq "HTML" -and $existingType -eq "HTMLDocument") {
+		$addLangMode = $true
+	} elseif ($TemplateType -eq "HTML") {
+		Write-Error "Макет уже существует: $templateMetaPath`nЕго тип — $existingType, страницу на языке можно добавить только к HTML-макету"
+		exit 1
+	} else {
+		Write-Error "Макет уже существует: $templateMetaPath"
+		exit 1
+	}
 }
 
 Assert-EditAllowed $rootXmlPath 'editable'
@@ -216,6 +231,14 @@ New-Item -ItemType Directory -Path $templateExtDir -Force | Out-Null
 # --- Кодировка ---
 
 $encBom = New-Object System.Text.UTF8Encoding($true)
+
+# Скелет HTML-страницы макета — в том же виде, в каком его пишет редактор платформы
+# (одной строкой, парный </meta>): первое сохранение в Конфигураторе даст минимальный
+# дифф. Нужен в двух местах (новый макет и добавление языка) — поэтому одной переменной.
+$htmlSkeleton = @"
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"><html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></meta></head><body>
+</body></html>
+"@
 
 # --- Detect format version ---
 
@@ -305,6 +328,63 @@ function Write-XmlFile([string]$path, [string]$text, $encoding) {
 	[System.IO.File]::WriteAllText($path, $t.TrimEnd("`r", "`n"), $encoding)
 }
 
+# --- 1a. Добавление страницы на другом языке в существующий HTML-макет ---
+# Метаданные макета и ChildObjects здесь НЕ трогаем: и то и другое уже на месте,
+# перезапись сменила бы UUID. Язык, не объявленный в Languages/ конфигурации, платформа
+# принимает и возвращает при выгрузке (проверено на 8.3.27) — состав языков не проверяем.
+if ($addLangMode) {
+	$descPath = Join-Path $templateExtDir "Template.xml"
+	$pageDir = Join-Path $templateExtDir "Template"
+	$legacyPagePath = Join-Path $templateExtDir "Template.html"
+	$langs = @()
+	$descVersion = $formatVersion
+
+	if (Test-Path $descPath) {
+		$descText = [System.IO.File]::ReadAllText((Resolve-Path $descPath).Path, [System.Text.Encoding]::UTF8)
+		# Версию берём из самого дескриптора: правка чужой выгрузки не должна менять формат.
+		if ($descText -match '<Help[^>]+version="(\d+\.\d+)"') { $descVersion = $Matches[1] }
+		$langs = @([regex]::Matches($descText, '<Page>([^<]+)</Page>') | ForEach-Object { $_.Groups[1].Value })
+	} elseif (Test-Path $legacyPagePath) {
+		# Раскладка до v1.24 — одиночный Ext/Template.html, который платформа молча игнорирует.
+		# Языка у него нет, но создать его могла только версия навыка без параметра -Lang,
+		# то есть это страница на языке по умолчанию. Переносим и говорим об этом вслух.
+		New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
+		Move-Item -LiteralPath $legacyPagePath -Destination (Join-Path $pageDir "ru.html") -Force
+		$langs = @("ru")
+		Write-Host "[WARN] Макет был в старой раскладке (Ext/Template.html) — платформа её игнорирует."
+		Write-Host "       Страница считана как ru и перенесена в Template/ru.html, создан дескриптор."
+	}
+
+	$pagePath = Join-Path $pageDir "$Lang.html"
+	if ($langs -contains $Lang) {
+		Write-Error "Страница макета на языке '$Lang' уже существует: $pagePath"
+		exit 1
+	}
+
+	# Порядок страниц — по коду языка (в выгрузке ERP так во всех 54 двуязычных макетах).
+	# Сравнение ordinal, а не культурное: иначе порты разойдутся на ровном месте.
+	$langs = @($langs + $Lang)
+	[Array]::Sort($langs, [System.StringComparer]::Ordinal)
+
+	$pagesXml = ($langs | ForEach-Object { "`t<Page>$_</Page>" }) -join "`n"
+	$descXml = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<Help xmlns="http://v8.1c.ru/8.3/xcf/extrnprops" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="$descVersion">
+$pagesXml
+</Help>
+"@
+	Write-XmlFile $descPath $descXml $encBom
+
+	New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
+	$pageContent = ($htmlSkeleton -replace "`r`n", "`n")
+	[System.IO.File]::WriteAllText($pagePath, $pageContent, $encBom)
+
+	Write-Host "[OK] Добавлена страница макета: $TemplateName ($Lang)"
+	Write-Host "     Содержимое: $pagePath"
+	Write-Host "     Дескриптор: $descPath"
+	exit 0
+}
+
 Write-XmlFile $templateMetaPath $templateMetaXml $encBom
 
 # --- 2. Содержимое макета (Templates/<TemplateName>/Ext/Template.<ext>) ---
@@ -332,14 +412,8 @@ switch ($TemplateType) {
 		New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
 		$templateBodyPath = Join-Path $pageDir "$Lang.html"
 
-		# Шапка — в том же виде, в каком её пишет редактор платформы (одной строкой,
-		# парный </meta>): первое сохранение в Конфигураторе даст минимальный дифф.
-		$content = @"
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"><html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></meta></head><body>
-</body></html>
-"@
 		# Страница — с LF: платформа хранит HTML именно так.
-		$content = ($content -replace "`r`n", "`n")
+		$content = ($htmlSkeleton -replace "`r`n", "`n")
 		[System.IO.File]::WriteAllText($templateBodyPath, $content, $encBom)
 	}
 	"Text" {

@@ -27,7 +27,7 @@ allowed-tools:
 | TemplateName  | да           | —               | Имя макета                                       |
 | TemplateType  | да           | —               | Тип: HTML, Text, SpreadsheetDocument, BinaryData, DataCompositionSchema |
 | Synonym       | нет          | = TemplateName  | Синоним макета                                   |
-| Lang          | нет          | `ru`            | Код языка страницы — только для типа HTML        |
+| Lang          | нет          | `ru`            | Код языка страницы — только для типа HTML. Повторный вызов с другим языком добавляет страницу в существующий макет |
 | SrcDir        | нет          | `src`           | Путь к папке типа объектов (`Reports`, `DataProcessors`, `Catalogs`, `Documents`...), внутри которой лежит `<ObjectName>.xml`. Дефолт `src` подходит для каталогов с внешними обработками/отчётами, лежащими рядом |
 | -SetMainSKD   | нет          | —               | Принудительно установить MainDataCompositionSchema |
 

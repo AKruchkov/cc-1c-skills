@@ -1,0 +1,20 @@
+{
+  "name": "HTML-макет: страница на том же языке — отказ",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": { "-Name": "МояОбработка", "-SrcDir": "{workDir}" }
+    },
+    {
+      "script": "template-add/scripts/add-template",
+      "args": {
+        "-ObjectName": "МояОбработка",
+        "-TemplateName": "МакетHTML",
+        "-TemplateType": "HTML",
+        "-SrcDir": "{workDir}"
+      }
+    }
+  ],
+  "params": { "objectName": "МояОбработка", "templateName": "МакетHTML", "templateType": "HTML" },
+  "expectError": "Страница макета на языке 'ru' уже существует"
+}
