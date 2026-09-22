@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# db-load-git v1.27 — Load Git changes into 1C database
+# db-load-git v1.28 — Load Git changes into 1C database
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -849,6 +849,13 @@ def main():
     if len(config_files) == 0:
         print("No configuration files found in changes")
         sys.exit(0)
+
+    # Корневой Configuration.xml — это объект «Конфигурация»: вместе с объектом платформа грузит
+    # его дочерние объекты, а у конфигурации это весь состав. В список он попадает из диффа сам,
+    # поэтому предупреждаем — пользователь его не выбирал.
+    if any(x.replace("\\", "/").lower() == "configuration.xml" for x in config_files):
+        print("[ВНИМАНИЕ] В изменениях есть Configuration.xml: платформа выполнит ПОЛНУЮ загрузку")
+        print("  конфигурации, а не только изменённых объектов.")
 
     print(f"Files for loading: {len(config_files)}")
     for f in config_files:

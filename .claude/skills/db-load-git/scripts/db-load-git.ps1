@@ -1,4 +1,4 @@
-﻿# db-load-git v1.27 — Load Git changes into 1C database
+﻿# db-load-git v1.28 — Load Git changes into 1C database
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -798,6 +798,14 @@ if ($supportSkipped.Count -gt 0) {
 if ($configFiles.Count -eq 0) {
     Write-Host "No configuration files found in changes"
     exit 0
+}
+
+# Корневой Configuration.xml — это объект «Конфигурация»: вместе с объектом платформа грузит его
+# дочерние объекты, а у конфигурации это весь состав. В список он попадает из диффа сам, поэтому
+# предупреждаем — пользователь его не выбирал.
+if (@($configFiles | Where-Object { ($_ -replace '\\', '/') -ieq 'Configuration.xml' }).Count -gt 0) {
+    Write-Host "[ВНИМАНИЕ] В изменениях есть Configuration.xml: платформа выполнит ПОЛНУЮ загрузку" -ForegroundColor Yellow
+    Write-Host "  конфигурации, а не только изменённых объектов." -ForegroundColor Yellow
 }
 
 Write-Host "Files for loading: $($configFiles.Count)"

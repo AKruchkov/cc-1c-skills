@@ -1,4 +1,4 @@
-﻿# db-load-xml v1.29 — Load 1C configuration from XML files
+﻿# db-load-xml v1.30 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -564,6 +564,18 @@ function Write-PlatformOutput {
     Write-Host "--- End ---"
 }
 
+function Write-WholeConfigScopeHint {
+    # Список задаёт объекты метаданных, а не только файлы: вместе с объектом платформа грузит его
+    # дочерние объекты. Корневой Configuration.xml — это объект «Конфигурация», поэтому список с ним
+    # загружает конфигурацию целиком. Замерено на 1cv8 и ibcmd; см. docs по навыку.
+    param([string[]]$FileList, [string]$Extension)
+    $hasRoot = @($FileList | Where-Object { ($_ -replace '\\', '/') -ieq 'Configuration.xml' }).Count -gt 0
+    if (-not $hasRoot) { return }
+    $what = if ($Extension) { "расширения" } else { "конфигурации" }
+    Write-Host "[ВНИМАНИЕ] В списке Configuration.xml — платформа выполнит ПОЛНУЮ загрузку $what," -ForegroundColor Yellow
+    Write-Host "  а не только перечисленных объектов." -ForegroundColor Yellow
+}
+
 # Строки лога, о которых платформа сообщает, НЕ поднимая код возврата: метаданные отброшены или
 # конфигурация нерабочая, а операция при этом «успешна». Возвращает подошедшие строки.
 #
@@ -735,6 +747,7 @@ try {
                 Write-Host "Error: -Files or -ListFile required for partial import" -ForegroundColor Red
                 exit 1
             }
+            Write-WholeConfigScopeHint -FileList $fileList -Extension $Extension
             $arguments = @("infobase", "config", "import", "files") + $fileList
             $arguments += "--base-dir=$ConfigDir", "--db-path=$InfoBasePath"
             if ($Extension) { $arguments += "--extension=$Extension" }
@@ -839,6 +852,7 @@ try {
             Write-Host "Error: после исключения служебных файлов поддержки загружать нечего. Для смены поддержки используйте -Mode Full." -ForegroundColor Red
             exit 1
         }
+        Write-WholeConfigScopeHint -FileList $fileList -Extension $Extension
         $generatedListFile = Join-Path $tempDir "load_list.txt"
         $utf8Bom = New-Object System.Text.UTF8Encoding($true)
         [System.IO.File]::WriteAllLines($generatedListFile, $fileList, $utf8Bom)

@@ -1,0 +1,29 @@
+{
+  "name": "Без Configuration.xml в списке предупреждения о полной загрузке нет",
+  "fakePlatform": {
+    "log": ""
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "src/Configuration.xml",
+        "content": "<?xml version=\"1.0\"?><MetaDataObject/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/src",
+    "-Files",
+    "Catalogs/Номенклатура.xml,Catalogs/Номенклатура/Ext/ObjectModule.bsl"
+  ],
+  "expect": {
+    "stdoutContains": "Executing partial configuration load...",
+    "stdoutNotContains": "ПОЛНУЮ загрузку конфигурации"
+  },
+  "noSnapshot": "навык ничего не пишет в рабочий каталог — проверяется отсутствие предупреждения"
+}

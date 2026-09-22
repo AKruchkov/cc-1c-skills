@@ -1,0 +1,32 @@
+{
+  "name": "Configuration.xml в списке: предупреждаем о полной загрузке конфигурации",
+  "fakePlatform": {
+    "log": ""
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "src/Configuration.xml",
+        "content": "<?xml version=\"1.0\"?><MetaDataObject/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/src",
+    "-Files",
+    "Configuration.xml,Catalogs/Номенклатура.xml"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "Executing partial configuration load...",
+      "[ВНИМАНИЕ] В списке Configuration.xml — платформа выполнит ПОЛНУЮ загрузку конфигурации,",
+      "а не только перечисленных объектов."
+    ]
+  },
+  "noSnapshot": "навык ничего не пишет в рабочий каталог — проверяется текст предупреждения"
+}

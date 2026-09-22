@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# db-load-xml v1.29 — Load 1C configuration from XML files
+# db-load-xml v1.30 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -493,6 +493,17 @@ def print_platform_output(result):
     print("--- End ---")
 
 
+def print_whole_config_scope_hint(file_list, extension=""):
+    """Список задаёт объекты метаданных, а не только файлы: вместе с объектом платформа грузит его
+    дочерние объекты. Корневой Configuration.xml — это объект «Конфигурация», поэтому список с ним
+    загружает конфигурацию целиком. Замерено на 1cv8 и ibcmd."""
+    if not any(x.replace("\\", "/").lower() == "configuration.xml" for x in file_list):
+        return
+    what = "расширения" if extension else "конфигурации"
+    print(f"[ВНИМАНИЕ] В списке Configuration.xml — платформа выполнит ПОЛНУЮ загрузку {what},")
+    print("  а не только перечисленных объектов.")
+
+
 def find_silent_rejections(log_text):
     """Строки лога, о которых платформа сообщает, НЕ поднимая код возврата.
 
@@ -765,6 +776,7 @@ def main():
             if not file_list:
                 print("Error: -Files or -ListFile required for partial import")
                 sys.exit(1)
+            print_whole_config_scope_hint(file_list, args.Extension)
             arguments = ["infobase", "config", "import", "files"] + file_list
             arguments += [f"--base-dir={args.ConfigDir}", f"--db-path={args.InfoBasePath}"]
             if args.Extension:
@@ -873,6 +885,7 @@ def main():
             if not file_list:
                 print("Error: после исключения служебных файлов поддержки загружать нечего. Для смены поддержки используйте -Mode Full.")
                 sys.exit(1)
+            print_whole_config_scope_hint(file_list, args.Extension)
             generated_list_file = os.path.join(temp_dir, "load_list.txt")
             with open(generated_list_file, "w", encoding="utf-8-sig") as f:
                 f.write("\n".join(file_list))
