@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# help-add v1.19 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# help-add v1.20 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -361,8 +361,8 @@ def main():
         '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">\n'
         '<html>\n'
         '<head>\n'
-        '    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>\n'
-        '    <link rel="stylesheet" type="text/css" href="v8help://service_book/service_style"/>\n'
+        '    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"></meta>\n'
+        '    <link rel="stylesheet" type="text/css" href="v8help://service_book/service_style"></link>\n'
         '</head>\n'
         '<body>\n'
         f'    <h1>{object_name}</h1>\n'

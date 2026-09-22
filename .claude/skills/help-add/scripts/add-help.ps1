@@ -1,4 +1,4 @@
-﻿# help-add v1.19 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# help-add v1.20 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -229,8 +229,8 @@ $helpHtml = @"
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
 <html>
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-    <link rel="stylesheet" type="text/css" href="v8help://service_book/service_style"/>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"></meta>
+    <link rel="stylesheet" type="text/css" href="v8help://service_book/service_style"></link>
 </head>
 <body>
     <h1>$ObjectName</h1>
