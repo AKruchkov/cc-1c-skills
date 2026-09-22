@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# help-add v1.20 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# help-add v1.21 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -327,6 +327,17 @@ def main():
 
     if not os.path.isdir(ext_dir):
         print(f"Каталог объекта не найден: {ext_dir}. Проверьте путь ObjectName (например Catalogs/МойСправочник).", file=sys.stderr)
+        sys.exit(1)
+
+    # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
+    # пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
+    # запись мимо каталога Ext/Help. Оба отказа платформы были бы тихими.
+    #
+    # Копия этой проверки есть в template-add (навыки автономны, формат «дескриптор +
+    # страница» у них общий). Держать копии одинаковыми — сознательно.
+    if not re.match(r"^[A-Za-z0-9_-]+$", lang):
+        print(f"Недопустимый код языка: '{lang}'", file=sys.stderr)
+        print("Ожидается код вида ru, en (буквы, цифры, дефис, подчёркивание)", file=sys.stderr)
         sys.exit(1)
 
     help_xml_path = os.path.join(ext_dir, "Help.xml")

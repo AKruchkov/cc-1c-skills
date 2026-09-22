@@ -1,4 +1,4 @@
-﻿# help-add v1.20 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# help-add v1.21 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -181,6 +181,17 @@ $extDir = Join-Path $objectDir "Ext"
 
 if (-not (Test-Path $extDir)) {
 	Write-Error "Каталог объекта не найден: $extDir. Проверьте путь ObjectName (например Catalogs/МойСправочник)."
+	exit 1
+}
+
+# Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
+# пустое значение дало бы файл «.html» и пустой <Page></Page>, а разделитель пути —
+# запись мимо каталога Ext/Help. Оба отказа платформы были бы тихими.
+#
+# Копия этой проверки есть в template-add (навыки автономны, формат «дескриптор +
+# страница» у них общий). Держать копии одинаковыми — сознательно.
+if ($Lang -notmatch '^[A-Za-z0-9_-]+$') {
+	Write-Error "Недопустимый код языка: '$Lang'`nОжидается код вида ru, en (буквы, цифры, дефис, подчёркивание)"
 	exit 1
 }
 
