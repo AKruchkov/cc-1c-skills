@@ -1,0 +1,33 @@
+{
+  "name": "Ошибка: -AllExtensions вместе с загрузкой частями",
+  "fakePlatform": {
+    "log": ""
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "src/CommonModules/Модуль.xml",
+        "content": "<?xml version=\"1.0\"?><MetaDataObject/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/src",
+    "-Files",
+    "CommonModules/Модуль.xml",
+    "-AllExtensions"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "-AllExtensions cannot be combined with a partial load",
+      "Загружайте расширения по одному: -Extension <имя>"
+    ],
+    "stdoutNotContains": "Running:"
+  }
+}

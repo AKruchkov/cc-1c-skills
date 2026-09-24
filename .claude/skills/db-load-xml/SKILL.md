@@ -57,7 +57,7 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/db-load-xml.ps1" <�
 | `-Files <список>` | для Partial | Относительные пути файлов через запятую |
 | `-ListFile <путь>` | для Partial | Путь к файлу со списком (альтернатива `-Files`) |
 | `-Extension <имя>` | нет | Загрузить в расширение |
-| `-AllExtensions` | нет | Загрузить все расширения |
+| `-AllExtensions` | нет | Загрузить все расширения (только полностью; частями — по одному через `-Extension`) |
 | `-NoApplyCheck` | нет | Не проверять применимость расширения после загрузки |
 | `-Format <формат>` | нет | `Hierarchical` (по умолч.) / `Plain` |
 | `-UpdateDB` | нет | После загрузки сразу обновить конфигурацию БД (`/UpdateDBCfg`) |

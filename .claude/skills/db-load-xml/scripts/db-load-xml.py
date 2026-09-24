@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# db-load-xml v1.30 — Load 1C configuration from XML files
+# db-load-xml v1.31 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -752,6 +752,12 @@ def main():
         args.Mode = "Full"
     if args.Mode == "Partial" and not args.Files and not args.ListFile:
         print("Error: -Files or -ListFile required for Partial mode")
+        sys.exit(1)
+    # Частями грузится одно расширение за раз: конфигуратор такое сочетание отвергает сам, а ibcmd
+    # молча загрузил бы все расширения целиком, не глядя в список.
+    if args.Mode == "Partial" and args.AllExtensions:
+        print("Error: -AllExtensions cannot be combined with a partial load (-Files/-ListFile)")
+        print("  Загружайте расширения по одному: -Extension <имя>, -ConfigDir — каталог этого расширения.")
         sys.exit(1)
 
     # --- ibcmd branch (file infobase only; hierarchical full-directory import) ---

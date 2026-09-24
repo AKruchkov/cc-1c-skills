@@ -1,0 +1,40 @@
+{
+  "name": "Ошибка: -AllExtensions с загрузкой частями и на ibcmd — не полный импорт всех расширений (fake platform)",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "ibcmd.cmd",
+        "content": "@echo off\r\necho ARGS: %*\r\nexit /b 0\r\n"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "ib/1Cv8.1CD",
+        "content": "stub"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "src/CommonModules/Модуль.xml",
+        "content": "<?xml version=\"1.0\"?><MetaDataObject/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{workDir}\\ibcmd.cmd",
+    "-InfoBasePath",
+    "{workDir}\\ib",
+    "-ConfigDir",
+    "{workDir}\\src",
+    "-Files",
+    "CommonModules/Модуль.xml",
+    "-AllExtensions"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "-AllExtensions cannot be combined with a partial load",
+    "stdoutNotContains": "ARGS:"
+  },
+  "osOnly": "win32"
+}

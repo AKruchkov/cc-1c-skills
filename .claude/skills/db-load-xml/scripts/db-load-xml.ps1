@@ -1,4 +1,4 @@
-﻿# db-load-xml v1.30 — Load 1C configuration from XML files
+﻿# db-load-xml v1.31 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -715,6 +715,13 @@ if (-not $Mode) { $Mode = "Full" }
 # --- Validate Partial mode ---
 if ($Mode -eq "Partial" -and -not $Files -and -not $ListFile) {
     Write-Host "Error: -Files or -ListFile required for Partial mode" -ForegroundColor Red
+    exit 1
+}
+# Частями грузится одно расширение за раз: конфигуратор такое сочетание отвергает сам, а ibcmd
+# молча загрузил бы все расширения целиком, не глядя в список.
+if ($Mode -eq "Partial" -and $AllExtensions) {
+    Write-Host "Error: -AllExtensions cannot be combined with a partial load (-Files/-ListFile)" -ForegroundColor Red
+    Write-Host "  Загружайте расширения по одному: -Extension <имя>, -ConfigDir — каталог этого расширения." -ForegroundColor Yellow
     exit 1
 }
 
