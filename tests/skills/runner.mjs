@@ -12,6 +12,7 @@ import { tmpdir, cpus } from 'os';
 // есть не-ASCII символы — кириллическое имя пользователя в %TEMP%, кириллическое имя объекта 1С
 // в deletePath. Подробности и таблица сборок — в самом модуле.
 import { removePathSync, copyTreeSync } from '../common/fsutil.mjs';
+import { runGitStep } from '../common/git-step.mjs';
 
 // ─── Paths ──────────────────────────────────────────────────────────────────
 
@@ -867,6 +868,12 @@ async function runCaseAsync(testCase, opts) {
         // которое навыки сами не создают (например, пометка свойства без файла модуля).
         if (step.deletePath) {
           removePathSync(join(workDir, step.deletePath));
+          continue;
+        }
+        // git step — git-команда в workDir: так строится репозиторий для навыков, читающих
+        // изменения из git (общая реализация с verify-snapshots — tests/common/git-step.mjs).
+        if (step.git) {
+          runGitStep(workDir, step.git);
           continue;
         }
         const preScript = resolveScript(step.script, opts.runtime);

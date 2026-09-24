@@ -20,6 +20,7 @@ import { tmpdir } from 'os';
 // fs.rmSync/fs.cpSync напрямую не зовём: на Windows они молча ничего не делают, когда в пути
 // есть не-ASCII символы. Подробности и таблица сборок — в самом модуле.
 import { removePathSync, copyTreeSync } from '../common/fsutil.mjs';
+import { runGitStep } from '../common/git-step.mjs';
 
 // ─── Paths ──────────────────────────────────────────────────────────────────
 
@@ -646,8 +647,14 @@ function runPreSteps(preRun, workDir, runtime, log) {
       log(`preRun: deletePath ${step.deletePath}`, true);
       continue;
     }
+    // git step — как в runner.mjs: репозиторий для навыков, читающих изменения из git.
+    if (step.git) {
+      runGitStep(workDir, step.git);
+      log(`preRun: git ${step.git.join(' ')}`, true);
+      continue;
+    }
     if (!step.script) {
-      throw new Error(`preRun: шаг без script/writeFile/deletePath — ${JSON.stringify(step).slice(0, 120)}`);
+      throw new Error(`preRun: шаг без script/writeFile/deletePath/git — ${JSON.stringify(step).slice(0, 120)}`);
     }
     const preArgs = [];
     for (const [flag, value] of Object.entries(step.args || {})) {
