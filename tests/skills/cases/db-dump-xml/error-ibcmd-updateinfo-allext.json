@@ -1,0 +1,42 @@
+{
+  "name": "Ошибка: ibcmd не умеет UpdateInfo — и с -AllExtensions не подменяет его полной выгрузкой (fake platform)",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "ibcmd.cmd",
+        "content": "@echo off\r\necho ARGS: %*\r\nexit /b 0\r\n"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "ib/1Cv8.1CD",
+        "content": "stub"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "out/РасшА/ConfigDumpInfo.xml",
+        "content": "<ConfigDumpInfo/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{workDir}\\ibcmd.cmd",
+    "-InfoBasePath",
+    "{workDir}\\ib",
+    "-UserName",
+    "Admin",
+    "-ConfigDir",
+    "{workDir}\\out",
+    "-Mode",
+    "UpdateInfo",
+    "-AllExtensions"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "ibcmd config export does not support Mode UpdateInfo",
+    "stdoutNotContains": "ARGS:"
+  },
+  "osOnly": "win32"
+}

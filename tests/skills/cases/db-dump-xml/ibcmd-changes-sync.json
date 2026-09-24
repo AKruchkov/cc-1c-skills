@@ -1,0 +1,44 @@
+{
+  "name": "ibcmd: Changes — инкремент через --sync, без --force (fake platform)",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "ibcmd.cmd",
+        "content": "@echo off\r\necho ARGS: %*\r\nexit /b 0\r\n"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "ib/1Cv8.1CD",
+        "content": "stub"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "out/ConfigDumpInfo.xml",
+        "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ConfigDumpInfo format=\"Hierarchical\" version=\"2.17\"/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{workDir}\\ibcmd.cmd",
+    "-InfoBasePath",
+    "{workDir}\\ib",
+    "-UserName",
+    "Admin",
+    "-ConfigDir",
+    "{workDir}\\out",
+    "-Mode",
+    "Changes"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "ARGS: infobase config export",
+      "--sync"
+    ],
+    "stdoutNotContains": "--force"
+  },
+  "noSnapshot": "проверяется командная строка в stdout; каталог выгрузки — фикстура кейса",
+  "osOnly": "win32"
+}

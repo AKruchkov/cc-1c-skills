@@ -1,0 +1,32 @@
+{
+  "name": "Ошибка: Changes в непустой каталог без ConfigDumpInfo.xml",
+  "fakePlatform": {
+    "log": ""
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "out/Configuration.xml",
+        "content": "<?xml version=\"1.0\"?><MetaDataObject/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/out",
+    "-Mode",
+    "Changes"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "no ConfigDumpInfo.xml",
+      "-Mode Full выгрузит конфигурацию целиком поверх каталога."
+    ],
+    "stdoutNotContains": "Running:"
+  }
+}

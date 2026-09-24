@@ -1,0 +1,32 @@
+{
+  "name": "Changes в каталог без выгрузки (только служебные файлы репозитория): первая выгрузка полная",
+  "fakePlatform": {
+    "log": ""
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "out/.gitignore",
+        "content": "*.log\n"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/out",
+    "-Mode",
+    "Changes"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "[note] выгрузки в каталоге ещё нет — первая выгрузка выполняется полностью",
+      "Executing full configuration dump..."
+    ],
+    "stdoutNotContains": "-update"
+  },
+  "noSnapshot": "проверяется командная строка платформы; каталог выгрузки — фикстура кейса"
+}

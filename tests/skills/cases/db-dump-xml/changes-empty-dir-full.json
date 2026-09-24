@@ -1,0 +1,23 @@
+{
+  "name": "Changes в пустой каталог: первая выгрузка выполняется полностью",
+  "fakePlatform": {
+    "log": ""
+  },
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/out"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "[note] выгрузки в каталоге ещё нет — первая выгрузка выполняется полностью",
+      "Executing full configuration dump..."
+    ],
+    "stdoutNotContains": "-update"
+  },
+  "noSnapshot": "проверяется, какие ключи ушли платформе; фейк файлов не выгружает, поэтому постусловие навыка справедливо даёт отказ"
+}

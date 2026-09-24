@@ -54,6 +54,17 @@ export const steps = [
     script: 'db-dump-xml/scripts/db-dump-xml',
     args: { '-V8Path': '{v8path}', '-InfoBasePath': '{workDir}/testdb', '-ConfigDir': '{workDir}/dumpA', '-Mode': 'Changes' },
   },
+  // ── 3b. Changes into a FRESH dir → no ConfigDumpInfo yet, so the first dump must be full ──
+  {
+    name: 'db-dump-xml: Changes в пустой каталог (первая выгрузка)',
+    script: 'db-dump-xml/scripts/db-dump-xml',
+    args: { '-V8Path': '{v8path}', '-InfoBasePath': '{workDir}/testdb', '-ConfigDir': '{workDir}/dumpC', '-Mode': 'Changes' },
+  },
+  {
+    name: 'assert: первая выгрузка записала ConfigDumpInfo.xml',
+    assertContains: '{workDir}/dumpC/ConfigDumpInfo.xml',
+    expect: 'ConfigDumpInfo',
+  },
   // ── 4. UpdateInfo into a FRESH dir → proves the mode alone yields non-empty output ──
   {
     name: 'db-dump-xml: UpdateInfo',

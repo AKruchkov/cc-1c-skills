@@ -1,0 +1,32 @@
+{
+  "name": "Отказ инкремента из-за версии формата: подсказка про полную перевыгрузку",
+  "fakePlatform": {
+    "log": "\ufeffОбновление XML выгрузки невозможно: версия формата платформы отличается от версии формата выгрузки.\r\nДля синхронизации необходимо выполнить полную выгрузку.\r\n",
+    "exit": 101
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "out/ConfigDumpInfo.xml",
+        "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ConfigDumpInfo format=\"Hierarchical\" version=\"2.16\"/>"
+      }
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/out",
+    "-Mode",
+    "Changes"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "Error dumping configuration (code: 101)",
+      "[подсказка] Каталог выгружен в другой версии формата."
+    ]
+  }
+}
