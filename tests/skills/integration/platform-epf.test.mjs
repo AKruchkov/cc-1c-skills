@@ -47,6 +47,15 @@ export const steps = [
     args: { '-OutputPath': '{workDir}/RoundtripТест/Forms/Форма/Ext/Form.xml', '-JsonPath': '{inputFile}' },
   },
 
+  // Команда объявлена с действием — обработчик должен быть в модуле: epf-build проверяет
+  // исходники платформой (-HandlersExistence) и без процедуры сборку отменяет.
+  {
+    name: 'editFile: обработчик команды Загрузить в модуле формы',
+    editFile: '{workDir}/RoundtripТест/Forms/Форма/Ext/Form/Module.bsl',
+    replace: '#Область ОбработчикиКомандФормы\r\n',
+    with: '#Область ОбработчикиКомандФормы\r\n\r\n&НаКлиенте\r\nПроцедура Загрузить(Команда)\r\n\tПутьКФайлу = "";\r\nКонецПроцедуры\r\n',
+  },
+
   // ── 3. Build EPF binary ──
   {
     name: 'epf-build: сборка EPF',
@@ -75,5 +84,10 @@ export const steps = [
       '-OutputDir': '{workDir}/roundtrip-dump',
       '-InfoBasePath': '{workDir}/tmpdb',
     },
+  },
+  {
+    name: 'assert: обработчик команды пережил сборку и разборку',
+    assertContains: '{workDir}/roundtrip-dump/RoundtripТест/Forms/Форма/Ext/Form/Module.bsl',
+    expect: 'Процедура Загрузить(Команда)',
   },
 ];
