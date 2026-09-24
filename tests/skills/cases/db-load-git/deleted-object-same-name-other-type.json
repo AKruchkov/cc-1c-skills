@@ -1,0 +1,20 @@
+{
+  "name": "Удалён документ, а справочник с тем же именем остался: удаление применится (состав сверяется по типу)",
+  "preRun": [
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t\t<Document>Товары</Document>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject/>\n" } },
+    { "writeFile": { "path": "src/Documents/Товары.xml", "content": "<MetaDataObject/>\n" } },
+    { "git": ["-C", "src", "init", "-q"] },
+    { "git": ["-C", "src", "add", "-A"] },
+    { "git": ["-C", "src", "commit", "-qm", "base"] },
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "deletePath": "src/Documents" },
+    { "git": ["-C", "src", "add", "-A"] }
+  ],
+  "args_extra": ["-ConfigDir", "{workDir}/src", "-Source", "Staged", "-DryRun"],
+  "expect": {
+    "stdoutContains": "[note] удаление применится через Configuration.xml: Documents/Товары.xml",
+    "stdoutNotContains": "[ВНИМАНИЕ] Удаления"
+  },
+  "noSnapshot": "сухой прогон ничего не пишет — проверяется вердикт по удалению"
+}

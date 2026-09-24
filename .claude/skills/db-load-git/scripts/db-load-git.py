@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# db-load-git v1.28 — Load Git changes into 1C database
+# db-load-git v1.29 — Load Git changes into 1C database
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -619,8 +619,87 @@ def get_object_xml_from_subfile(relative_path):
     return None
 
 
+# Каталоги выгрузки объектов верхнего уровня → элемент в <ChildObjects> конфигурации.
+TYPE_DIR_TAG = {
+    "Languages": "Language", "Subsystems": "Subsystem", "StyleItems": "StyleItem", "Styles": "Style",
+    "CommonPictures": "CommonPicture", "SessionParameters": "SessionParameter", "Roles": "Role",
+    "CommonTemplates": "CommonTemplate", "FilterCriteria": "FilterCriterion", "CommonModules": "CommonModule",
+    "Bots": "Bot", "PaletteColors": "PaletteColor", "CommonAttributes": "CommonAttribute",
+    "ExchangePlans": "ExchangePlan", "XDTOPackages": "XDTOPackage", "WebServices": "WebService",
+    "HTTPServices": "HTTPService", "WSReferences": "WSReference", "EventSubscriptions": "EventSubscription",
+    "ScheduledJobs": "ScheduledJob", "SettingsStorages": "SettingsStorage", "FunctionalOptions": "FunctionalOption",
+    "FunctionalOptionsParameters": "FunctionalOptionsParameter", "DefinedTypes": "DefinedType",
+    "CommonCommands": "CommonCommand", "CommandGroups": "CommandGroup", "Constants": "Constant",
+    "CommonForms": "CommonForm", "Catalogs": "Catalog", "Documents": "Document",
+    "DocumentNumerators": "DocumentNumerator", "Sequences": "Sequence", "DocumentJournals": "DocumentJournal",
+    "Enums": "Enum", "Reports": "Report", "DataProcessors": "DataProcessor",
+    "InformationRegisters": "InformationRegister", "AccumulationRegisters": "AccumulationRegister",
+    "ChartsOfCharacteristicTypes": "ChartOfCharacteristicTypes", "ChartsOfAccounts": "ChartOfAccounts",
+    "AccountingRegisters": "AccountingRegister", "ChartsOfCalculationTypes": "ChartOfCalculationTypes",
+    "CalculationRegisters": "CalculationRegister", "BusinessProcesses": "BusinessProcess", "Tasks": "Task",
+    "ExternalDataSources": "ExternalDataSource", "IntegrationServices": "IntegrationService",
+}
+_TYPE_DIR_TAG_CI = {k.lower(): v for k, v in TYPE_DIR_TAG.items()}
+
+
+def get_deletion_verdicts(deleted, loaded, root, fmt):
+    """Что загрузка частями сделает с путями, удалёнными в git. Удалённый ОБЪЕКТ (его XML-описание)
+    исчезнет из базы, только если в списке его владелец и в составе владельца (ChildObjects)
+    объекта уже нет. Удалённую ЧАСТЬ объекта (модуль, файлы Ext/) загрузка частями не удаляет
+    никогда — платформа молча пропускает отсутствующий файл, даже перечисленный явно.
+    Пути вне каталогов объектов (README, docs/…) — не конфигурация, их удаление не оценивается.
+    Возвращает вердикт по каждому удалению: {path, applied, reason}."""
+    ours = [d for d in deleted if len(d.split("/")) >= 2 and d.split("/")[0].lower() in _TYPE_DIR_TAG_CI]
+    if fmt == "Plain":
+        return [{"path": d, "applied": False,
+                 "reason": "формат Plain — удаление загрузкой частями не применяется"} for d in ours]
+    deleted_set = {d.lower() for d in deleted}
+    loaded_set = {x.lower() for x in loaded}
+    result = []
+    for d in ours:
+        segs = d.split("/")
+        ext_idx = segs.index("Ext") if "Ext" in segs else -1
+        if ext_idx < 0 and d.lower().endswith(".xml") and (len(segs) == 2 or len(segs) >= 4):
+            # Описание объекта: владелец — Configuration.xml или описание объекта двумя уровнями выше.
+            # Элемент состава — по каталогу: Catalogs → Catalog, Forms → Form.
+            if len(segs) == 2:
+                owner = "Configuration.xml"
+                tag = _TYPE_DIR_TAG_CI[segs[0].lower()]
+            else:
+                owner = "/".join(segs[:-2]) + ".xml"
+                tag = re.sub(r"s$", "", segs[-2])
+            if owner.lower() in deleted_set:
+                continue
+            name = os.path.splitext(segs[-1])[0]
+            if owner.lower() not in loaded_set:
+                result.append({"path": d, "applied": False,
+                               "reason": f"владелец {owner} не изменён — состав в базе прежний"})
+                continue
+            with open(os.path.join(root, owner), encoding="utf-8-sig") as f:
+                owner_text = f.read()
+            m = re.search(r"<ChildObjects>.*</ChildObjects>", owner_text, re.S)
+            pattern = r"(?m)^\s*<" + tag + ">" + re.escape(name) + "</" + tag + r">\s*$"
+            if m and re.search(pattern, m.group(0)):
+                result.append({"path": d, "applied": False,
+                               "reason": f"{owner} всё ещё содержит объект в составе"})
+            else:
+                result.append({"path": d, "applied": True, "reason": f"через {owner}"})
+            continue
+        if ext_idx < 0:
+            continue
+        # Часть объекта: сам объект — сегменты до Ext. Удалён вместе с объектом — судьба объекта.
+        if ("/".join(segs[:ext_idx]) + ".xml").lower() in deleted_set:
+            continue
+        result.append({"path": d, "applied": False,
+                       "reason": "часть объекта — загрузка частями файлы не удаляет "
+                                 "(пустой файл вместо удаления очистит модуль)"})
+    return result
+
+
 def run_git(config_dir, git_args):
-    """Run a git command in config_dir and return output lines on success."""
+    """Run a git command in config_dir and return output lines on success.
+    diff вызывается с --no-renames: при переименовании иначе виден только новый путь, а старый —
+    это удаление, о котором надо предупредить."""
     result = subprocess.run(
         ["git", "-c", "core.quotePath=false"] + git_args,
         capture_output=True,
@@ -691,7 +770,7 @@ def main():
     )
     parser.add_argument("-CommitRange", default="", help="Commit range (for Source=Commit), e.g. HEAD~3..HEAD")
     parser.add_argument("-Extension", default="", help="Extension name to load")
-    parser.add_argument("-AllExtensions", action="store_true", help="Load all extensions")
+    parser.add_argument("-AllExtensions", action="store_true", help="Not supported: partial load goes one extension at a time")
     parser.add_argument(
         "-Format",
         default="Hierarchical",
@@ -758,6 +837,13 @@ def main():
         print("Error: -CommitRange required for Source=Commit")
         sys.exit(1)
 
+    # --- -AllExtensions: загрузка частями идёт по одному расширению ---
+    # Конфигуратор сочетание -AllExtensions с -listFile отвергает сам, ibcmd его не поддерживает.
+    if args.AllExtensions:
+        print("Error: -AllExtensions cannot be combined with a partial load")
+        print("  Загружайте расширения по одному: -Extension <имя>, -ConfigDir — каталог этого расширения.")
+        sys.exit(1)
+
     # --- Check git ---
     try:
         subprocess.run(["git", "--version"], capture_output=True, text=True, check=True)
@@ -770,18 +856,18 @@ def main():
 
     if args.Source == "Staged":
         print("Getting staged changes...")
-        changed_files += run_git(args.ConfigDir, ["diff", "--cached", "--name-only", "--relative"])
+        changed_files += run_git(args.ConfigDir, ["diff", "--cached", "--name-only", "--no-renames", "--relative"])
     elif args.Source == "Unstaged":
         print("Getting unstaged changes...")
-        changed_files += run_git(args.ConfigDir, ["diff", "--name-only", "--relative"])
+        changed_files += run_git(args.ConfigDir, ["diff", "--name-only", "--no-renames", "--relative"])
         changed_files += run_git(args.ConfigDir, ["ls-files", "--others", "--exclude-standard"])
     elif args.Source == "Commit":
         print(f"Getting changes from {args.CommitRange}...")
-        changed_files += run_git(args.ConfigDir, ["diff", "--name-only", "--relative", args.CommitRange])
+        changed_files += run_git(args.ConfigDir, ["diff", "--name-only", "--no-renames", "--relative", args.CommitRange])
     elif args.Source == "All":
         print("Getting all uncommitted changes...")
-        changed_files += run_git(args.ConfigDir, ["diff", "--cached", "--name-only", "--relative"])
-        changed_files += run_git(args.ConfigDir, ["diff", "--name-only", "--relative"])
+        changed_files += run_git(args.ConfigDir, ["diff", "--cached", "--name-only", "--no-renames", "--relative"])
+        changed_files += run_git(args.ConfigDir, ["diff", "--name-only", "--no-renames", "--relative"])
         changed_files += run_git(args.ConfigDir, ["ls-files", "--others", "--exclude-standard"])
 
     # Deduplicate and filter blanks
@@ -796,6 +882,7 @@ def main():
     # --- Filter and map to config files ---
     config_files = []
     support_skipped = []
+    deleted_files = []
 
     for file in changed_files:
         file = file.strip().replace("\\", "/")
@@ -811,6 +898,8 @@ def main():
             continue
 
         full_path = os.path.join(args.ConfigDir, file)
+        if not os.path.exists(full_path):
+            deleted_files.append(file)
 
         if file.endswith(".xml"):
             # XML file — add directly if exists
@@ -846,7 +935,21 @@ def main():
             print(f"  - {sf}")
         print("  Смена состояния поддержки применяется только полной загрузкой (db-load-xml -Mode Full).")
 
+    verdicts = get_deletion_verdicts(deleted_files, config_files, args.ConfigDir, args.Format)
+    unapplied = [v for v in verdicts if not v["applied"]]
+    for v in verdicts:
+        if v["applied"]:
+            print(f"[note] удаление применится {v['reason']}: {v['path']}")
+    if unapplied:
+        print("[ВНИМАНИЕ] Удаления, которые загрузка частями НЕ применит — в базе они останутся:")
+        for u in unapplied:
+            print(f"  - {u['path']}: {u['reason']}")
+        print("  Применить их можно полной загрузкой (db-load-xml -Mode Full).")
+
     if len(config_files) == 0:
+        if unapplied:
+            print("Error: changes found, but none of them can be applied by a partial load (see above)")
+            sys.exit(1)
         print("No configuration files found in changes")
         sys.exit(0)
 
@@ -876,9 +979,6 @@ def main():
             # --- ibcmd branch (file infobase only; import specific files) ---
             if args.Format == "Plain":
                 print("Error: ibcmd config import supports hierarchical format only (use -Format Hierarchical or 1cv8)")
-                sys.exit(1)
-            if args.AllExtensions:
-                print("Error: ibcmd config import does not support -AllExtensions (use -Extension or 1cv8)")
                 sys.exit(1)
             arguments = ["infobase", "config", "import", "files"] + config_files
             arguments += [f"--base-dir={args.ConfigDir}", f"--db-path={args.InfoBasePath}"]
@@ -916,7 +1016,7 @@ def main():
                     print(f"Error updating database configuration (code: {exit_code}){describe_exit(exit_code)}")
                 print_platform_output(ar)
             # Проверку применимости умеет только 1cv8 — соединение для неё собираем в его форме.
-            if (exit_code == 0 and (args.Extension or args.AllExtensions)
+            if (exit_code == 0 and args.Extension
                     and apply_check_enabled(args.NoApplyCheck)):
                 ac_conn = ["/F", f'"{args.InfoBasePath}"']
                 if args.UserName:
@@ -963,8 +1063,6 @@ def main():
         # --- Extensions ---
         if args.Extension:
             arguments += ["-Extension", f'"{args.Extension}"']
-        elif args.AllExtensions:
-            arguments.append("-AllExtensions")
 
         # --- UpdateDB ---
         if args.UpdateDB:
@@ -1021,7 +1119,7 @@ def main():
                 exit_code = 1
 
         # Расширение могло загрузиться «успешно» и остаться неприменимым — спрашиваем платформу.
-        if (exit_code == 0 and (args.Extension or args.AllExtensions)
+        if (exit_code == 0 and args.Extension
                 and apply_check_enabled(args.NoApplyCheck)):
             if apply_check_report(v8path, conn_args, args.Extension, extra_args) and args.StrictLog:
                 exit_code = 1

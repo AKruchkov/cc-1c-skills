@@ -1,0 +1,27 @@
+{
+  "name": "Файлы формы удалены, а владелец всё ещё держит её в составе: удаление не применится",
+  "preRun": [
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects>\n\t\t\t<Form>ФормаЭлемента</Form>\n\t\t</ChildObjects>\n\t</Catalog>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Forms/ФормаЭлемента.xml", "content": "<MetaDataObject/>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Forms/ФормаЭлемента/Ext/Form.xml", "content": "<Form/>\n" } },
+    { "git": ["-C", "src", "init", "-q"] },
+    { "git": ["-C", "src", "add", "-A"] },
+    { "git": ["-C", "src", "commit", "-qm", "base"] },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<Comment>правка</Comment>\n\t\t<ChildObjects>\n\t\t\t<Form>ФормаЭлемента</Form>\n\t\t</ChildObjects>\n\t</Catalog>\n</MetaDataObject>\n" } },
+    { "deletePath": "src/Catalogs/Товары/Forms" },
+    { "git": ["-C", "src", "add", "-A"] }
+  ],
+  "args_extra": ["-ConfigDir", "{workDir}/src", "-Source", "Staged", "-DryRun"],
+  "expect": {
+    "stdoutContains": [
+      "Catalogs/Товары/Forms/ФормаЭлемента.xml: Catalogs/Товары.xml всё ещё содержит объект в составе",
+      "  Catalogs/Товары.xml"
+    ],
+    "stdoutNotContains": [
+      "[note] удаление применится",
+      "Ext/Form.xml:"
+    ]
+  },
+  "noSnapshot": "сухой прогон ничего не пишет — проверяется вердикт по удалению"
+}

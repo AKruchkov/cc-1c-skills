@@ -1,0 +1,25 @@
+{
+  "name": "Ошибка: в изменениях только удаление без правки состава — загружать нечего",
+  "preRun": [
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects/>\n\t</Catalog>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Ext/ObjectModule.bsl", "content": "\n" } },
+    { "git": ["-C", "src", "init", "-q"] },
+    { "git": ["-C", "src", "add", "-A"] },
+    { "git": ["-C", "src", "commit", "-qm", "base"] },
+    { "deletePath": "src/Catalogs" },
+    { "git": ["-C", "src", "add", "-A"] }
+  ],
+  "args_extra": ["-ConfigDir", "{workDir}/src", "-Source", "Staged", "-DryRun"],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "Catalogs/Товары.xml: владелец Configuration.xml не изменён — состав в базе прежний",
+      "Error: changes found, but none of them can be applied by a partial load (see above)"
+    ],
+    "stdoutNotContains": [
+      "No configuration files found in changes",
+      "ObjectModule.bsl:"
+    ]
+  }
+}

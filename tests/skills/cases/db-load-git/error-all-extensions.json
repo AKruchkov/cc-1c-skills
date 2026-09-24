@@ -1,0 +1,11 @@
+{
+  "name": "Ошибка: -AllExtensions — загрузка частями идёт по одному расширению",
+  "args_extra": ["-ConfigDir", ".", "-Source", "Staged", "-DryRun", "-AllExtensions"],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "-AllExtensions cannot be combined with a partial load",
+      "Загружайте расширения по одному: -Extension <имя>"
+    ]
+  }
+}

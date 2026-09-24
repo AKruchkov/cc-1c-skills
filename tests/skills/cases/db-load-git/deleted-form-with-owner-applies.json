@@ -1,0 +1,25 @@
+{
+  "name": "Форма удалена вместе с правкой владельца: удаление применится через владельца",
+  "preRun": [
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects>\n\t\t\t<Form>ФормаЭлемента</Form>\n\t\t</ChildObjects>\n\t</Catalog>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Forms/ФормаЭлемента.xml", "content": "<MetaDataObject/>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Forms/ФормаЭлемента/Ext/Form.xml", "content": "<Form/>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Forms/ФормаЭлемента/Ext/Form/Module.bsl", "content": "\n" } },
+    { "git": ["-C", "src", "init", "-q"] },
+    { "git": ["-C", "src", "add", "-A"] },
+    { "git": ["-C", "src", "commit", "-qm", "base"] },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects>\n\t\t\t<Attribute>\n\t\t\t\t<Properties>\n\t\t\t\t\t<Name>ФормаЭлемента</Name>\n\t\t\t\t</Properties>\n\t\t\t</Attribute>\n\t\t</ChildObjects>\n\t</Catalog>\n</MetaDataObject>\n" } },
+    { "deletePath": "src/Catalogs/Товары/Forms" },
+    { "git": ["-C", "src", "add", "-A"] }
+  ],
+  "args_extra": ["-ConfigDir", "{workDir}/src", "-Source", "Staged", "-DryRun"],
+  "expect": {
+    "stdoutContains": [
+      "[note] удаление применится через Catalogs/Товары.xml: Catalogs/Товары/Forms/ФормаЭлемента.xml",
+      "  Catalogs/Товары.xml"
+    ],
+    "stdoutNotContains": "[ВНИМАНИЕ] Удаления"
+  },
+  "noSnapshot": "сухой прогон ничего не пишет — проверяется вердикт по удалению"
+}

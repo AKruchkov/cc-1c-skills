@@ -1,0 +1,20 @@
+{
+  "name": "Удалены файлы вне конфигурации (README, docs): не удаления объектов, выход без ошибки",
+  "preRun": [
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects/>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/README.md", "content": "readme\n" } },
+    { "writeFile": { "path": "src/docs/notes.xml", "content": "<notes/>\n" } },
+    { "git": ["-C", "src", "init", "-q"] },
+    { "git": ["-C", "src", "add", "-A"] },
+    { "git": ["-C", "src", "commit", "-qm", "base"] },
+    { "deletePath": "src/README.md" },
+    { "deletePath": "src/docs" },
+    { "git": ["-C", "src", "add", "-A"] }
+  ],
+  "args_extra": ["-ConfigDir", "{workDir}/src", "-Source", "Staged", "-DryRun"],
+  "expect": {
+    "stdoutContains": "No configuration files found in changes",
+    "stdoutNotContains": "[ВНИМАНИЕ] Удаления"
+  },
+  "noSnapshot": "сухой прогон ничего не пишет — проверяется, что посторонние удаления не оцениваются"
+}

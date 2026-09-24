@@ -1,0 +1,22 @@
+{
+  "name": "Удалённый модуль объекта: загрузка частями его не удалит — [ВНИМАНИЕ]",
+  "preRun": [
+    { "writeFile": { "path": "src/Configuration.xml", "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары.xml", "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects/>\n\t</Catalog>\n</MetaDataObject>\n" } },
+    { "writeFile": { "path": "src/Catalogs/Товары/Ext/ObjectModule.bsl", "content": "Процедура А() КонецПроцедуры\n" } },
+    { "git": ["-C", "src", "init", "-q"] },
+    { "git": ["-C", "src", "add", "-A"] },
+    { "git": ["-C", "src", "commit", "-qm", "base"] },
+    { "deletePath": "src/Catalogs/Товары/Ext/ObjectModule.bsl" },
+    { "git": ["-C", "src", "add", "-A"] }
+  ],
+  "args_extra": ["-ConfigDir", "{workDir}/src", "-Source", "Staged", "-DryRun"],
+  "expect": {
+    "stdoutContains": [
+      "[ВНИМАНИЕ] Удаления, которые загрузка частями НЕ применит — в базе они останутся:",
+      "Catalogs/Товары/Ext/ObjectModule.bsl: часть объекта — загрузка частями файлы не удаляет",
+      "DryRun mode - no changes applied"
+    ]
+  },
+  "noSnapshot": "сухой прогон ничего не пишет — проверяется вердикт по удалению"
+}

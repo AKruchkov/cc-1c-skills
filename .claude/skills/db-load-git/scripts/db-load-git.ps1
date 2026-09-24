@@ -1,4 +1,4 @@
-﻿# db-load-git v1.28 — Load Git changes into 1C database
+﻿# db-load-git v1.29 — Load Git changes into 1C database
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -40,7 +40,7 @@
     Имя расширения для загрузки
 
 .PARAMETER AllExtensions
-    Загрузить все расширения
+    Не поддерживается: загрузка частями идёт по одному расширению (-Extension)
 
 .PARAMETER Format
     Формат файлов: Hierarchical или Plain (по умолчанию Hierarchical)
@@ -425,6 +425,73 @@ function Get-ObjectXmlFromSubFile {
     return $null
 }
 
+# Каталоги выгрузки объектов верхнего уровня → элемент в <ChildObjects> конфигурации.
+$script:TypeDirTag = @{
+    "Languages"="Language"; "Subsystems"="Subsystem"; "StyleItems"="StyleItem"; "Styles"="Style"
+    "CommonPictures"="CommonPicture"; "SessionParameters"="SessionParameter"; "Roles"="Role"; "CommonTemplates"="CommonTemplate"
+    "FilterCriteria"="FilterCriterion"; "CommonModules"="CommonModule"; "Bots"="Bot"; "PaletteColors"="PaletteColor"; "CommonAttributes"="CommonAttribute"; "ExchangePlans"="ExchangePlan"
+    "XDTOPackages"="XDTOPackage"; "WebServices"="WebService"; "HTTPServices"="HTTPService"; "WSReferences"="WSReference"
+    "EventSubscriptions"="EventSubscription"; "ScheduledJobs"="ScheduledJob"; "SettingsStorages"="SettingsStorage"; "FunctionalOptions"="FunctionalOption"
+    "FunctionalOptionsParameters"="FunctionalOptionsParameter"; "DefinedTypes"="DefinedType"; "CommonCommands"="CommonCommand"; "CommandGroups"="CommandGroup"
+    "Constants"="Constant"; "CommonForms"="CommonForm"; "Catalogs"="Catalog"; "Documents"="Document"
+    "DocumentNumerators"="DocumentNumerator"; "Sequences"="Sequence"; "DocumentJournals"="DocumentJournal"; "Enums"="Enum"
+    "Reports"="Report"; "DataProcessors"="DataProcessor"; "InformationRegisters"="InformationRegister"; "AccumulationRegisters"="AccumulationRegister"
+    "ChartsOfCharacteristicTypes"="ChartOfCharacteristicTypes"; "ChartsOfAccounts"="ChartOfAccounts"; "AccountingRegisters"="AccountingRegister"
+    "ChartsOfCalculationTypes"="ChartOfCalculationTypes"; "CalculationRegisters"="CalculationRegister"
+    "BusinessProcesses"="BusinessProcess"; "Tasks"="Task"; "ExternalDataSources"="ExternalDataSource"; "IntegrationServices"="IntegrationService"
+}
+
+function Get-DeletionVerdicts {
+    # Что загрузка частями сделает с путями, удалёнными в git. Удалённый ОБЪЕКТ (его XML-описание)
+    # исчезнет из базы, только если в списке его владелец и в составе владельца (ChildObjects)
+    # объекта уже нет. Удалённую ЧАСТЬ объекта (модуль, файлы Ext/) загрузка частями не удаляет
+    # никогда — платформа молча пропускает отсутствующий файл, даже перечисленный явно.
+    # Пути вне каталогов объектов (README, docs/…) — не конфигурация, их удаление не оценивается.
+    # Возвращает вердикт по каждому удалению: @{ Path; Applied; Reason }.
+    param([string[]]$Deleted, [string[]]$Loaded, [string]$Root, [string]$Format)
+    $result = @()
+    $ours = @($Deleted | Where-Object { $script:TypeDirTag.ContainsKey(($_ -split '/')[0]) -and ($_ -split '/').Count -ge 2 })
+    if ($Format -eq "Plain") {
+        foreach ($d in $ours) { $result += @{ Path = $d; Applied = $false; Reason = "формат Plain — удаление загрузкой частями не применяется" } }
+        return $result
+    }
+    foreach ($d in $ours) {
+        $segs = $d -split '/'
+        $extIdx = [array]::IndexOf($segs, 'Ext')
+        if ($extIdx -lt 0 -and $d -match '\.xml$' -and ($segs.Count -eq 2 -or $segs.Count -ge 4)) {
+            # Описание объекта: владелец — Configuration.xml или описание объекта двумя уровнями выше.
+            # Элемент состава — по каталогу: Catalogs → Catalog, Forms → Form.
+            if ($segs.Count -eq 2) {
+                $owner = "Configuration.xml"
+                $tag = $script:TypeDirTag[$segs[0]]
+            } else {
+                $owner = ($segs[0..($segs.Count - 3)] -join '/') + ".xml"
+                $tag = $segs[-2] -replace 's$', ''
+            }
+            if ($Deleted -contains $owner) { continue }
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($segs[-1])
+            if ($Loaded -notcontains $owner) {
+                $result += @{ Path = $d; Applied = $false; Reason = "владелец $owner не изменён — состав в базе прежний" }
+                continue
+            }
+            $ownerText = [System.IO.File]::ReadAllText((Join-Path $Root $owner))
+            $m = [regex]::Match($ownerText, '(?s)<ChildObjects>.*</ChildObjects>')
+            $pattern = '(?m)^\s*<' + $tag + '>' + [regex]::Escape($name) + '</' + $tag + '>\s*$'
+            if ($m.Success -and [regex]::IsMatch($m.Value, $pattern)) {
+                $result += @{ Path = $d; Applied = $false; Reason = "$owner всё ещё содержит объект в составе" }
+            } else {
+                $result += @{ Path = $d; Applied = $true; Reason = "через $owner" }
+            }
+            continue
+        }
+        if ($extIdx -lt 0) { continue }
+        # Часть объекта: сам объект — сегменты до Ext. Удалён вместе с объектом — судьба объекта.
+        if ($Deleted -contains (($segs[0..($extIdx - 1)] -join '/') + ".xml")) { continue }
+        $result += @{ Path = $d; Applied = $false; Reason = "часть объекта — загрузка частями файлы не удаляет (пустой файл вместо удаления очистит модуль)" }
+    }
+    return $result
+}
+
 # --- Resolve V8Path (skip if DryRun) ---
 if (-not $DryRun) {
     function Find-ProjectV8Path {
@@ -677,6 +744,14 @@ if ($Source -eq "Commit" -and -not $CommitRange) {
     exit 1
 }
 
+# --- -AllExtensions: загрузка частями идёт по одному расширению ---
+# Конфигуратор сочетание -AllExtensions с -listFile отвергает сам, ibcmd его не поддерживает.
+if ($AllExtensions) {
+    Write-Host "Error: -AllExtensions cannot be combined with a partial load" -ForegroundColor Red
+    Write-Host "  Загружайте расширения по одному: -Extension <имя>, -ConfigDir — каталог этого расширения." -ForegroundColor Yellow
+    exit 1
+}
+
 # --- Check git ---
 try {
     $null = git --version 2>&1
@@ -688,6 +763,8 @@ try {
 # --- Get changed files from Git ---
 # Все git-вызовы для сбора путей идут через один хелпер с -c core.quotePath=false,
 # иначе кириллические пути возвращаются в octal-виде и не распознаются (зеркало run_git в .py).
+# diff — с --no-renames: при переименовании иначе виден только новый путь, а старый — это
+# удаление, о котором надо предупредить.
 function Invoke-GitLines {
     param([string[]]$GitArgs)
     $out = git -c core.quotePath=false @GitArgs 2>&1
@@ -704,21 +781,21 @@ try {
     switch ($Source) {
         "Staged" {
             Write-Host "Getting staged changes..."
-            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--cached', '--name-only', '--relative')
+            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--cached', '--name-only', '--no-renames', '--relative')
         }
         "Unstaged" {
             Write-Host "Getting unstaged changes..."
-            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--name-only', '--relative')
+            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--name-only', '--no-renames', '--relative')
             $changedFiles += Invoke-GitLines -GitArgs @('ls-files', '--others', '--exclude-standard')
         }
         "Commit" {
             Write-Host "Getting changes from $CommitRange..."
-            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--name-only', '--relative', $CommitRange)
+            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--name-only', '--no-renames', '--relative', $CommitRange)
         }
         "All" {
             Write-Host "Getting all uncommitted changes..."
-            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--cached', '--name-only', '--relative')
-            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--name-only', '--relative')
+            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--cached', '--name-only', '--no-renames', '--relative')
+            $changedFiles += Invoke-GitLines -GitArgs @('diff', '--name-only', '--no-renames', '--relative')
             $changedFiles += Invoke-GitLines -GitArgs @('ls-files', '--others', '--exclude-standard')
         }
     }
@@ -738,6 +815,7 @@ Write-Host "Git changes detected: $($changedFiles.Count) files"
 # --- Filter and map to config files ---
 $configFiles = @()
 $supportSkipped = @()
+$deletedFiles = @()
 
 foreach ($file in $changedFiles) {
     $file = $file.Trim().Replace('\', '/')
@@ -749,6 +827,7 @@ foreach ($file in $changedFiles) {
     if ($file -eq "ConfigDumpInfo.xml" -or $file -match '(^|/)ConfigDumpInfo\.xml$') { continue }
 
     $fullPath = Join-Path $ConfigDir $file
+    if (-not (Test-Path -LiteralPath $fullPath)) { $deletedFiles += $file }
 
     if ($file -match '\.xml$') {
         # XML file — add directly if exists
@@ -795,7 +874,20 @@ if ($supportSkipped.Count -gt 0) {
     Write-Host "  Смена состояния поддержки применяется только полной загрузкой (db-load-xml -Mode Full)." -ForegroundColor Yellow
 }
 
+$verdicts = @(Get-DeletionVerdicts -Deleted $deletedFiles -Loaded $configFiles -Root $ConfigDir -Format $Format)
+$unapplied = @($verdicts | Where-Object { -not $_.Applied })
+foreach ($v in @($verdicts | Where-Object { $_.Applied })) { Write-Host "[note] удаление применится $($v.Reason): $($v.Path)" }
+if ($unapplied.Count -gt 0) {
+    Write-Host "[ВНИМАНИЕ] Удаления, которые загрузка частями НЕ применит — в базе они останутся:" -ForegroundColor Yellow
+    foreach ($u in $unapplied) { Write-Host "  - $($u.Path): $($u.Reason)" -ForegroundColor Yellow }
+    Write-Host "  Применить их можно полной загрузкой (db-load-xml -Mode Full)." -ForegroundColor Yellow
+}
+
 if ($configFiles.Count -eq 0) {
+    if ($unapplied.Count -gt 0) {
+        Write-Host "Error: changes found, but none of them can be applied by a partial load (see above)" -ForegroundColor Red
+        exit 1
+    }
     Write-Host "No configuration files found in changes"
     exit 0
 }
@@ -827,10 +919,6 @@ try {
         # --- ibcmd branch (file infobase only; import specific files) ---
         if ($Format -eq "Plain") {
             Write-Host "Error: ibcmd config import supports hierarchical format only (use -Format Hierarchical or 1cv8)" -ForegroundColor Red
-            exit 1
-        }
-        if ($AllExtensions) {
-            Write-Host "Error: ibcmd config import does not support -AllExtensions (use -Extension or 1cv8)" -ForegroundColor Red
             exit 1
         }
         $arguments = @("infobase", "config", "import", "files") + $configFiles
@@ -867,7 +955,7 @@ try {
                 Write-Host "Error updating database configuration (code: $exitCode)$(Get-ExitAnnotation $exitCode)" -ForegroundColor Red
             }
         # Проверку применимости умеет только 1cv8 — соединение для неё собираем в его форме.
-        if ($exitCode -eq 0 -and ($Extension -or $AllExtensions) -and (Get-ApplyCheckEnabled -Disabled:$NoApplyCheck)) {
+        if ($exitCode -eq 0 -and $Extension -and (Get-ApplyCheckEnabled -Disabled:$NoApplyCheck)) {
             $acConn = @("/F", "`"$InfoBasePath`"")
             if ($UserName) { $acConn += "/N`"$UserName`"" }
             if ($Password) { $acConn += "/P`"$Password`"" }
@@ -913,8 +1001,6 @@ try {
     # --- Extensions ---
     if ($Extension) {
         $arguments += "-Extension", "`"$Extension`""
-    } elseif ($AllExtensions) {
-        $arguments += "-AllExtensions"
     }
 
     # --- UpdateDB ---
@@ -967,7 +1053,7 @@ try {
     }
 
     # Расширение могло загрузиться «успешно» и остаться неприменимым — спрашиваем платформу.
-    if ($exitCode -eq 0 -and ($Extension -or $AllExtensions) -and (Get-ApplyCheckEnabled -Disabled:$NoApplyCheck)) {
+    if ($exitCode -eq 0 -and $Extension -and (Get-ApplyCheckEnabled -Disabled:$NoApplyCheck)) {
         if ((Invoke-ApplyCheckReport $V8Path $connArgs $Extension $extraArgs) -and $StrictLog) { $exitCode = 1 }
     }
 
