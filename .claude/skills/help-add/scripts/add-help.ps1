@@ -1,4 +1,4 @@
-﻿# help-add v1.22 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# help-add v1.23 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -172,8 +172,6 @@ function Detect-FormatVersion([string]$dir) {
 	return "2.17"
 }
 
-$formatVersion = Detect-FormatVersion (Resolve-Path $SrcDir).Path
-
 # --- Проверки ---
 
 $objectDir = Join-Path $SrcDir $ObjectName
@@ -183,6 +181,11 @@ if (-not (Test-Path $extDir)) {
 	Write-Error "Каталог объекта не найден: $extDir. Проверьте путь ObjectName (например Catalogs/МойСправочник)."
 	exit 1
 }
+
+# Версию ищем от каталога объекта, а не от SrcDir: у внешней обработки корень <Имя>.xml лежит В SrcDir,
+# и подъём от SrcDir его не видит — справка писалась 2.17 при обработке 2.20, и платформа отказывала
+# в сборке (тело и дескриптор объекта обязаны быть в одной версии формата).
+$formatVersion = Detect-FormatVersion (Resolve-Path $objectDir).Path
 
 # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
 # пустое значение дало бы файл «.html» и пустой <Page></Page>, разделитель пути — запись мимо

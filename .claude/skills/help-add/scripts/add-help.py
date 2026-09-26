@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# help-add v1.22 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# help-add v1.23 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -338,8 +338,6 @@ def main():
     lang = args.Lang
     src_dir = args.SrcDir
 
-    format_version = detect_format_version(os.path.abspath(src_dir))
-
     # --- Checks ---
 
     object_dir = os.path.join(src_dir, object_name)
@@ -348,6 +346,11 @@ def main():
     if not os.path.isdir(ext_dir):
         print(f"Каталог объекта не найден: {ext_dir}. Проверьте путь ObjectName (например Catalogs/МойСправочник).", file=sys.stderr)
         sys.exit(1)
+
+    # Версию ищем от каталога объекта, а не от SrcDir: у внешней обработки корень <Имя>.xml лежит В SrcDir,
+    # и подъём от SrcDir его не видит — справка писалась 2.17 при обработке 2.20, и платформа отказывала
+    # в сборке (тело и дескриптор объекта обязаны быть в одной версии формата).
+    format_version = detect_format_version(os.path.abspath(object_dir))
 
     if not is_valid_lang(lang):
         print(f"Недопустимый код языка: '{lang}'", file=sys.stderr)
