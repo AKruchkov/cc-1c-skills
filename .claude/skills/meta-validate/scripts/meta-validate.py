@@ -1,4 +1,4 @@
-# meta-validate v1.30 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.31 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -614,6 +614,18 @@ for desc in ver_descriptors:
         body_ver = root_version(body)
         if not body_ver:
             continue
+        # У заимствованной формы расширения второй штамп — <BaseForm version=…>; платформа сверяет с
+        # дескриптором и его.
+        if bn == "Form.xml":
+            with open(body, "r", encoding="utf-8-sig") as f:
+                body_text = f.read()
+            bfm = re.search(r'<BaseForm\s[^>]*?version="([^"]*)"', body_text)
+            if bfm and bfm.group(1) != desc_ver:
+                ver_errors += 1
+                report_error(f"24. {ver_rel(body)} <BaseForm> is stamped {bfm.group(1)}, its descriptor {ver_rel(desc)} "
+                             f"{desc_ver} — the platform refuses to load parts of one object in different formats")
+                if stopped:
+                    break
         if body_ver == desc_ver:
             ver_bodies += 1
             continue

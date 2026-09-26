@@ -1,0 +1,11 @@
+{
+  "name": "Заимствованная форма расширения: <BaseForm> 2.18 при дескрипторе 2.20 — ошибка на объекте-владельце",
+  "setup": "fixture:cfe-version-baseform",
+  "params": { "objectPath": "cfe/Тест/Catalogs/Товары.xml" },
+  "expectError": true,
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["[ERROR] 24. Товары/Forms/ФормаЭлемента/Ext/Form.xml <BaseForm> is stamped 2.18, its descriptor Товары/Forms/ФормаЭлемента.xml 2.20"]
+  },
+  "skipPlatformVerify": "фикстура намеренно не загружается: части заимствованной формы в разных версиях формата"
+}

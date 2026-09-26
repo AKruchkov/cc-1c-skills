@@ -1,4 +1,4 @@
-﻿# meta-validate v1.30 — Validate 1C metadata object structure
+﻿# meta-validate v1.31 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -528,6 +528,17 @@ foreach ($desc in $verDescriptors) {
 		$body = Join-Path $extDir $bn
 		$bodyVer = Get-RootVersion $body
 		if (-not $bodyVer) { continue }
+		# У заимствованной формы расширения второй штамп — <BaseForm version=…>; платформа сверяет с
+		# дескриптором и его.
+		if ($bn -ceq "Form.xml") {
+			$bodyText = [System.IO.File]::ReadAllText($body, [System.Text.Encoding]::UTF8)
+			$bfm = [regex]::Match($bodyText, '<BaseForm\s[^>]*?version="([^"]*)"')
+			if ($bfm.Success -and $bfm.Groups[1].Value -ne $descVer) {
+				$verErrors++
+				Report-Error "24. $(& $verRel $body) <BaseForm> is stamped $($bfm.Groups[1].Value), its descriptor $(& $verRel $desc) $descVer — the platform refuses to load parts of one object in different formats"
+				if ($script:stopped) { break }
+			}
+		}
 		if ($bodyVer -eq $descVer) { $verBodies++; continue }
 		$verErrors++
 		Report-Error "24. $(& $verRel $body) is stamped $bodyVer, its descriptor $(& $verRel $desc) $descVer — the platform refuses to load parts of one object in different formats"
