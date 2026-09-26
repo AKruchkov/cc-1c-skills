@@ -347,10 +347,20 @@ def main():
         print(f"Каталог объекта не найден: {ext_dir}. Проверьте путь ObjectName (например Catalogs/МойСправочник).", file=sys.stderr)
         sys.exit(1)
 
-    # Версию ищем от каталога объекта, а не от SrcDir: у внешней обработки корень <Имя>.xml лежит В SrcDir,
-    # и подъём от SrcDir его не видит — справка писалась 2.17 при обработке 2.20, и платформа отказывала
-    # в сборке (тело и дескриптор объекта обязаны быть в одной версии формата).
-    format_version = detect_format_version(os.path.abspath(object_dir))
+    # Справка — тело объекта, а тело и дескриптор платформа загружает только в одной версии формата.
+    # Поэтому версию берём прежде всего из дескриптора <объект>.xml (объект может быть старше выгрузки после
+    # мержа веток), и только без него — подъёмом от каталога объекта. Не от SrcDir: у внешней обработки
+    # корень <Имя>.xml лежит В SrcDir, подъём его не видел, и справка обработки 2.20 писалась 2.17.
+    format_version = None
+    owner_xml = os.path.abspath(object_dir) + ".xml"
+    if os.path.isfile(owner_xml):
+        with open(owner_xml, "r", encoding="utf-8-sig") as f:
+            owner_head = f.read(2000)
+        m = re.search(r'<MetaDataObject[^>]+version="(\d+\.\d+)"', owner_head)
+        if m:
+            format_version = m.group(1)
+    if not format_version:
+        format_version = detect_format_version(os.path.abspath(object_dir))
 
     if not is_valid_lang(lang):
         print(f"Недопустимый код языка: '{lang}'", file=sys.stderr)

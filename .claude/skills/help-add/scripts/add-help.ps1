@@ -182,10 +182,18 @@ if (-not (Test-Path $extDir)) {
 	exit 1
 }
 
-# Версию ищем от каталога объекта, а не от SrcDir: у внешней обработки корень <Имя>.xml лежит В SrcDir,
-# и подъём от SrcDir его не видит — справка писалась 2.17 при обработке 2.20, и платформа отказывала
-# в сборке (тело и дескриптор объекта обязаны быть в одной версии формата).
-$formatVersion = Detect-FormatVersion (Resolve-Path $objectDir).Path
+# Справка — тело объекта, а тело и дескриптор платформа загружает только в одной версии формата.
+# Поэтому версию берём прежде всего из дескриптора <объект>.xml (объект может быть старше выгрузки после
+# мержа веток), и только без него — подъёмом от каталога объекта. Не от SrcDir: у внешней обработки
+# корень <Имя>.xml лежит В SrcDir, подъём его не видел, и справка обработки 2.20 писалась 2.17.
+$formatVersion = $null
+$ownerXml = "$((Resolve-Path $objectDir).Path).xml"
+if (Test-Path $ownerXml) {
+	$ownerHead = [System.IO.File]::ReadAllText($ownerXml, [System.Text.Encoding]::UTF8)
+	$ownerHead = $ownerHead.Substring(0, [Math]::Min(2000, $ownerHead.Length))
+	if ($ownerHead -match '<MetaDataObject[^>]+version="(\d+\.\d+)"') { $formatVersion = $Matches[1] }
+}
+if (-not $formatVersion) { $formatVersion = Detect-FormatVersion (Resolve-Path $objectDir).Path }
 
 # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
 # пустое значение дало бы файл «.html» и пустой <Page></Page>, разделитель пути — запись мимо
