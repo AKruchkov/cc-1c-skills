@@ -1,0 +1,7 @@
+{
+  "name": "Rights.xml в версии дескриптора роли и выгрузки — чисто",
+  "setup": "fixture:role-version-agree",
+  "params": { "rightsPath": "Roles/Пользователь/Ext/Rights.xml" },
+  "noSnapshot": "role-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK: Role.Пользователь"] }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# role-validate v1.6 — Validate 1C role Rights.xml structure
+# role-validate v1.7 — Validate 1C role Rights.xml structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates role Rights.xml: root element, global flags, objects, rights, RLS, templates."""
 import sys, os, argparse, re
@@ -295,6 +295,71 @@ def get_child_el(parent, local_name, ns):
             continue
         if etree.QName(child.tag).localname == local_name and etree.QName(child.tag).namespace == ns:
             return child
+    return None
+
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+def root_version(xml_path):
+    if not os.path.isfile(xml_path):
+        return None
+    with open(xml_path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>', head)
+    if not m:
+        return None
+    v = re.search(r'(?:^|\s)version="([^"]*)"', m.group(1) or "")
+    if v:
+        return v.group(1)
+    return None
+
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+def _sg_is_external_root(xml_path):
+    if not os.path.isfile(xml_path):
+        return False
+    try:
+        mx = etree.parse(xml_path).getroot()
+        for child in mx:
+            if isinstance(child.tag, str):
+                return child.tag.split("}")[-1] in ("ExternalDataProcessor", "ExternalReport")
+    except Exception:
+        return False
+    return False
+
+
+# Якорь выгрузки: корень автономной EPF/ERF либо Configuration.xml, ближайший вверх. Копия общего
+# эталона (семья find_dump_anchor, авторитет — meta-validate).
+def find_dump_anchor(start_dir):
+    d = start_dir
+    for _ in range(15):
+        if not d:
+            break
+        if _sg_is_external_root(d + ".xml"):
+            return d + ".xml"
+        cfg = os.path.join(d, "Configuration.xml")
+        if os.path.exists(cfg):
+            return cfg
+        parent = os.path.dirname(d)
+        if not parent or parent == d:
+            break
+        d = parent
+    return None
+
+
+# Владелец тела X/Ext/<файл>.xml — дескриптор X.xml рядом с каталогом X. Копия общего эталона
+# (семья ext_body_owner, авторитет — form-validate).
+def ext_body_owner(body_path):
+    ext_dir = os.path.dirname(body_path)
+    if os.path.basename(ext_dir) != "Ext":
+        return None
+    obj_dir = os.path.dirname(ext_dir)
+    if os.path.isfile(obj_dir + ".xml"):
+        return obj_dir + ".xml"
+    cfg = os.path.join(obj_dir, "Configuration.xml")
+    if os.path.isfile(cfg):
+        return cfg
     return None
 
 
@@ -599,6 +664,27 @@ def main():
                     report_warn('Metadata: <Synonym> is empty')
         except etree.XMLSyntaxError as e:
             report_error(f'Metadata XML parse error: {e}')
+
+    # --- 4b. Format version: Rights.xml — как у дескриптора роли; сверка с выгрузкой ---
+    # Права и дескриптор роли платформа загружает только в одной версии формата: «Версия формата
+    # загружаемого файла … отличается от версии формата ранее загруженных файлов». С остальной выгрузкой
+    # роль может расходиться — платформа такое грузит, это лишь неоднородность выгрузки (типично после
+    # мержа веток, выгруженных разными платформами).
+    rights_ver = root.get('version', '')
+    if rights_ver:
+        owner_path = ext_body_owner(resolved_path)
+        owner_ver = root_version(owner_path) if owner_path else None
+        dump_anchor = find_dump_anchor(os.path.dirname(resolved_path))
+        dump_ver = root_version(dump_anchor) if dump_anchor else None
+        if owner_ver and rights_ver != owner_ver:
+            report_error(f'Format version {rights_ver} differs from the role descriptor '
+                         f'{os.path.basename(owner_path)} ({owner_ver}) '
+                         '— the platform refuses to load parts of one object in different formats')
+        elif dump_ver and rights_ver != dump_ver:
+            report_warn(f'Format version {rights_ver} differs from the dump ({dump_ver}) — the platform loads it, '
+                        'but the dump is no longer uniform (typical after merging branches dumped by different platforms)')
+        elif owner_ver or dump_ver:
+            report_ok(f'Format version: {rights_ver}, matches the descriptor and the dump')
 
     # --- 5. Check registration in Configuration.xml ---
     config_dir = os.path.dirname(roles_dir)            # config root

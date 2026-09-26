@@ -1,0 +1,9 @@
+{
+  "name": "Rights.xml 2.18 при дескрипторе роли 2.20 — ошибка: платформа такую роль не загрузит",
+  "setup": "fixture:role-version-rights-differs",
+  "params": { "rightsPath": "Roles/Пользователь/Ext/Rights.xml" },
+  "expectError": true,
+  "noSnapshot": "role-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["Format version 2.18 differs from the role descriptor Пользователь.xml (2.20)"] },
+  "skipPlatformVerify": "фикстура намеренно не загружается: права и дескриптор роли в разных версиях формата"
+}

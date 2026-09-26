@@ -1,4 +1,4 @@
-﻿# role-validate v1.6 — Validate 1C role structure
+﻿# role-validate v1.7 — Validate 1C role structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -297,6 +297,61 @@ function Find-Similar {
 	return $result
 }
 
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+function Get-RootVersion([string]$xmlPath) {
+	if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) { return $null }
+	$buf = New-Object byte[] 4096
+	$fs = [System.IO.File]::OpenRead($xmlPath)
+	try { $len = $fs.Read($buf, 0, $buf.Length) } finally { $fs.Dispose() }
+	$head = [System.Text.Encoding]::UTF8.GetString($buf, 0, $len)
+	$m = [regex]::Match($head, '<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>')
+	if (-not $m.Success) { return $null }
+	$v = [regex]::Match($m.Groups[1].Value, '(?:^|\s)version="([^"]*)"')
+	if ($v.Success) { return $v.Groups[1].Value }
+	return $null
+}
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+function Test-ExternalObjectRoot([string]$xmlPath) {
+	if (-not (Test-Path $xmlPath)) { return $false }
+	try {
+		[xml]$mx = Get-Content -Path $xmlPath -Encoding UTF8
+		$el = $mx.DocumentElement.FirstChild
+		while ($el -and $el.NodeType -ne 'Element') { $el = $el.NextSibling }
+		if ($el) { return @('ExternalDataProcessor','ExternalReport') -contains $el.LocalName }
+	} catch {}
+	return $false
+}
+
+# Якорь выгрузки: корень автономной EPF/ERF либо Configuration.xml, ближайший вверх. Копия общего
+# эталона (семья find_dump_anchor, авторитет — meta-validate).
+function Find-DumpAnchor([string]$startDir) {
+	$d = $startDir
+	for ($i = 0; $i -lt 15 -and $d; $i++) {
+		if (Test-ExternalObjectRoot "$d.xml") { return "$d.xml" }
+		$cfg = Join-Path $d "Configuration.xml"
+		if (Test-Path $cfg) { return $cfg }
+		$parent = [System.IO.Path]::GetDirectoryName($d)
+		if (-not $parent -or $parent -eq $d) { break }
+		$d = $parent
+	}
+	return $null
+}
+
+# Владелец тела X/Ext/<файл>.xml — дескриптор X.xml рядом с каталогом X. Копия общего эталона
+# (семья ext_body_owner, авторитет — form-validate).
+function Get-ExtBodyOwner([string]$bodyPath) {
+	$extDir = [System.IO.Path]::GetDirectoryName($bodyPath)
+	if ([System.IO.Path]::GetFileName($extDir) -cne "Ext") { return $null }
+	$objDir = [System.IO.Path]::GetDirectoryName($extDir)
+	if (Test-Path -LiteralPath "$objDir.xml" -PathType Leaf) { return "$objDir.xml" }
+	$cfg = Join-Path $objDir "Configuration.xml"
+	if (Test-Path -LiteralPath $cfg -PathType Leaf) { return $cfg }
+	return $null
+}
+
 # --- Resolve path ---
 if (-not [System.IO.Path]::IsPathRooted($RightsPath)) {
 	$RightsPath = Join-Path (Get-Location).Path $RightsPath
@@ -549,6 +604,26 @@ if (Test-Path $MetadataPath) {
 		}
 	} catch {
 		Report-Error "Metadata XML parse error: $($_.Exception.Message)"
+	}
+}
+
+# --- 4b. Format version: Rights.xml — как у дескриптора роли; сверка с выгрузкой ---
+# Права и дескриптор роли платформа загружает только в одной версии формата: «Версия формата
+# загружаемого файла … отличается от версии формата ранее загруженных файлов». С остальной выгрузкой
+# роль может расходиться — платформа такое грузит, это лишь неоднородность выгрузки (типично после
+# мержа веток, выгруженных разными платформами).
+$rightsVer = $root.GetAttribute("version")
+if ($rightsVer) {
+	$ownerPath = Get-ExtBodyOwner $resolvedRights
+	$ownerVer = if ($ownerPath) { Get-RootVersion $ownerPath } else { $null }
+	$dumpAnchor = Find-DumpAnchor (Split-Path $resolvedRights -Parent)
+	$dumpVer = if ($dumpAnchor) { Get-RootVersion $dumpAnchor } else { $null }
+	if ($ownerVer -and $rightsVer -ne $ownerVer) {
+		Report-Error "Format version $rightsVer differs from the role descriptor $([System.IO.Path]::GetFileName($ownerPath)) ($ownerVer) — the platform refuses to load parts of one object in different formats"
+	} elseif ($dumpVer -and $rightsVer -ne $dumpVer) {
+		Report-Warn "Format version $rightsVer differs from the dump ($dumpVer) — the platform loads it, but the dump is no longer uniform (typical after merging branches dumped by different platforms)"
+	} elseif ($ownerVer -or $dumpVer) {
+		Report-OK "Format version: $rightsVer, matches the descriptor and the dump"
 	}
 }
 
