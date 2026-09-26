@@ -1,0 +1,7 @@
+{
+  "name": "Форма в версии своего дескриптора и выгрузки — проверка 14 чисто",
+  "setup": "fixture:version-parts",
+  "params": { "formPath": "Catalogs/Товары/Forms/ФормаЭлемента/Ext/Form.xml" },
+  "noSnapshot": "form-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK: Form."] }
+}

@@ -1,4 +1,4 @@
-﻿# form-validate v1.19 — Validate 1C managed form
+﻿# form-validate v1.20 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -74,62 +74,55 @@ function Test-ExternalObjectRoot([string]$xmlPath) {
 	return $false
 }
 
-# --- Detect context: config vs EPF/ERF ---
-# Walk up from FormPath looking for Configuration.xml → config context
-# No Configuration.xml → external data processor / report (EPF/ERF)
-$script:isConfigContext = $false
-$walkDir = Split-Path (Resolve-Path $FormPath) -Parent
-for ($i = 0; $i -lt 15; $i++) {
-	if (-not $walkDir -or $walkDir -eq (Split-Path $walkDir)) { break }
-	# Порядок проверок тот же, что у Detect-FormatVersion: сначала корень автономной обработки,
-	# потом Configuration.xml — иначе форма внутри EPF, лежащей в дереве конфигурации, взяла бы
-	# версию конфигурации.
-	$extRoot = "$walkDir.xml"
-	if (-not $script:versionAnchor) {
-		if (Test-ExternalObjectRoot $extRoot) {
-			# Ближайший якорь побеждает: автономная обработка остаётся автономной, даже если её
-			# исходники лежат внутри дерева с Configuration.xml (типовая раскладка проекта:
-			# src/cf рядом с src/epf). Иначе её собственные External*-типы считались бы ошибкой.
-			$script:versionAnchor = $extRoot
-			break
-		}
-	}
-	if (Test-Path (Join-Path $walkDir "Configuration.xml")) {
-		$script:isConfigContext = $true
-		$script:configXmlPath = Join-Path $walkDir "Configuration.xml"
-		if (-not $script:versionAnchor) { $script:versionAnchor = $script:configXmlPath }
-		break
-	}
-	$walkDir = Split-Path $walkDir
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+function Get-RootVersion([string]$xmlPath) {
+	if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) { return $null }
+	$buf = New-Object byte[] 4096
+	$fs = [System.IO.File]::OpenRead($xmlPath)
+	try { $len = $fs.Read($buf, 0, $buf.Length) } finally { $fs.Dispose() }
+	$head = [System.Text.Encoding]::UTF8.GetString($buf, 0, $len)
+	$m = [regex]::Match($head, '<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>')
+	if (-not $m.Success) { return $null }
+	$v = [regex]::Match($m.Groups[1].Value, '(?:^|\s)version="([^"]*)"')
+	if ($v.Success) { return $v.Groups[1].Value }
+	return $null
 }
 
-# Версия формата выгрузки. Копия общего эталона (семья detect_format_version, авторитет —
-# form-compile): та же ветка для автономной EPF/ERF, где версию несёт корень обработки.
-function Detect-FormatVersion([string]$dir) {
-	$d = $dir
-	while ($d) {
-		# Автономная внешняя обработка/отчёт: своего Configuration.xml у неё нет, версию несёт
-		# корень самой обработки. Без этого форма и макет внутри обработки 2.21 писались бы 2.17.
-		$extPath = "$d.xml"
-		if (Test-Path $extPath) {
-			$extText = [System.IO.File]::ReadAllText($extPath, [System.Text.Encoding]::UTF8)
-			$extHead = $extText.Substring(0, [Math]::Min(2000, $extText.Length))
-			if ($extHead -match '<(ExternalDataProcessor|ExternalReport)[ >]' -and $extHead -match '<MetaDataObject[^>]+version="(\d+\.\d+)"') { return $Matches[1] }
-		}
-		$cfgPath = Join-Path $d "Configuration.xml"
-		if (Test-Path $cfgPath) {
-			$cfgText = [System.IO.File]::ReadAllText($cfgPath, [System.Text.Encoding]::UTF8)
-			# Длину среза берём по СТРОКЕ, а не по размеру файла: размер в БАЙТАХ, Substring считает
-			# СИМВОЛЫ, и на кириллице байт больше — короткий Configuration.xml ронял навык исключением.
-			$head = $cfgText.Substring(0, [Math]::Min(2000, $cfgText.Length))
-			if ($head -match '<MetaDataObject[^>]+version="(\d+\.\d+)"') { return $Matches[1] }
-		}
-		$parent = Split-Path $d -Parent
-		if ($parent -eq $d) { break }
+# Якорь выгрузки: корень автономной EPF/ERF либо Configuration.xml, ближайший вверх. Копия общего
+# эталона (семья find_dump_anchor, авторитет — meta-validate).
+function Find-DumpAnchor([string]$startDir) {
+	$d = $startDir
+	for ($i = 0; $i -lt 15 -and $d; $i++) {
+		if (Test-ExternalObjectRoot "$d.xml") { return "$d.xml" }
+		$cfg = Join-Path $d "Configuration.xml"
+		if (Test-Path $cfg) { return $cfg }
+		$parent = [System.IO.Path]::GetDirectoryName($d)
+		if (-not $parent -or $parent -eq $d) { break }
 		$d = $parent
 	}
-	return "2.17"
+	return $null
 }
+
+# Владелец тела X/Ext/<файл>.xml — дескриптор X.xml рядом с каталогом X. У тел конфигурации (и
+# расширения) соседа-дескриптора нет, владелец — Configuration.xml внутри X. Иначе — не определён.
+function Get-ExtBodyOwner([string]$bodyPath) {
+	$extDir = [System.IO.Path]::GetDirectoryName($bodyPath)
+	if ([System.IO.Path]::GetFileName($extDir) -cne "Ext") { return $null }
+	$objDir = [System.IO.Path]::GetDirectoryName($extDir)
+	if (Test-Path -LiteralPath "$objDir.xml" -PathType Leaf) { return "$objDir.xml" }
+	$cfg = Join-Path $objDir "Configuration.xml"
+	if (Test-Path -LiteralPath $cfg -PathType Leaf) { return $cfg }
+	return $null
+}
+
+# --- Detect context: config vs EPF/ERF ---
+# Ближайший якорь выгрузки вверх от формы. Configuration.xml → конфигурация; корень EPF/ERF → внешняя
+# обработка/отчёт. Ближайший побеждает: автономная обработка остаётся автономной, даже если её
+# исходники лежат внутри дерева с Configuration.xml (типовая раскладка проекта: src/cf рядом с
+# src/epf). Иначе её собственные External*-типы считались бы ошибкой.
+$script:dumpAnchor = Find-DumpAnchor (Split-Path (Resolve-Path $FormPath) -Parent)
+$script:isConfigContext = [bool]($script:dumpAnchor -and [System.IO.Path]::GetFileName($script:dumpAnchor) -eq "Configuration.xml")
 
 # --- Counters ---
 
@@ -1024,22 +1017,27 @@ if (-not $stopped) {
 	}
 }
 
-# --- Check 14: версия формата формы совпадает с версией выгрузки ---
-# Версию задаёт платформа, которой выгружали, и в пределах одной выгрузки она едина. Форма из
-# другой версии — «Неизвестная версия формата N загружаемого файла»: платформа не читает файл,
-# который новее её самой. Источник версии ищем общим helper-ом: он же покрывает автономную
-# внешнюю обработку/отчёт, где Configuration.xml нет и версию несёт корень самой обработки.
+# --- Check 14: версия формата формы — как у её дескриптора; сверка с выгрузкой ---
+# Тело формы и дескриптор Forms/<Имя>.xml (у общей формы — CommonForms/<Имя>.xml) платформа загружает
+# только в одной версии: «Версия формата загружаемого файла … отличается от версии формата ранее
+# загруженных файлов». С остальной выгрузкой форма может расходиться — платформа такое грузит, это
+# лишь неоднородность выгрузки (типично после мержа веток, выгруженных разными платформами).
 
-if (-not $stopped -and $script:versionAnchor) {
+if (-not $stopped) {
 	$formVer = $root.GetAttribute("version")
-	$dumpVer = Detect-FormatVersion (Split-Path (Resolve-Path $FormPath) -Parent)
+	$formFull = (Resolve-Path $FormPath).Path
+	$ownerPath = Get-ExtBodyOwner $formFull
+	$ownerVer = if ($ownerPath) { Get-RootVersion $ownerPath } else { $null }
+	$dumpVer = if ($script:dumpAnchor) { Get-RootVersion $script:dumpAnchor } else { $null }
 
 	if (-not $formVer) {
 		Report-OK "14. Format version: not comparable"
-	} elseif ($formVer -ne $dumpVer) {
-		Report-Error "14. Format version $formVer differs from the dump ($dumpVer) — a dump carries one version, the platform refuses a file it cannot read"
-	} else {
-		Report-OK "14. Format version: $formVer, matches the dump"
+	} elseif ($ownerVer -and $formVer -ne $ownerVer) {
+		Report-Error "14. Format version $formVer differs from the form descriptor $([System.IO.Path]::GetFileName($ownerPath)) ($ownerVer) — the platform refuses to load parts of one object in different formats"
+	} elseif ($dumpVer -and $formVer -ne $dumpVer) {
+		Report-Warn "14. Format version $formVer differs from the dump ($dumpVer) — the platform loads it, but the dump is no longer uniform (typical after merging branches dumped by different platforms)"
+	} elseif ($ownerVer -or $dumpVer) {
+		Report-OK "14. Format version: $formVer, matches the descriptor and the dump"
 	}
 }
 

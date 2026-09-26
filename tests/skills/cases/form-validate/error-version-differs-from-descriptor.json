@@ -1,0 +1,9 @@
+{
+  "name": "Тело формы 2.18 при дескрипторе 2.20 — ошибка: платформа такую пару не загрузит",
+  "setup": "fixture:version-parts-form-body",
+  "params": { "formPath": "Catalogs/Товары/Forms/ФормаЭлемента/Ext/Form.xml" },
+  "expectError": true,
+  "noSnapshot": "form-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["14. Format version 2.18 differs from the form descriptor ФормаЭлемента.xml (2.20)"] },
+  "skipPlatformVerify": "фикстура намеренно не загружается: тело формы и дескриптор в разных версиях формата"
+}
