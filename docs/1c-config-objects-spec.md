@@ -770,12 +770,12 @@ Ext/                               # Расширение конфигураци
         <Name>ФормаЭлемента</Name>
         <Synonym>...</Synonym>
         <Comment/>
-        <FormType>Ordinary</FormType>   <!-- Ordinary = управляемая форма -->
+        <FormType>Managed</FormType>   <!-- Managed = управляемая форма, Ordinary = обычная (толстый клиент) -->
     </Properties>
 </Form>
 ```
 
-Содержимое формы хранится в отдельных файлах: `Forms/<Имя>/<Имя>.xml` и `Forms/<Имя>/Ext/Form.xml`.
+Форма хранится двумя файлами: дескриптор `Forms/<Имя>.xml` и тело `Forms/<Имя>/Ext/Form.xml` — оба в одной версии формата (см. 1c-configuration-spec.md, §7.1).
 
 ### 6.4. Макет (Template)
 
@@ -785,7 +785,7 @@ Ext/                               # Расширение конфигураци
         <Name>ОсновнаяСхемаКомпоновкиДанных</Name>
         <Synonym>...</Synonym>
         <Comment/>
-        <TemplateType>DataCompositionSchema</TemplateType>  <!-- DataCompositionSchema | SpreadsheetDocument | HTMLDocument | TextDocument | BinaryData | ActiveDocument -->
+        <TemplateType>DataCompositionSchema</TemplateType>  <!-- SpreadsheetDocument | BinaryData | HTMLDocument | TextDocument | ActiveDocument | DataCompositionSchema | DataCompositionAppearanceTemplate | GraphicalSchema | AddIn — см. 1c-configuration-spec.md, «Template» -->
     </Properties>
 </Template>
 ```
