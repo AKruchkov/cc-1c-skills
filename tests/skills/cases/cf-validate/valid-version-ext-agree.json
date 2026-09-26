@@ -1,0 +1,6 @@
+{
+  "name": "Тела конфигурации Ext/*.xml в версии Configuration.xml — чисто",
+  "setup": "fixture:version-ext-agree",
+  "noSnapshot": "cf-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK"] }
+}

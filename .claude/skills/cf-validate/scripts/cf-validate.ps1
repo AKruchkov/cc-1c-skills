@@ -1,4 +1,4 @@
-﻿# cf-validate v1.10 — Validate 1C configuration root structure
+﻿# cf-validate v1.11 — Validate 1C configuration root structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -101,6 +101,21 @@ $formatVerifiedMax = "2.21"
 function Get-FormatRank([string]$ver) {
 	if ($ver -match '^(\d+)\.(\d+)$') { return [int]$Matches[1] * 100 + [int]$Matches[2] }
 	return 0
+}
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+function Get-RootVersion([string]$xmlPath) {
+	if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) { return $null }
+	$buf = New-Object byte[] 4096
+	$fs = [System.IO.File]::OpenRead($xmlPath)
+	try { $len = $fs.Read($buf, 0, $buf.Length) } finally { $fs.Dispose() }
+	$head = [System.Text.Encoding]::UTF8.GetString($buf, 0, $len)
+	$m = [regex]::Match($head, '<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>')
+	if (-not $m.Success) { return $null }
+	$v = [regex]::Match($m.Groups[1].Value, '(?:^|\s)version="([^"]*)"')
+	if ($v.Success) { return $v.Groups[1].Value }
+	return $null
 }
 
 # --- Reference tables ---
@@ -621,6 +636,28 @@ if ($formRefsChecked -eq 0) {
 	Report-OK "9. Form references: $formRefsChecked verified"
 } else {
 	foreach ($err in $formRefErrors) { Report-Error "9. $err" }
+}
+
+# --- Check 10: тела конфигурации Ext/*.xml в версии Configuration.xml ---
+# Конфигурация для платформы — такой же объект, как остальные: Configuration.xml и штампованные тела
+# Ext/*.xml (CommandInterface, HomePageWorkArea, Splash, …) загружаются только в одной версии формата
+# («Версия формата загружаемого файла … отличается от версии формата ранее загруженных файлов»).
+$cfgExtDir = Join-Path $configDir "Ext"
+$cfgBodiesOk = 0
+$cfgBodyErrors = 0
+if ($version -and (Test-Path $cfgExtDir -PathType Container)) {
+	$bodyNames = @(Get-ChildItem $cfgExtDir -Filter "*.xml" -File | ForEach-Object { $_.Name })
+	[Array]::Sort($bodyNames, [StringComparer]::Ordinal)
+	foreach ($bn in $bodyNames) {
+		$bodyVer = Get-RootVersion (Join-Path $cfgExtDir $bn)
+		if (-not $bodyVer) { continue }
+		if ($bodyVer -eq $version) { $cfgBodiesOk++; continue }
+		$cfgBodyErrors++
+		Report-Error "10. Ext/$bn is stamped $bodyVer, Configuration.xml $version — the platform refuses to load parts of one object in different formats"
+	}
+}
+if ($cfgBodyErrors -eq 0 -and $cfgBodiesOk -gt 0) {
+	Report-OK "10. Format version: $cfgBodiesOk stamped Ext part(s) agree with Configuration.xml"
 }
 
 # --- Final output ---

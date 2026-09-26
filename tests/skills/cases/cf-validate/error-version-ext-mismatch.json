@@ -1,0 +1,8 @@
+{
+  "name": "HomePageWorkArea.xml 2.18 при Configuration.xml 2.20 — ошибка: платформа такую конфигурацию не загрузит",
+  "setup": "fixture:version-ext-mismatch",
+  "expectError": true,
+  "noSnapshot": "cf-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["[ERROR] 10. Ext/HomePageWorkArea.xml is stamped 2.18, Configuration.xml 2.20"] },
+  "skipPlatformVerify": "фикстура намеренно не загружается: Configuration.xml и его тело в разных версиях формата"
+}

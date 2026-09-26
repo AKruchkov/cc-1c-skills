@@ -130,7 +130,7 @@ const FAMILIES = [
   {
     name: 'root_version', py: 'root_version', ps1: 'Get-RootVersion',
     variants: [
-      { id: 'base', authority: 'meta-validate', consumers: ['form-validate'] },
+      { id: 'base', authority: 'meta-validate', consumers: ['cf-validate', 'form-validate'] },
     ],
   },
   {

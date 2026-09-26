@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cf-validate v1.10 — Validate 1C configuration XML structure
+# cf-validate v1.11 — Validate 1C configuration XML structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates Configuration.xml: root structure, InternalInfo, properties, ChildObjects, languages."""
 import sys, os, argparse, re
@@ -146,6 +146,22 @@ def format_rank(ver):
     """"2.20" → 220, "2.9" → 209. Строковое сравнение неверно ("2.9" > "2.17")."""
     m = re.match(r'^(\d+)\.(\d+)$', ver or '')
     return int(m.group(1)) * 100 + int(m.group(2)) if m else 0
+
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+def root_version(xml_path):
+    if not os.path.isfile(xml_path):
+        return None
+    with open(xml_path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>', head)
+    if not m:
+        return None
+    v = re.search(r'(?:^|\s)version="([^"]*)"', m.group(1) or "")
+    if v:
+        return v.group(1)
+    return None
 
 
 class Reporter:
@@ -635,6 +651,29 @@ def main():
     else:
         for err in form_ref_errors:
             r.error(f'9. {err}')
+
+    # --- Check 10: тела конфигурации Ext/*.xml в версии Configuration.xml ---
+    # Конфигурация для платформы — такой же объект, как остальные: Configuration.xml и штампованные тела
+    # Ext/*.xml (CommandInterface, HomePageWorkArea, Splash, …) загружаются только в одной версии формата
+    # («Версия формата загружаемого файла … отличается от версии формата ранее загруженных файлов»).
+    cfg_ext_dir = os.path.join(config_dir, 'Ext')
+    cfg_bodies_ok = 0
+    cfg_body_errors = 0
+    if version and os.path.isdir(cfg_ext_dir):
+        body_names = sorted(n for n in os.listdir(cfg_ext_dir)
+                            if n.lower().endswith('.xml') and os.path.isfile(os.path.join(cfg_ext_dir, n)))
+        for bn in body_names:
+            body_ver = root_version(os.path.join(cfg_ext_dir, bn))
+            if not body_ver:
+                continue
+            if body_ver == version:
+                cfg_bodies_ok += 1
+                continue
+            cfg_body_errors += 1
+            r.error(f'10. Ext/{bn} is stamped {body_ver}, Configuration.xml {version} '
+                    '— the platform refuses to load parts of one object in different formats')
+    if cfg_body_errors == 0 and cfg_bodies_ok > 0:
+        r.ok(f'10. Format version: {cfg_bodies_ok} stamped Ext part(s) agree with Configuration.xml')
 
     # --- Final output ---
     r.finalize(out_file)
