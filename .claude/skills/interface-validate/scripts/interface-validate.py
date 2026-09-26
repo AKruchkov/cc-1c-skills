@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# interface-validate v1.4 — Validate 1C CommandInterface.xml structure
+# interface-validate v1.5 — Validate 1C CommandInterface.xml structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates CommandInterface.xml sections, command references, order, duplicates."""
 import sys, os, argparse, re
@@ -93,6 +93,71 @@ def find_duplicates(items):
         if count > 1 and item not in dupes:
             dupes.append(item)
     return dupes
+
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+def root_version(xml_path):
+    if not os.path.isfile(xml_path):
+        return None
+    with open(xml_path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>', head)
+    if not m:
+        return None
+    v = re.search(r'(?:^|\s)version="([^"]*)"', m.group(1) or "")
+    if v:
+        return v.group(1)
+    return None
+
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+def _sg_is_external_root(xml_path):
+    if not os.path.isfile(xml_path):
+        return False
+    try:
+        mx = etree.parse(xml_path).getroot()
+        for child in mx:
+            if isinstance(child.tag, str):
+                return child.tag.split("}")[-1] in ("ExternalDataProcessor", "ExternalReport")
+    except Exception:
+        return False
+    return False
+
+
+# Якорь выгрузки: корень автономной EPF/ERF либо Configuration.xml, ближайший вверх. Копия общего
+# эталона (семья find_dump_anchor, авторитет — meta-validate).
+def find_dump_anchor(start_dir):
+    d = start_dir
+    for _ in range(15):
+        if not d:
+            break
+        if _sg_is_external_root(d + ".xml"):
+            return d + ".xml"
+        cfg = os.path.join(d, "Configuration.xml")
+        if os.path.exists(cfg):
+            return cfg
+        parent = os.path.dirname(d)
+        if not parent or parent == d:
+            break
+        d = parent
+    return None
+
+
+# Владелец тела X/Ext/<файл>.xml — дескриптор X.xml рядом с каталогом X; у тел конфигурации —
+# Configuration.xml. Копия общего эталона (семья ext_body_owner, авторитет — form-validate).
+def ext_body_owner(body_path):
+    ext_dir = os.path.dirname(body_path)
+    if os.path.basename(ext_dir) != "Ext":
+        return None
+    obj_dir = os.path.dirname(ext_dir)
+    if os.path.isfile(obj_dir + ".xml"):
+        return obj_dir + ".xml"
+    cfg = os.path.join(obj_dir, "Configuration.xml")
+    if os.path.isfile(cfg):
+        return cfg
+    return None
 
 
 def main():
@@ -396,6 +461,26 @@ def main():
                 shown = bad_refs[:5]
                 suffix = ' ...' if len(bad_refs) > 5 else ''
                 r.warn(f'13. Command reference format: {len(bad_refs)} unrecognized: {", ".join(shown)}{suffix}')
+
+    # --- 14. Format version: как у владельца (подсистемы или конфигурации); сверка с выгрузкой ---
+    # Командный интерфейс и его владелец — дескриптор подсистемы или Configuration.xml — платформа
+    # загружает только в одной версии формата: «Версия формата загружаемого файла … отличается от версии
+    # формата ранее загруженных файлов». С остальной выгрузкой владелец может расходиться — платформа
+    # такое грузит, это лишь неоднородность выгрузки (типично после мержа веток, выгруженных разными
+    # платформами).
+    if not r.stopped and version:
+        owner_path = ext_body_owner(resolved_path)
+        owner_ver = root_version(owner_path) if owner_path else None
+        dump_anchor = find_dump_anchor(os.path.dirname(resolved_path))
+        dump_ver = root_version(dump_anchor) if dump_anchor else None
+        if owner_ver and version != owner_ver:
+            r.error(f'14. Format version {version} differs from its owner {os.path.basename(owner_path)} '
+                    f'({owner_ver}) — the platform refuses to load parts of one object in different formats')
+        elif dump_ver and version != dump_ver:
+            r.warn(f'14. Format version {version} differs from the dump ({dump_ver}) — the platform loads it, '
+                   'but the dump is no longer uniform (typical after merging branches dumped by different platforms)')
+        elif owner_ver or dump_ver:
+            r.ok(f'14. Format version: {version}, matches the owner and the dump')
 
     # --- Finalize ---
     checks = r.ok_count + r.errors + r.warnings

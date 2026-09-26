@@ -1,0 +1,9 @@
+{
+  "name": "Командный интерфейс 2.18 при дескрипторе подсистемы 2.20 — ошибка: платформа такую подсистему не загрузит",
+  "setup": "fixture:ci-version-differs",
+  "params": { "ciPath": "Subsystems/Склад/Ext/CommandInterface.xml" },
+  "expectError": true,
+  "noSnapshot": "interface-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["[ERROR] 14. Format version 2.18 differs from its owner Склад.xml (2.20)"] },
+  "skipPlatformVerify": "фикстура намеренно не загружается: командный интерфейс и дескриптор подсистемы в разных версиях формата"
+}

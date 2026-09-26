@@ -1,0 +1,7 @@
+{
+  "name": "Командный интерфейс в версии своей подсистемы и выгрузки — чисто",
+  "setup": "fixture:ci-version-agree",
+  "params": { "ciPath": "Subsystems/Склад/Ext/CommandInterface.xml" },
+  "noSnapshot": "interface-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK: CommandInterface (Склад)"] }
+}

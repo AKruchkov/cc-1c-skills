@@ -81,7 +81,7 @@ const FAMILIES = [
           'form-info', 'meta-info', 'mxl-info', 'role-info', 'skd-info', 'subsystem-info',
           // Валидаторы отличают автономную обработку от конфигурации: тот же корень — якорь выгрузки
           // для сверки штампа версии (find_dump_anchor)
-          'form-validate', 'meta-validate', 'role-validate'] },
+          'form-validate', 'interface-validate', 'meta-validate', 'role-validate'] },
     ],
   },
   {
@@ -130,19 +130,19 @@ const FAMILIES = [
   {
     name: 'root_version', py: 'root_version', ps1: 'Get-RootVersion',
     variants: [
-      { id: 'base', authority: 'meta-validate', consumers: ['cf-validate', 'form-validate', 'role-validate'] },
+      { id: 'base', authority: 'meta-validate', consumers: ['cf-validate', 'form-validate', 'interface-validate', 'role-validate'] },
     ],
   },
   {
     name: 'find_dump_anchor', py: 'find_dump_anchor', ps1: 'Find-DumpAnchor',
     variants: [
-      { id: 'base', authority: 'meta-validate', consumers: ['form-validate', 'role-validate'] },
+      { id: 'base', authority: 'meta-validate', consumers: ['form-validate', 'interface-validate', 'role-validate'] },
     ],
   },
   {
     name: 'ext_body_owner', py: 'ext_body_owner', ps1: 'Get-ExtBodyOwner',
     variants: [
-      { id: 'base', authority: 'form-validate', consumers: ['role-validate'] },
+      { id: 'base', authority: 'form-validate', consumers: ['interface-validate', 'role-validate'] },
     ],
   },
   {
