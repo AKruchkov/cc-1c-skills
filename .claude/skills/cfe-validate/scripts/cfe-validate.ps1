@@ -1,4 +1,4 @@
-﻿# cfe-validate v1.17 — Validate 1C configuration extension structure (CFE)
+﻿# cfe-validate v1.18 — Validate 1C configuration extension structure (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -105,6 +105,21 @@ $formatVerifiedMax = "2.21"
 function Get-FormatRank([string]$ver) {
 	if ($ver -match '^(\d+)\.(\d+)$') { return [int]$Matches[1] * 100 + [int]$Matches[2] }
 	return 0
+}
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate). Корневого: в Form.xml расширения ниже стоит <BaseForm version=…>.
+function Get-RootVersion([string]$xmlPath) {
+	if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) { return $null }
+	$buf = New-Object byte[] 4096
+	$fs = [System.IO.File]::OpenRead($xmlPath)
+	try { $len = $fs.Read($buf, 0, $buf.Length) } finally { $fs.Dispose() }
+	$head = [System.Text.Encoding]::UTF8.GetString($buf, 0, $len)
+	$m = [regex]::Match($head, '<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>')
+	if (-not $m.Success) { return $null }
+	$v = [regex]::Match($m.Groups[1].Value, '(?:^|\s)version="([^"]*)"')
+	if ($v.Success) { return $v.Groups[1].Value }
+	return $null
 }
 
 # --- Reference tables ---
@@ -1296,6 +1311,79 @@ if ($versionRank -ge 219 -and $childObjNode) {
 		} else {
 			foreach ($issue in $stateIssues) { Report-Warn "16. $issue" }
 		}
+	}
+}
+
+# --- Check 17: версия формата согласована внутри объектов расширения; сверка с Configuration.xml ---
+# Дескриптор объекта и его штампованные тела X/Ext/*.xml, дескриптор формы/макета и его тело (и
+# Configuration.xml с его Ext/*.xml) платформа загружает только в одной версии формата: «Версия формата
+# загружаемого файла … отличается от версии формата ранее загруженных файлов». Объект целиком в другой
+# версии, чем расширение, загружается — это лишь неоднородность выгрузки (типично после мержа веток,
+# выгруженных разными платформами), поэтому такое расхождение только предупреждение.
+if ($version) {
+	# Каждый элемент — пара: дескриптор и его версия, известная заранее (у Configuration.xml — своя).
+	$verDescriptors = @($resolvedPath)
+	if ($childObjNode) {
+		foreach ($child in $childObjNode.ChildNodes) {
+			if ($child.NodeType -ne 'Element') { continue }
+			if (-not $childTypeDirMap.ContainsKey($child.LocalName)) { continue }
+			$verObjName = $child.InnerText.Trim()
+			if (-not $verObjName) { continue }
+			$verTypeDir = Join-Path $configDir $childTypeDirMap[$child.LocalName]
+			$verObjFile = Join-Path $verTypeDir "$verObjName.xml"
+			if (-not (Test-Path $verObjFile)) { continue }
+			$verDescriptors += $verObjFile
+			foreach ($sub in @("Forms","Templates")) {
+				$subDir = Join-Path (Join-Path $verTypeDir $verObjName) $sub
+				if (-not (Test-Path $subDir -PathType Container)) { continue }
+				$names = @(Get-ChildItem $subDir -Filter "*.xml" -File | ForEach-Object { $_.Name })
+				[Array]::Sort($names, [StringComparer]::Ordinal)
+				foreach ($n in $names) { $verDescriptors += (Join-Path $subDir $n) }
+			}
+		}
+	}
+	$verRel = { param($p) $p.Substring($configDir.Length).TrimStart('\', '/') -replace '\\', '/' }
+	$verErrors = 0
+	$verBodiesOk = 0
+	$verOff = @()
+	foreach ($desc in $verDescriptors) {
+		if ($script:stopped) { break }
+		$isRoot = ($desc -eq $resolvedPath)
+		$descVer = if ($isRoot) { $version } else { Get-RootVersion $desc }
+		if (-not $descVer) { continue }
+		if (-not $isRoot -and $descVer -ne $version) { $verOff += "$(& $verRel $desc) $descVer" }
+		# Тела Configuration.xml лежат в <корень>/Ext, тела объекта X.xml — в X/Ext.
+		$extDir = if ($isRoot) { Join-Path $configDir "Ext" } else { Join-Path (Join-Path (Split-Path $desc) ([System.IO.Path]::GetFileNameWithoutExtension($desc))) "Ext" }
+		if (-not (Test-Path $extDir -PathType Container)) { continue }
+		$bodyNames = @(Get-ChildItem $extDir -Filter "*.xml" -File | ForEach-Object { $_.Name })
+		[Array]::Sort($bodyNames, [StringComparer]::Ordinal)
+		foreach ($bn in $bodyNames) {
+			$body = Join-Path $extDir $bn
+			$bodyVer = Get-RootVersion $body
+			if (-not $bodyVer) { continue }
+			# У заимствованной формы второй штамп — <BaseForm version=…> внутри тела; платформа сверяет
+			# с дескриптором и его.
+			if ($bn -ceq "Form.xml") {
+				$bodyText = [System.IO.File]::ReadAllText($body, [System.Text.Encoding]::UTF8)
+				$bfm = [regex]::Match($bodyText, '<BaseForm\s[^>]*?version="([^"]*)"')
+				if ($bfm.Success -and $bfm.Groups[1].Value -ne $descVer) {
+					$verErrors++
+					Report-Error "17. $(& $verRel $body) <BaseForm> is stamped $($bfm.Groups[1].Value), its descriptor $(& $verRel $desc) $descVer — the platform refuses to load parts of one object in different formats"
+					if ($script:stopped) { break }
+				}
+			}
+			if ($bodyVer -eq $descVer) { $verBodiesOk++; continue }
+			$verErrors++
+			Report-Error "17. $(& $verRel $body) is stamped $bodyVer, its descriptor $(& $verRel $desc) $descVer — the platform refuses to load parts of one object in different formats"
+			if ($script:stopped) { break }
+		}
+	}
+	if ($verOff.Count -gt 0) {
+		$shown = ($verOff | Select-Object -First 5) -join ", "
+		if ($verOff.Count -gt 5) { $shown += ", … (+$($verOff.Count - 5))" }
+		Report-Warn "17. Format version differs from the extension ($version): $shown — the platform loads it, but the dump is no longer uniform (typical after merging branches dumped by different platforms)"
+	} elseif ($verErrors -eq 0 -and $verBodiesOk -gt 0) {
+		Report-OK "17. Format version: $verBodiesOk stamped part(s) agree with their descriptors and the extension"
 	}
 }
 

@@ -1,0 +1,10 @@
+{
+  "name": "Заимствованный объект и его форма в версии расширения — проверка 17 чисто",
+  "setup": "fixture:cfe-version-agree",
+  "params": { "extensionPath": "cfe/Тест" },
+  "noSnapshot": "cfe-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["=== Validation OK: Extension.Тест"],
+    "stdoutNotContains": ["[ERROR]"]
+  }
+}

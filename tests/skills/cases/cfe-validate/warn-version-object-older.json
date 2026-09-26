@@ -1,0 +1,10 @@
+{
+  "name": "Заимствованный объект целиком в 2.18 в расширении 2.20 (мерж веток) — только предупреждение: платформа такое грузит",
+  "setup": "fixture:cfe-version-object-older",
+  "params": { "extensionPath": "cfe/Тест" },
+  "noSnapshot": "cfe-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["[WARN]  17. Format version differs from the extension (2.20): Catalogs/Товары.xml 2.18, Catalogs/Товары/Forms/ФормаЭлемента.xml 2.18"],
+    "stdoutNotContains": ["[ERROR]"]
+  }
+}
