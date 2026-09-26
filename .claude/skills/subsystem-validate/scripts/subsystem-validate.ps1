@@ -1,4 +1,4 @@
-﻿# subsystem-validate v1.5 — Validate 1C subsystem XML structure
+﻿# subsystem-validate v1.6 — Validate 1C subsystem XML structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -10,6 +10,49 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+function Get-RootVersion([string]$xmlPath) {
+	if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) { return $null }
+	$buf = New-Object byte[] 4096
+	$fs = [System.IO.File]::OpenRead($xmlPath)
+	try { $len = $fs.Read($buf, 0, $buf.Length) } finally { $fs.Dispose() }
+	$head = [System.Text.Encoding]::UTF8.GetString($buf, 0, $len)
+	$m = [regex]::Match($head, '<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>')
+	if (-not $m.Success) { return $null }
+	$v = [regex]::Match($m.Groups[1].Value, '(?:^|\s)version="([^"]*)"')
+	if ($v.Success) { return $v.Groups[1].Value }
+	return $null
+}
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+function Test-ExternalObjectRoot([string]$xmlPath) {
+	if (-not (Test-Path $xmlPath)) { return $false }
+	try {
+		[xml]$mx = Get-Content -Path $xmlPath -Encoding UTF8
+		$el = $mx.DocumentElement.FirstChild
+		while ($el -and $el.NodeType -ne 'Element') { $el = $el.NextSibling }
+		if ($el) { return @('ExternalDataProcessor','ExternalReport') -contains $el.LocalName }
+	} catch {}
+	return $false
+}
+
+# Якорь выгрузки: корень автономной EPF/ERF либо Configuration.xml, ближайший вверх. Копия общего
+# эталона (семья find_dump_anchor, авторитет — meta-validate).
+function Find-DumpAnchor([string]$startDir) {
+	$d = $startDir
+	for ($i = 0; $i -lt 15 -and $d; $i++) {
+		if (Test-ExternalObjectRoot "$d.xml") { return "$d.xml" }
+		$cfg = Join-Path $d "Configuration.xml"
+		if (Test-Path $cfg) { return $cfg }
+		$parent = [System.IO.Path]::GetDirectoryName($d)
+		if (-not $parent -or $parent -eq $d) { break }
+		$d = $parent
+	}
+	return $null
+}
 
 # --- Resolve path ---
 if (-not [System.IO.Path]::IsPathRooted($SubsystemPath)) {
@@ -330,6 +373,36 @@ if (-not $script:stopped) {
 		}
 	} else {
 		Report-OK "13. UseOneCommand: false (no constraint)"
+	}
+
+	# --- 14. Format version: тела Ext/*.xml — как у дескриптора; сверка с выгрузкой ---
+	# Дескриптор подсистемы и её штампованные тела (CommandInterface.xml, Help.xml) платформа загружает
+	# только в одной версии формата: «Версия формата загружаемого файла … отличается от версии формата
+	# ранее загруженных файлов». Вложенные подсистемы — отдельные объекты. С остальной выгрузкой
+	# подсистема может расходиться — платформа такое грузит, это лишь неоднородность выгрузки (типично
+	# после мержа веток, выгруженных разными платформами).
+	if ($version) {
+		$subExtDir = Join-Path (Join-Path $parentDir2 $baseName2) "Ext"
+		$verBodiesOk = 0
+		$verErrors = 0
+		if (Test-Path $subExtDir -PathType Container) {
+			$bodyNames = @(Get-ChildItem $subExtDir -Filter "*.xml" -File | ForEach-Object { $_.Name })
+			[Array]::Sort($bodyNames, [StringComparer]::Ordinal)
+			foreach ($bn in $bodyNames) {
+				$bodyVer = Get-RootVersion (Join-Path $subExtDir $bn)
+				if (-not $bodyVer) { continue }
+				if ($bodyVer -eq $version) { $verBodiesOk++; continue }
+				$verErrors++
+				Report-Error "14. Format version: $baseName2/Ext/$bn is stamped $bodyVer, the descriptor $version — the platform refuses to load parts of one object in different formats"
+			}
+		}
+		$dumpAnchor = Find-DumpAnchor $parentDir2
+		$dumpVer = if ($dumpAnchor) { Get-RootVersion $dumpAnchor } else { $null }
+		if ($dumpVer -and $version -ne $dumpVer) {
+			Report-Warn "14. Format version $version differs from the dump ($dumpVer) — the platform loads it, but the dump is no longer uniform (typical after merging branches dumped by different platforms)"
+		} elseif ($verErrors -eq 0 -and ($verBodiesOk -gt 0 -or $dumpVer)) {
+			Report-OK "14. Format version: $version, matches the stamped parts and the dump"
+		}
 	}
 }
 

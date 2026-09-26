@@ -1,0 +1,10 @@
+{
+  "name": "Подсистема целиком в 2.18 в выгрузке 2.20 (мерж веток) — только предупреждение: платформа такое грузит",
+  "setup": "fixture:subsystem-version-older",
+  "params": { "subsystemPath": "Subsystems/Склад.xml" },
+  "noSnapshot": "subsystem-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["[WARN]  14. Format version 2.18 differs from the dump (2.20) — the platform loads it"],
+    "stdoutNotContains": ["[ERROR]"]
+  }
+}

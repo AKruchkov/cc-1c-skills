@@ -1,0 +1,7 @@
+{
+  "name": "Подсистема и её командный интерфейс в одной версии с выгрузкой — чисто",
+  "setup": "fixture:subsystem-version-agree",
+  "params": { "subsystemPath": "Subsystems/Склад.xml" },
+  "noSnapshot": "subsystem-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK: Subsystem.Склад"] }
+}

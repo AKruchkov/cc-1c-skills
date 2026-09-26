@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# subsystem-validate v1.5 — Validate 1C subsystem XML structure
+# subsystem-validate v1.6 — Validate 1C subsystem XML structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates subsystem XML file structure, properties, content items, child objects."""
 import sys, os, argparse, re
@@ -96,6 +96,56 @@ def find_duplicates(items):
         if count > 1 and item not in dupes:
             dupes.append(item)
     return dupes
+
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+def root_version(xml_path):
+    if not os.path.isfile(xml_path):
+        return None
+    with open(xml_path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>', head)
+    if not m:
+        return None
+    v = re.search(r'(?:^|\s)version="([^"]*)"', m.group(1) or "")
+    if v:
+        return v.group(1)
+    return None
+
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+def _sg_is_external_root(xml_path):
+    if not os.path.isfile(xml_path):
+        return False
+    try:
+        mx = etree.parse(xml_path).getroot()
+        for child in mx:
+            if isinstance(child.tag, str):
+                return child.tag.split("}")[-1] in ("ExternalDataProcessor", "ExternalReport")
+    except Exception:
+        return False
+    return False
+
+
+# Якорь выгрузки: корень автономной EPF/ERF либо Configuration.xml, ближайший вверх. Копия общего
+# эталона (семья find_dump_anchor, авторитет — meta-validate).
+def find_dump_anchor(start_dir):
+    d = start_dir
+    for _ in range(15):
+        if not d:
+            break
+        if _sg_is_external_root(d + ".xml"):
+            return d + ".xml"
+        cfg = os.path.join(d, "Configuration.xml")
+        if os.path.exists(cfg):
+            return cfg
+        parent = os.path.dirname(d)
+        if not parent or parent == d:
+            break
+        d = parent
+    return None
 
 
 def main():
@@ -367,6 +417,37 @@ def main():
                 r.warn(f'13. UseOneCommand: true but Content has {len(content_items)} items (expected 1)')
         else:
             r.ok('13. UseOneCommand: false (no constraint)')
+
+        # --- 14. Format version: тела Ext/*.xml — как у дескриптора; сверка с выгрузкой ---
+        # Дескриптор подсистемы и её штампованные тела (CommandInterface.xml, Help.xml) платформа загружает
+        # только в одной версии формата: «Версия формата загружаемого файла … отличается от версии формата
+        # ранее загруженных файлов». Вложенные подсистемы — отдельные объекты. С остальной выгрузкой
+        # подсистема может расходиться — платформа такое грузит, это лишь неоднородность выгрузки (типично
+        # после мержа веток, выгруженных разными платформами).
+        if version:
+            sub_ext_dir = os.path.join(parent_dir2, base_name2, 'Ext')
+            ver_bodies_ok = 0
+            ver_errors = 0
+            if os.path.isdir(sub_ext_dir):
+                body_names = sorted(n for n in os.listdir(sub_ext_dir)
+                                    if n.lower().endswith('.xml') and os.path.isfile(os.path.join(sub_ext_dir, n)))
+                for bn in body_names:
+                    body_ver = root_version(os.path.join(sub_ext_dir, bn))
+                    if not body_ver:
+                        continue
+                    if body_ver == version:
+                        ver_bodies_ok += 1
+                        continue
+                    ver_errors += 1
+                    r.error(f'14. Format version: {base_name2}/Ext/{bn} is stamped {body_ver}, the descriptor {version} '
+                            '— the platform refuses to load parts of one object in different formats')
+            dump_anchor = find_dump_anchor(parent_dir2)
+            dump_ver = root_version(dump_anchor) if dump_anchor else None
+            if dump_ver and version != dump_ver:
+                r.warn(f'14. Format version {version} differs from the dump ({dump_ver}) — the platform loads it, '
+                       'but the dump is no longer uniform (typical after merging branches dumped by different platforms)')
+            elif ver_errors == 0 and (ver_bodies_ok > 0 or dump_ver):
+                r.ok(f'14. Format version: {version}, matches the stamped parts and the dump')
 
     # --- Finalize ---
     checks = r.ok_count + r.errors + r.warnings

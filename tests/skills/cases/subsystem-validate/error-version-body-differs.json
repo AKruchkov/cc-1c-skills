@@ -1,0 +1,9 @@
+{
+  "name": "Командный интерфейс подсистемы 2.18 при дескрипторе 2.20 — ошибка: платформа такую подсистему не загрузит",
+  "setup": "fixture:subsystem-version-differs",
+  "params": { "subsystemPath": "Subsystems/Склад.xml" },
+  "expectError": true,
+  "noSnapshot": "subsystem-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["[ERROR] 14. Format version: Склад/Ext/CommandInterface.xml is stamped 2.18, the descriptor 2.20"] },
+  "skipPlatformVerify": "фикстура намеренно не загружается: командный интерфейс и дескриптор подсистемы в разных версиях формата"
+}
