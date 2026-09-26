@@ -1,0 +1,9 @@
+{
+  "name": "Справка обработки 2.18 при корне 2.20 — ошибка: платформа такую обработку не соберёт",
+  "setup": "fixture:epf-version-help-body",
+  "params": { "objectPath": "ПроверкаВерсий.xml" },
+  "expectError": true,
+  "noSnapshot": "epf-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["[ERROR] 11. ПроверкаВерсий/Ext/Help.xml is stamped 2.18, its descriptor ПроверкаВерсий.xml 2.20"] },
+  "skipPlatformVerify": "фикстура намеренно не собирается: части одного объекта обработки в разных версиях формата"
+}

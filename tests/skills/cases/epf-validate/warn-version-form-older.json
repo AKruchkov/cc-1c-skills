@@ -1,0 +1,10 @@
+{
+  "name": "Форма целиком в 2.18 в обработке 2.20 (мерж веток) — только предупреждение: платформа такое собирает",
+  "setup": "fixture:epf-version-form-older",
+  "params": { "objectPath": "ПроверкаВерсий.xml" },
+  "noSnapshot": "epf-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["[WARN]  11. Format version differs from the processor root (2.20): ПроверкаВерсий/Forms/Форма.xml 2.18"],
+    "stdoutNotContains": ["[ERROR]"]
+  }
+}

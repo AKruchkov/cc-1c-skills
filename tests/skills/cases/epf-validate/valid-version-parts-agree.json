@@ -1,0 +1,7 @@
+{
+  "name": "Корень, справка, форма и макет обработки в одной версии — чисто",
+  "setup": "fixture:epf-version-agree",
+  "params": { "objectPath": "ПроверкаВерсий.xml" },
+  "noSnapshot": "epf-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK"] }
+}

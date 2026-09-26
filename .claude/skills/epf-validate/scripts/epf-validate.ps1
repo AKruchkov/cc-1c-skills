@@ -1,4 +1,4 @@
-﻿# epf-validate v1.7 — Validate 1C external data processor / report structure
+﻿# epf-validate v1.8 — Validate 1C external data processor / report structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # Works for both EPF (ExternalDataProcessor) and ERF (ExternalReport) — auto-detects
 [CmdletBinding(PositionalBinding=$false)]
@@ -123,6 +123,21 @@ $formatVerifiedMax = "2.21"
 function Get-FormatRank([string]$ver) {
 	if ($ver -match '^(\d+)\.(\d+)$') { return [int]$Matches[1] * 100 + [int]$Matches[2] }
 	return 0
+}
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Копия общего эталона (семья
+# root_version, авторитет — meta-validate).
+function Get-RootVersion([string]$xmlPath) {
+	if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) { return $null }
+	$buf = New-Object byte[] 4096
+	$fs = [System.IO.File]::OpenRead($xmlPath)
+	try { $len = $fs.Read($buf, 0, $buf.Length) } finally { $fs.Dispose() }
+	$head = [System.Text.Encoding]::UTF8.GetString($buf, 0, $len)
+	$m = [regex]::Match($head, '<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>')
+	if (-not $m.Success) { return $null }
+	$v = [regex]::Match($m.Groups[1].Value, '(?:^|\s)version="([^"]*)"')
+	if ($v.Success) { return $v.Groups[1].Value }
+	return $null
 }
 
 # --- Reference tables ---
@@ -859,6 +874,54 @@ if ($check10Ok) {
 		Report-OK "10. Form descriptors: $formsChecked checked"
 	} else {
 		Report-OK "10. Form descriptors: none to check"
+	}
+}
+
+# --- Check 11: версия формата согласована внутри объектов обработки; сверка с корнем ---
+# Корень обработки и его штампованные тела (Ext/Help.xml), дескриптор формы/макета и его тело платформа
+# загружает только в одной версии: «Версия формата загружаемого файла … отличается от версии формата
+# ранее загруженных файлов» — сборка отменяется. Форма или макет целиком в другой версии, чем корень,
+# собирается — это лишь неоднородность исходников (типично после мержа веток, выгруженных разными
+# платформами), поэтому такое расхождение только предупреждение.
+if ($version) {
+	$verObjDir = Join-Path $srcDir ([System.IO.Path]::GetFileNameWithoutExtension($resolvedPath))
+	$verDescriptors = @($resolvedPath)
+	foreach ($sub in @("Forms","Templates")) {
+		$subDir = Join-Path $verObjDir $sub
+		if (-not (Test-Path $subDir -PathType Container)) { continue }
+		$names = @(Get-ChildItem $subDir -Filter "*.xml" -File | ForEach-Object { $_.Name })
+		[Array]::Sort($names, [StringComparer]::Ordinal)
+		foreach ($n in $names) { $verDescriptors += (Join-Path $subDir $n) }
+	}
+	$verRel = { param($p) $p.Substring($srcDir.Length).TrimStart('\', '/') -replace '\\', '/' }
+	$verErrors = 0
+	$verBodiesOk = 0
+	$verOff = @()
+	foreach ($desc in $verDescriptors) {
+		if ($script:stopped) { break }
+		$descVer = if ($desc -eq $resolvedPath) { $version } else { Get-RootVersion $desc }
+		if (-not $descVer) { continue }
+		if ($desc -ne $resolvedPath -and $descVer -ne $version) { $verOff += "$(& $verRel $desc) $descVer" }
+		$extDir = Join-Path (Join-Path (Split-Path $desc) ([System.IO.Path]::GetFileNameWithoutExtension($desc))) "Ext"
+		if (-not (Test-Path $extDir -PathType Container)) { continue }
+		$bodyNames = @(Get-ChildItem $extDir -Filter "*.xml" -File | ForEach-Object { $_.Name })
+		[Array]::Sort($bodyNames, [StringComparer]::Ordinal)
+		foreach ($bn in $bodyNames) {
+			$body = Join-Path $extDir $bn
+			$bodyVer = Get-RootVersion $body
+			if (-not $bodyVer) { continue }
+			if ($bodyVer -eq $descVer) { $verBodiesOk++; continue }
+			$verErrors++
+			Report-Error "11. $(& $verRel $body) is stamped $bodyVer, its descriptor $(& $verRel $desc) $descVer — the platform refuses to load parts of one object in different formats"
+			if ($script:stopped) { break }
+		}
+	}
+	if ($verOff.Count -gt 0) {
+		$shown = ($verOff | Select-Object -First 5) -join ", "
+		if ($verOff.Count -gt 5) { $shown += ", … (+$($verOff.Count - 5))" }
+		Report-Warn "11. Format version differs from the processor root ($version): $shown — the platform builds it, but the sources are no longer uniform (typical after merging branches dumped by different platforms)"
+	} elseif ($verErrors -eq 0 -and $verBodiesOk -gt 0) {
+		Report-OK "11. Format version: $verBodiesOk stamped part(s) agree with their descriptors and the root"
 	}
 }
 

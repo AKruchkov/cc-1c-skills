@@ -1,0 +1,9 @@
+{
+  "name": "Тело формы 2.18 при её дескрипторе 2.20 — ошибка: платформа такую обработку не соберёт",
+  "setup": "fixture:epf-version-form-body",
+  "params": { "objectPath": "ПроверкаВерсий.xml" },
+  "expectError": true,
+  "noSnapshot": "epf-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["[ERROR] 11. ПроверкаВерсий/Forms/Форма/Ext/Form.xml is stamped 2.18, its descriptor ПроверкаВерсий/Forms/Форма.xml 2.20"] },
+  "skipPlatformVerify": "фикстура намеренно не собирается: части одного объекта обработки в разных версиях формата"
+}
