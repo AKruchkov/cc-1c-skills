@@ -1,0 +1,9 @@
+{
+  "name": "Дескриптор формы Forms/<Имя>.xml принимается на вход, не «Unrecognized»",
+  "setup": "fixture:version-parts",
+  "params": { "objectPath": "Catalogs/Товары/Forms/ФормаЭлемента.xml" },
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["=== Validation OK: Form.ФормаЭлемента"]
+  }
+}

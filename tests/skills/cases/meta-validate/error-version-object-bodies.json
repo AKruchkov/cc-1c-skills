@@ -1,0 +1,15 @@
+{
+  "name": "Справка, предопределённые и тело макета в другой версии, чем их дескрипторы, — по ошибке на каждое",
+  "setup": "fixture:version-parts-bodies",
+  "params": { "objectPath": "Catalogs/Товары.xml" },
+  "expectError": true,
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": [
+      "[ERROR] 24. Товары/Ext/Help.xml is stamped 2.18, its descriptor Товары.xml 2.20",
+      "[ERROR] 24. Товары/Ext/Predefined.xml is stamped 2.18, its descriptor Товары.xml 2.20",
+      "[ERROR] 24. Товары/Templates/Описание/Ext/Template.xml is stamped 2.18, its descriptor Товары/Templates/Описание.xml 2.20"
+    ]
+  },
+  "skipPlatformVerify": "фикстура намеренно не загружается: части одного объекта в разных версиях формата — платформа отвергает («отличается от версии формата ранее загруженных файлов»)"
+}

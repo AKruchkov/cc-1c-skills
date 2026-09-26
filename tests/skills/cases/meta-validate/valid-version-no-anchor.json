@@ -1,0 +1,10 @@
+{
+  "name": "Объект вне выгрузки (нет Configuration.xml выше) — со штампом выгрузки не сверяется",
+  "setup": "fixture:version-object-no-anchor",
+  "params": { "objectPath": "Catalogs/Товары.xml" },
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutNotContains": ["differs from the dump", "[ERROR]"]
+  },
+  "skipPlatformVerify": "фикстура — объект без Configuration.xml: загружать нечего"
+}

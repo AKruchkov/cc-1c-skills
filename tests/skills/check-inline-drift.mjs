@@ -79,8 +79,9 @@ const FAMILIES = [
           // *-info навыки читают тем же хелпером СОСТОЯНИЕ поддержки для вывода, а не запрещают
           // правку. Тело то же, поэтому семья общая.
           'form-info', 'meta-info', 'mxl-info', 'role-info', 'skd-info', 'subsystem-info',
-          // form-validate отличает автономную обработку от конфигурации: границей служит тот же корень
-          'form-validate'] },
+          // Валидаторы отличают автономную обработку от конфигурации: тот же корень — якорь выгрузки
+          // для сверки штампа версии (find_dump_anchor)
+          'form-validate', 'meta-validate'] },
     ],
   },
   {
@@ -121,6 +122,21 @@ const FAMILIES = [
       { id: 'base', authority: 'form-compile',
         consumers: ['cfe-borrow', 'cfe-patch-method', 'form-add', 'form-validate', 'help-add', 'interface-edit',
           'meta-compile', 'mxl-compile', 'role-compile', 'role-edit', 'subsystem-compile', 'template-add', 'xdto-compile'] },
+    ],
+  },
+  // Валидаторы сверяют штамп файла со своим дескриптором (ошибка — платформа отвергает части одного
+  // объекта в разных версиях) и с якорем выгрузки (предупреждение). Генераторный detect_format_version
+  // сюда не годится: без якоря он отдаёт дефолт 2.17, и сравнение с ним было бы ложным.
+  {
+    name: 'root_version', py: 'root_version', ps1: 'Get-RootVersion',
+    variants: [
+      { id: 'base', authority: 'meta-validate', consumers: [] },
+    ],
+  },
+  {
+    name: 'find_dump_anchor', py: 'find_dump_anchor', ps1: 'Find-DumpAnchor',
+    variants: [
+      { id: 'base', authority: 'meta-validate', consumers: [] },
     ],
   },
   {

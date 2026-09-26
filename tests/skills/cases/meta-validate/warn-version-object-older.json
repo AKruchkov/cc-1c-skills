@@ -1,0 +1,10 @@
+{
+  "name": "Объект целиком в 2.18 в выгрузке 2.20 (мерж веток) — только предупреждение: платформа такое грузит",
+  "setup": "fixture:version-object-older",
+  "params": { "objectPath": "Catalogs/Товары.xml" },
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["[WARN]  24. Format version differs from the dump (2.20): Товары.xml 2.18, Товары/Forms/ФормаЭлемента.xml 2.18, Товары/Templates/Описание.xml 2.18"],
+    "stdoutNotContains": ["[ERROR]"]
+  }
+}

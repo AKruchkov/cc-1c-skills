@@ -1,0 +1,11 @@
+{
+  "name": "Тело общей картинки в другой версии, чем дескриптор, — ошибка, исключений для картинок нет",
+  "setup": "fixture:version-commonpicture-body",
+  "params": { "objectPath": "CommonPictures/Пустая.xml" },
+  "expectError": true,
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": {
+    "stdoutContains": ["[ERROR] 24. Пустая/Ext/Picture.xml is stamped 2.18, its descriptor Пустая.xml 2.20"]
+  },
+  "skipPlatformVerify": "фикстура намеренно не загружается: части одного объекта в разных версиях формата — платформа отвергает («отличается от версии формата ранее загруженных файлов»)"
+}

@@ -1,4 +1,4 @@
-# meta-validate v1.29 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.30 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -213,6 +213,57 @@ def format_rank(ver):
     return int(m.group(1)) * 100 + int(m.group(2)) if m else 0
 
 
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Именно корневого: в Form.xml
+# расширения ниже стоит <BaseForm version=…>. Читается только заголовок, без разбора файла.
+def root_version(xml_path):
+    if not os.path.isfile(xml_path):
+        return None
+    with open(xml_path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>', head)
+    if not m:
+        return None
+    v = re.search(r'(?:^|\s)version="([^"]*)"', m.group(1) or "")
+    if v:
+        return v.group(1)
+    return None
+
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+def _sg_is_external_root(xml_path):
+    if not os.path.isfile(xml_path):
+        return False
+    try:
+        mx = etree.parse(xml_path).getroot()
+        for child in mx:
+            if isinstance(child.tag, str):
+                return child.tag.split("}")[-1] in ("ExternalDataProcessor", "ExternalReport")
+    except Exception:
+        return False
+    return False
+
+
+# Якорь выгрузки, в чьём дереве лежит файл: корень автономной EPF/ERF либо Configuration.xml,
+# ближайший вверх. Корень обработки проверяется первым — иначе обработка, лежащая в дереве
+# конфигурации, сверялась бы с конфигурацией. Нет якоря — сверять не с чем.
+def find_dump_anchor(start_dir):
+    d = start_dir
+    for _ in range(15):
+        if not d:
+            break
+        if _sg_is_external_root(d + ".xml"):
+            return d + ".xml"
+        cfg = os.path.join(d, "Configuration.xml")
+        if os.path.exists(cfg):
+            return cfg
+        parent = os.path.dirname(d)
+        if not parent or parent == d:
+            break
+        d = parent
+    return None
+
+
 # ── Reference tables ─────────────────────────────────────────
 
 guid_pattern = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
@@ -239,6 +290,20 @@ structural_only_types = (
     "FunctionalOption", "FunctionalOptionsParameter", "Language", "Style", "StyleItem",
     "WSReference", "XDTOPackage", "DocumentNumerator", "Sequence",
 )
+
+# Вложенные дескрипторы объекта: Forms/<Имя>.xml и Templates/<Имя>.xml. Корень тот же MetaDataObject,
+# но в ChildObjects конфигурации они не регистрируются и первым сегментом MDObjectRef не бывают —
+# в known_roots проверки 17 их не добавлять. Принимаются, чтобы пакетный прогон по списку изменённых
+# файлов не падал на них «Unrecognized».
+nested_descriptor_types = ("Form", "Template")
+# Вид формы/макета — по нему платформа выбирает читателя тела. Значения — docs/1c-configuration-spec.md,
+# свойства FormType и TemplateType. Список отдельный от valid_property_values: у авторитета meta-compile
+# этих ключей нет (формы и макеты создают form-add и template-add).
+descriptor_kind_values = {
+    "FormType": ("Managed", "Ordinary"),
+    "TemplateType": ("SpreadsheetDocument", "BinaryData", "HTMLDocument", "TextDocument", "ActiveDocument",
+                     "DataCompositionSchema", "DataCompositionAppearanceTemplate", "GraphicalSchema", "AddIn"),
+}
 
 # GeneratedType categories by type
 generated_type_categories = {
@@ -482,7 +547,7 @@ elif len(child_elements) > 1:
 type_node = child_elements[0]
 md_type = local_name(type_node)
 
-if md_type not in valid_types and md_type not in structural_only_types:
+if md_type not in valid_types and md_type not in structural_only_types and md_type not in nested_descriptor_types:
     report_error(f"1. Unrecognized metadata type: {md_type}")
     finalize()
     sys.exit(1)
@@ -507,6 +572,75 @@ output_lines.insert(0, f"=== Validation: {md_type}.{obj_name} ===")
 if check1_ok:
     report_ok(f"1. Root structure: MetaDataObject/{md_type}, version {version}")
 
+# ── Check 24: версия формата согласована внутри объекта; сверка с выгрузкой ──
+# Части объекта — дескриптор X.xml и штампованные тела X/Ext/*.xml — платформа загружает только в одной
+# версии: «Версия формата загружаемого файла … отличается от версии формата ранее загруженных файлов».
+# Формы и макеты объекта (Forms/F.xml + F/Ext/Form.xml, Templates/T.xml + T/Ext/Template.xml) — такие же
+# пары, проверяются вместе с объектом. Объекты разных версий между собой платформа грузит, это лишь неоднородность выгрузки (типично после
+# мержа веток, выгруженных разными платформами) — поэтому сверка с выгрузкой только предупреждает.
+# Стоит до ранних выходов: нужна каждому корню, включая structural-only и вложенные дескрипторы.
+obj_base_dir = os.path.dirname(resolved_path)
+obj_dir = os.path.join(obj_base_dir, os.path.splitext(os.path.basename(resolved_path))[0])
+ver_descriptors = [resolved_path]
+for sub in ("Forms", "Templates"):
+    sub_dir = os.path.join(obj_dir, sub)
+    if not os.path.isdir(sub_dir):
+        continue
+    names = sorted(n for n in os.listdir(sub_dir)
+                   if n.lower().endswith(".xml") and os.path.isfile(os.path.join(sub_dir, n)))
+    for n in names:
+        ver_descriptors.append(os.path.join(sub_dir, n))
+
+
+def ver_rel(p):
+    return p[len(obj_base_dir):].lstrip("\\/").replace("\\", "/")
+
+
+ver_errors = 0
+ver_bodies = 0
+for desc in ver_descriptors:
+    if stopped:
+        break
+    desc_ver = version if desc == resolved_path else root_version(desc)
+    if not desc_ver:
+        continue
+    ext_dir = os.path.join(os.path.dirname(desc), os.path.splitext(os.path.basename(desc))[0], "Ext")
+    if not os.path.isdir(ext_dir):
+        continue
+    body_names = sorted(n for n in os.listdir(ext_dir)
+                        if n.lower().endswith(".xml") and os.path.isfile(os.path.join(ext_dir, n)))
+    for bn in body_names:
+        body = os.path.join(ext_dir, bn)
+        body_ver = root_version(body)
+        if not body_ver:
+            continue
+        if body_ver == desc_ver:
+            ver_bodies += 1
+            continue
+        ver_errors += 1
+        report_error(f"24. {ver_rel(body)} is stamped {body_ver}, its descriptor {ver_rel(desc)} {desc_ver} "
+                     "— the platform refuses to load parts of one object in different formats")
+        if stopped:
+            break
+if ver_errors == 0 and ver_bodies > 0:
+    report_ok(f"24. Format version: {ver_bodies} stamped part(s) agree with their descriptors")
+dump_anchor = find_dump_anchor(obj_base_dir)
+dump_ver = root_version(dump_anchor) if dump_anchor else None
+if dump_ver:
+    ver_off = []
+    for desc in ver_descriptors:
+        dv = version if desc == resolved_path else root_version(desc)
+        if dv and dv != dump_ver:
+            ver_off.append(f"{ver_rel(desc)} {dv}")
+    if ver_off:
+        shown = ", ".join(ver_off[:5])
+        if len(ver_off) > 5:
+            shown += f", … (+{len(ver_off) - 5})"
+        report_warn(f"24. Format version differs from the dump ({dump_ver}): {shown} — the platform loads it, "
+                    "but the dump is no longer uniform (typical after merging branches dumped by different platforms)")
+    else:
+        report_ok(f"24. Format version: matches the dump ({dump_ver})")
+
 # ── Structural-only types: базовая проверка (Name), без type-specific правил ──
 if md_type in structural_only_types:
     if obj_name == "(unknown)":
@@ -515,6 +649,27 @@ if md_type in structural_only_types:
         report_error(f"3. Properties: Name '{obj_name}' is not a valid 1C identifier")
     else:
         report_ok(f'3. Properties: Name="{obj_name}" (базовая структурная проверка для {md_type})')
+    finalize()
+    sys.exit(1 if errors > 0 else 0)
+
+# ── Вложенные дескрипторы Form/Template: Name и вид формы/макета ──
+if md_type in nested_descriptor_types:
+    if obj_name == "(unknown)":
+        report_error("3. Properties: missing or empty Name")
+    elif not ident_pattern.match(obj_name):
+        report_error(f"3. Properties: Name '{obj_name}' is not a valid 1C identifier")
+    else:
+        report_ok(f'3. Properties: Name="{obj_name}" (базовая структурная проверка для {md_type})')
+    kind_prop = "FormType" if md_type == "Form" else "TemplateType"
+    kind_node = find(props_node, f"md:{kind_prop}") if props_node is not None else None
+    kind_value = inner_text(kind_node) if kind_node is not None else ""
+    allowed = descriptor_kind_values[kind_prop]
+    if not kind_value:
+        report_error(f"3. Property '{kind_prop}' is missing on <{md_type}>")
+    elif kind_value not in allowed:
+        report_error(f"3. Property '{kind_prop}' has invalid value '{kind_value}' (allowed: {', '.join(allowed)})")
+    else:
+        report_ok(f"3. Property '{kind_prop}' = {kind_value}")
     finalize()
     sys.exit(1 if errors > 0 else 0)
 
