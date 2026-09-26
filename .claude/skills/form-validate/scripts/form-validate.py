@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-validate v1.20 — Validate 1C managed form
+# form-validate v1.21 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -970,10 +970,21 @@ def main():
         owner_ver = root_version(owner_path) if owner_path else None
         dump_ver = root_version(dump_anchor) if dump_anchor else None
 
+        # У заимствованной формы расширения второй штамп — <BaseForm version=…>; платформа сверяет с дескриптором и его.
+        base_form_ver = ''
+        for ch in root:
+            if isinstance(ch.tag, str) and etree.QName(ch.tag).localname == 'BaseForm':
+                base_form_ver = ch.get('version', '')
+                break
+
         if not form_ver:
             report_ok('14. Format version: not comparable')
         elif owner_ver and form_ver != owner_ver:
             report_error(f'14. Format version {form_ver} differs from the form descriptor '
+                         f'{os.path.basename(owner_path)} ({owner_ver}) '
+                         '— the platform refuses to load parts of one object in different formats')
+        elif owner_ver and base_form_ver and base_form_ver != owner_ver:
+            report_error(f'14. <BaseForm> format version {base_form_ver} differs from the form descriptor '
                          f'{os.path.basename(owner_path)} ({owner_ver}) '
                          '— the platform refuses to load parts of one object in different formats')
         elif dump_ver and form_ver != dump_ver:

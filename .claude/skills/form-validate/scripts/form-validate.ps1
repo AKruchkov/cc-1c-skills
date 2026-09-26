@@ -1,4 +1,4 @@
-﻿# form-validate v1.20 — Validate 1C managed form
+﻿# form-validate v1.21 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1030,10 +1030,17 @@ if (-not $stopped) {
 	$ownerVer = if ($ownerPath) { Get-RootVersion $ownerPath } else { $null }
 	$dumpVer = if ($script:dumpAnchor) { Get-RootVersion $script:dumpAnchor } else { $null }
 
+	# У заимствованной формы расширения второй штамп — <BaseForm version=…>; платформа сверяет с дескриптором и его.
+	$baseFormEl = $null
+	foreach ($ch in $root.ChildNodes) { if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'BaseForm') { $baseFormEl = $ch; break } }
+	$baseFormVer = if ($baseFormEl) { $baseFormEl.GetAttribute("version") } else { "" }
+
 	if (-not $formVer) {
 		Report-OK "14. Format version: not comparable"
 	} elseif ($ownerVer -and $formVer -ne $ownerVer) {
 		Report-Error "14. Format version $formVer differs from the form descriptor $([System.IO.Path]::GetFileName($ownerPath)) ($ownerVer) — the platform refuses to load parts of one object in different formats"
+	} elseif ($ownerVer -and $baseFormVer -and $baseFormVer -ne $ownerVer) {
+		Report-Error "14. <BaseForm> format version $baseFormVer differs from the form descriptor $([System.IO.Path]::GetFileName($ownerPath)) ($ownerVer) — the platform refuses to load parts of one object in different formats"
 	} elseif ($dumpVer -and $formVer -ne $dumpVer) {
 		Report-Warn "14. Format version $formVer differs from the dump ($dumpVer) — the platform loads it, but the dump is no longer uniform (typical after merging branches dumped by different platforms)"
 	} elseif ($ownerVer -or $dumpVer) {
