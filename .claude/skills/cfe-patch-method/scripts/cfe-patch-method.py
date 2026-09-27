@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-patch-method v2.12 — Source-aware method interceptor for 1C extension (CFE)
+# cfe-patch-method v2.13 — Source-aware method interceptor for 1C extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -41,6 +41,7 @@ TYPE_DIR_MAP = {
     "BusinessProcess": "BusinessProcesses", "Task": "Tasks",
     "InformationRegister": "InformationRegisters", "AccumulationRegister": "AccumulationRegisters",
     "AccountingRegister": "AccountingRegisters", "CalculationRegister": "CalculationRegisters",
+    "CommonForm": "CommonForms",
     # Прощающий ввод: имя каталога принимается наравне с именем типа (Catalogs.X ≡ Catalog.X) —
     # PS1-порт так умел с самого начала, PY отставал.
     "Catalogs": "Catalogs",
@@ -248,7 +249,7 @@ def get_module_rel_path(module_path):
     if len(parts) < 2:
         raise ValueError(
             "Invalid ModulePath format: %s. Expected: Type.Name.Module, "
-            "Type.Name.Form.FormName or CommonModule.Name" % module_path
+            "Type.Name.Form.FormName, CommonModule.Name or CommonForm.Name" % module_path
         )
     obj_type = parts[0]
     obj_name = parts[1]
@@ -258,6 +259,9 @@ def get_module_rel_path(module_path):
 
     if obj_type == "CommonModule":
         return [dir_name, obj_name, "Ext", "Module.bsl"]
+    if dir_name == "CommonForms":
+        # Общая форма — сама форма: модуль лежит прямо у неё, без Forms/<Имя>
+        return [dir_name, obj_name, "Ext", "Form", "Module.bsl"]
     if len(parts) >= 4 and parts[2] == "Form":
         form_name = parts[3]
         return [dir_name, obj_name, "Forms", form_name, "Ext", "Form", "Module.bsl"]
@@ -1163,7 +1167,7 @@ DIR_TO_TYPE = {
     "ChartsOfCalculationTypes": "ChartOfCalculationTypes", "BusinessProcesses": "BusinessProcess",
     "Tasks": "Task", "InformationRegisters": "InformationRegister",
     "AccumulationRegisters": "AccumulationRegister", "AccountingRegisters": "AccountingRegister",
-    "CalculationRegisters": "CalculationRegister",
+    "CalculationRegisters": "CalculationRegister", "CommonForms": "CommonForm",
 }
 
 
@@ -1172,6 +1176,8 @@ def module_path_from_rel(rel_parts):
     typ = DIR_TO_TYPE.get(dir0, dir0)
     if dir0 == "CommonModules":
         return "CommonModule.%s" % name
+    if dir0 == "CommonForms":
+        return "CommonForm.%s" % name
     if len(rel_parts) >= 7 and rel_parts[2] == "Forms":
         return "%s.%s.Form.%s" % (typ, name, rel_parts[3])
     mod = rel_parts[-1][:-4] if rel_parts[-1].endswith(".bsl") else rel_parts[-1]

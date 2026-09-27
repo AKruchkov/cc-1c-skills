@@ -1,0 +1,89 @@
+{
+  "name": "Проверка -Check видит дрейф &ИзменениеИКонтроль в модуле общей формы и называет его CommonForm.Имя",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "Подбор"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "title": "Подбор",
+        "elements": [
+          {
+            "check": "Режим",
+            "path": "Режим"
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Режим",
+            "type": "boolean"
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/Подбор/Ext/Form.xml"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "CommonForms/Подбор/Ext/Form/Module.bsl",
+        "content": "#Область ОбработчикиСобытийФормы\n\n&НаСервере\nПроцедура Заполнить()\n\tХ = 1;\nКонецПроцедуры\n\n#КонецОбласти\n"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": {
+        "-ExtensionPath": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}",
+        "-Object": "CommonForm.Подбор"
+      }
+    },
+    {
+      "script": "cfe-patch-method/scripts/cfe-patch-method",
+      "args": {
+        "-ExtensionPath": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}",
+        "-ModulePath": "CommonForm.Подбор",
+        "-MethodName": "Заполнить",
+        "-InterceptorType": "ModificationAndControl"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "CommonForms/Подбор/Ext/Form/Module.bsl",
+        "content": "#Область ОбработчикиСобытийФормы\n\n&НаСервере\nПроцедура Заполнить()\n\tХ = 2;\nКонецПроцедуры\n\n#КонецОбласти\n"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe"
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "ДРЕЙФ",
+      "CommonForm.Подбор.Заполнить"
+    ]
+  },
+  "args_extra": [
+    "-Check"
+  ]
+}

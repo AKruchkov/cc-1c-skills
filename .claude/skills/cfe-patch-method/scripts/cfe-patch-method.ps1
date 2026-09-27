@@ -1,4 +1,4 @@
-﻿# cfe-patch-method v2.12 — Source-aware method interceptor for 1C extension (CFE)
+﻿# cfe-patch-method v2.13 — Source-aware method interceptor for 1C extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -44,6 +44,7 @@ $script:typeDirMap = @{
 	"BusinessProcesses"="BusinessProcesses"; "Tasks"="Tasks"
 	"InformationRegisters"="InformationRegisters"; "AccumulationRegisters"="AccumulationRegisters"
 	"AccountingRegisters"="AccountingRegisters"; "CalculationRegisters"="CalculationRegisters"
+	"CommonForm"="CommonForms"; "CommonForms"="CommonForms"
 }
 
 # InterceptorType -> Russian decorator keyword
@@ -156,7 +157,7 @@ function Get-ModuleRelPath {
 	param([string]$modulePath)
 	$parts = $modulePath.Split(".")
 	if ($parts.Count -lt 2) {
-		throw "Invalid ModulePath format: $modulePath. Expected: Type.Name.Module, Type.Name.Form.FormName or CommonModule.Name"
+		throw "Invalid ModulePath format: $modulePath. Expected: Type.Name.Module, Type.Name.Form.FormName, CommonModule.Name or CommonForm.Name"
 	}
 	$objType = $parts[0]
 	$objName = $parts[1]
@@ -167,6 +168,9 @@ function Get-ModuleRelPath {
 
 	if ($objType -eq "CommonModule") {
 		return @($dirName, $objName, "Ext", "Module.bsl")
+	} elseif ($dirName -eq "CommonForms") {
+		# Общая форма — сама форма: модуль лежит прямо у неё, без Forms/<Имя>
+		return @($dirName, $objName, "Ext", "Form", "Module.bsl")
 	} elseif ($parts.Count -ge 4 -and $parts[2] -eq "Form") {
 		$formName = $parts[3]
 		return @($dirName, $objName, "Forms", $formName, "Ext", "Form", "Module.bsl")
@@ -667,7 +671,7 @@ $script:dirToType = @{
 	"ChartsOfCalculationTypes"="ChartOfCalculationTypes"; "BusinessProcesses"="BusinessProcess"
 	"Tasks"="Task"; "InformationRegisters"="InformationRegister"
 	"AccumulationRegisters"="AccumulationRegister"; "AccountingRegisters"="AccountingRegister"
-	"CalculationRegisters"="CalculationRegister"
+	"CalculationRegisters"="CalculationRegister"; "CommonForms"="CommonForm"
 }
 
 # Rel-path segments (relative to ExtensionPath) -> logical ModulePath (Type.Name.Module / CommonModule.Name)
@@ -676,6 +680,7 @@ function Get-ModulePathFromRel {
 	$dir0 = $relParts[0]; $name = $relParts[1]
 	$typ = if ($script:dirToType.ContainsKey($dir0)) { $script:dirToType[$dir0] } else { $dir0 }
 	if ($dir0 -eq "CommonModules") { return "CommonModule.$name" }
+	if ($dir0 -eq "CommonForms") { return "CommonForm.$name" }
 	if ($relParts.Count -ge 7 -and $relParts[2] -eq "Forms") { return "$typ.$name.Form.$($relParts[3])" }
 	$mod = $relParts[$relParts.Count - 1]
 	if ($mod.EndsWith(".bsl")) { $mod = $mod.Substring(0, $mod.Length - 4) }
