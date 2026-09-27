@@ -66,10 +66,10 @@
 					<ManualQuery>true</ManualQuery>
 					<MainTable>Document.Расход</MainTable>
 					<QueryText>ВЫБРАТЬ
-		ДокументРасход.Склад,
-		"" КАК ПредставлениеСостояния
-	ИЗ
-		Документ.Расход КАК ДокументРасход</QueryText>
+	ДокументРасход.Склад,
+	"" КАК ПредставлениеСостояния
+ИЗ
+	Документ.Расход КАК ДокументРасход</QueryText>
 				</Settings>
 			</Attribute>
 		</Attributes>
