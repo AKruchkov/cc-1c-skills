@@ -1,5 +1,5 @@
 {
-  "name": "Связь параметров выбора на Items.*.CurrentData вырезается: её кодировка невоспроизводима",
+  "name": "Связь параметров выбора на Items.*.CurrentData без основного реквизита кодируется: id таблицы, CurrentData, uuid реквизита ТЧ",
   "preRun": [
     {
       "script": "meta-compile/scripts/meta-compile",
@@ -57,9 +57,13 @@
   ],
   "params": { "extensionPath": "cfe", "object": "Document.Размещение.Form.ФормаДокумента" },
   "expect": {
+    "fileContains": {
+      "file": "cfe/Documents/Размещение/Forms/ФормаДокумента/Ext/Form.xml",
+      "text": ":02023637-7868-4a5f-8576-835a76e0c9ba/0:"
+    },
     "fileNotContains": {
       "file": "cfe/Documents/Размещение/Forms/ФормаДокумента/Ext/Form.xml",
-      "text": ["<xr:Link>", "Items.Строки.CurrentData.Склад"]
+      "text": "Items.Строки.CurrentData.Склад"
     }
   }
 }

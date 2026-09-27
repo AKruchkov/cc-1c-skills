@@ -1,0 +1,107 @@
+{
+  "name": "Связи формы записи регистра без основного реквизита: стандартное поле записи (Period) и измерение кодируются",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Склады"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "InformationRegister",
+        "name": "Цены",
+        "periodicity": "Day",
+        "dimensions": [
+          "Склад: CatalogRef.Склады"
+        ],
+        "resources": [
+          "Цена: Number(15,2)"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/InformationRegisters/Цены.xml",
+        "-FormName": "ФормаЗаписи"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "title": "Цена",
+        "elements": [
+          {
+            "input": "Склад",
+            "path": "Запись.Склад"
+          },
+          {
+            "input": "Цена",
+            "path": "Запись.Цена",
+            "choiceParameterLinks": [
+              {
+                "name": "Отбор.Период",
+                "dataPath": "Запись.Period"
+              },
+              {
+                "name": "Отбор.Склад",
+                "dataPath": "Запись.Склад"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Запись",
+            "type": "InformationRegisterRecordManager.Цены",
+            "main": true
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/InformationRegisters/Цены/Forms/ФормаЗаписи/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "InformationRegister.Цены.Form.ФормаЗаписи"
+  },
+  "expect": {
+    "fileContains": {
+      "file": "cfe/InformationRegisters/Цены/Forms/ФормаЗаписи/Ext/Form.xml",
+      "text": [
+        "<xr:DataPath xsi:type=\"xs:string\">7/-2</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">7/0:"
+      ]
+    },
+    "fileNotContains": {
+      "file": "cfe/InformationRegisters/Цены/Forms/ФормаЗаписи/Ext/Form.xml",
+      "text": [
+        "Запись.Period",
+        "Запись.Склад<"
+      ]
+    },
+    "stdoutNotContains": "Вырезано связей"
+  }
+}

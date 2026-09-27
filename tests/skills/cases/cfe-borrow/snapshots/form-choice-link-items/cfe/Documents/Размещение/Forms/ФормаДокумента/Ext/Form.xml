@@ -43,6 +43,13 @@
 					<ExtendedTooltip name="СкладРасширеннаяПодсказка" id="16"/>
 				</InputField>
 				<InputField name="Ячейка" id="17">
+					<ChoiceParameterLinks>
+						<xr:Link>
+							<xr:Name>Отбор.Владелец</xr:Name>
+							<xr:DataPath xsi:type="xs:string">1:UUID-001/0:UUID-002</xr:DataPath>
+							<xr:ValueChange>Clear</xr:ValueChange>
+						</xr:Link>
+					</ChoiceParameterLinks>
 					<ContextMenu name="ЯчейкаКонтекстноеМеню" id="18"/>
 					<ExtendedTooltip name="ЯчейкаРасширеннаяПодсказка" id="19"/>
 				</InputField>
@@ -94,6 +101,13 @@
 						<ExtendedTooltip name="СкладРасширеннаяПодсказка" id="16"/>
 					</InputField>
 					<InputField name="Ячейка" id="17">
+						<ChoiceParameterLinks>
+							<xr:Link>
+								<xr:Name>Отбор.Владелец</xr:Name>
+								<xr:DataPath xsi:type="xs:string">1:UUID-001/0:UUID-002</xr:DataPath>
+								<xr:ValueChange>Clear</xr:ValueChange>
+							</xr:Link>
+						</ChoiceParameterLinks>
 						<ContextMenu name="ЯчейкаКонтекстноеМеню" id="18"/>
 						<ExtendedTooltip name="ЯчейкаРасширеннаяПодсказка" id="19"/>
 					</InputField>

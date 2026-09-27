@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-borrow v1.40 — Borrow objects from configuration into extension (CFE)
+# cfe-borrow v1.41 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -99,76 +99,171 @@ def indent_for_base_form(xml, first_indent):
 
 DROPPED_LINKS = []
 
+# Связи формы — параметров выбора (<ChoiceParameterLinks>/<xr:Link>) и по типу (<TypeLink>) —
+# хранят путь в <xr:DataPath>, обычным стриппингом он не снимается. Путь — внутренняя ссылка
+# платформы: в выгрузке она пишет имя, а если имя в контексте формы не разрешается — код.
+# Текстовое имя в расширении разрешается, только если его корень объявлен в <Attributes> самой
+# заимствованной формы; иначе платформа отвергает загрузку — «Неверный путь к полю - X».
+# Конфигуратор поэтому пишет текст там, где он разрешается, и код — где нет.
+# Грамматика кода (оракул «код в форму конфигурации → загрузка → выгрузка → имя», 8.3.27; эталоны
+# Конфигуратора УТ и Issue66Example4-7, JR2433, JR2976, JR49904):
+#   первый сегмент  <id>                — реквизит ИСХОДНОЙ формы (в расширении реквизиты
+#                                         перенумерованы в 1000000+, ссылка остаётся в нумерации базы);
+#                   <id>:<CurrentData>  — элемент-таблица исходной формы, её текущая строка;
+#   дальше          0:<uuid>            — реквизит/ТЧ/измерение/ресурс метаданных источника;
+#                   <id>                — колонка реквизита формы;
+#                   <id>:<AddColumn>    — колонка AdditionalColumns;
+#                   -<k>                — стандартный реквизит, код по виду объекта (STD_FIELD_CODES).
+# В расширении платформа код обратно в имя не переводит, а висячий код грузит молча — ошибка
+# кодирования не упадёт, а тихо не сработает. Поэтому кодируется только измеренное; прочее
+# вырезается с предупреждением: связь — удобство подбора, без неё форма работает, с неверной
+# текстовой — не грузится вовсе.
+LINK_CURRENT_DATA = '02023637-7868-4a5f-8576-835a76e0c9ba'
+LINK_ADD_COLUMN = '5bdad865-f2c5-434b-8041-ba4aad3b6687'
+# Коды стандартных реквизитов — свой порядок у каждого вида (оракул 8.3.27; в XML объекта
+# полного списка нет). Незамеренное (-1, скрытые поля, колонки ExtDimensionTypes) — не кодируем.
+STD_FIELD_CODES = {
+    'Catalog': {'Code': -2, 'Description': -3, 'Parent': -4, 'Owner': -5, 'IsFolder': -6, 'DeletionMark': -7, 'Ref': -8, 'DataVersion': -9, 'Predefined': -10, 'PredefinedDataName': -13},
+    'Document': {'Number': -2, 'Date': -3, 'DeletionMark': -4, 'Ref': -5, 'DataVersion': -6, 'Posted': -7, 'RegisterRecords': -8},
+    'ChartOfCharacteristicTypes': {'Ref': -2, 'DataVersion': -3, 'DeletionMark': -4, 'Predefined': -5, 'Parent': -6, 'IsFolder': -7, 'Code': -8, 'Description': -9, 'ValueType': -11, 'PredefinedDataName': -14},
+    'ChartOfAccounts': {'Ref': -2, 'DataVersion': -3, 'DeletionMark': -4, 'Predefined': -5, 'Parent': -6, 'Code': -7, 'Description': -8, 'Type': -10, 'OffBalance': -11, 'ExtDimensionTypes': -12, 'Order': -17, 'PredefinedDataName': -28},
+    'ChartOfCalculationTypes': {'Code': -2, 'Description': -3, 'ActionPeriodIsBasic': -4, 'DeletionMark': -5, 'Ref': -6, 'DataVersion': -7, 'Predefined': -8, 'PredefinedDataName': -11, 'DisplacingCalculationTypes': -20, 'LeadingCalculationTypes': -30},
+    'ExchangePlan': {'Code': -2, 'Description': -3, 'DeletionMark': -4, 'Ref': -6, 'DataVersion': -7, 'SentNo': -9, 'ReceivedNo': -10, 'ThisNode': -13, 'ExchangeDate': -14},
+    'BusinessProcess': {'Number': -2, 'Date': -3, 'DeletionMark': -4, 'Ref': -5, 'DataVersion': -6, 'Completed': -7, 'HeadTask': -8, 'Started': -9},
+    'Task': {'Number': -2, 'Date': -3, 'DeletionMark': -4, 'Ref': -5, 'DataVersion': -6, 'BusinessProcess': -7, 'RoutePoint': -8, 'Description': -9, 'Executed': -10},
+    'InformationRegisterRecord': {'Period': -2, 'Recorder': -3, 'LineNumber': -4, 'Active': -5},
+    'AccumulationRegisterRow': {'Period': -2, 'Recorder': -3, 'LineNumber': -4, 'Active': -5, 'RecordType': -9, 'SecondPeriod': -10, 'MinutePeriod': -11, 'HourPeriod': -12, 'DayPeriod': -13, 'WeekPeriod': -14, 'TenDaysPeriod': -15},
+    'TabularSectionRow': {'LineNumber': -2},
+}
+# Тип основного реквизита → вид для таблицы стандартных кодов (запись РС — сам реквизит,
+# набор записей РН — строка таблицы на нём)
+MAIN_ATTR_KINDS = {
+    'CatalogObject': 'Catalog', 'DocumentObject': 'Document', 'ChartOfCharacteristicTypesObject': 'ChartOfCharacteristicTypes',
+    'ChartOfAccountsObject': 'ChartOfAccounts', 'ChartOfCalculationTypesObject': 'ChartOfCalculationTypes',
+    'ExchangePlanObject': 'ExchangePlan', 'BusinessProcessObject': 'BusinessProcess', 'TaskObject': 'Task',
+    'InformationRegisterRecordManager': 'InformationRegisterRecord', 'AccumulationRegisterRecordSet': 'AccumulationRegisterRow',
+}
 
-def rewrite_choice_parameter_links(xml, attr_uuids, form_attr_ids, main_attr_name, main_attr_borrowed):
-    """Ссылки параметров выбора (<ChoiceParameterLinks>/<xr:Link>) — привязка особого рода: путь лежит
-    в <xr:DataPath> и обычным стриппингом не снимается. Текстовое имя в расширении разрешается только
-    если его корень объявлен в <Attributes> самой заимствованной формы; иначе платформа отвергает
-    загрузку — «Неверный путь к полю - X». Реквизиты формы не заимствуются никогда, поэтому ссылка на
-    них разрешима только через id: Конфигуратор подставляет id реквизита ИСХОДНОЙ формы (эталоны
-    Issue66Example4/5/6, JR2433, JR2976, JR49904 — совпадение на шести расширениях). Именно id
-    исходной, а не заимствованной: при заимствовании реквизиты перенумеровываются в 1000000+, а
-    ссылка продолжает указывать в нумерацию базовой формы.
-    Путь на основной реквизит («Объект.X») при заимствованном основном реквизите разрешается текстом
-    и остаётся читаемым; без заимствования переводится в «<id>/0:<uuid реквизита объекта>».
-    Реквизит, которого в источнике нет, недоступен и по uuid: такую связь вырезаем целиком."""
-    if '<ChoiceParameterLinks>' not in xml:
-        return xml
 
-    main_pat = re.escape(main_attr_name) if main_attr_name else None
-    main_id = form_attr_ids.get(main_attr_name, "1") if main_attr_name else "1"
+def resolve_link_data_path(path, ctx):
+    """Путь связи → текст (разрешается в расширении), код или None (вырезать).
+    ctx: MainName, MainId, MainBorrowed, MainKind, AttrUuids (имя/«ТЧ.Реквизит» → uuid),
+    FormAttrIds, FormAttrCols («Реквизит.Колонка» → id), AddCols («<путь таблицы>.Колонка» → id),
+    Tables (имя элемента-таблицы → {Id, Path})."""
+    # Уже код (форма-источник сама из расширения, или висячая ссылка в типовой) — как есть
+    if re.match(r'^-?\d', path):
+        return path
+    main = ctx['MainName']
+    attr_uuids = ctx['AttrUuids']
 
+    # Текущая строка элемента-таблицы
+    cd = re.match(r'^Items\.([^.]+)\.CurrentData\.([^.]+)$', path)
+    if cd:
+        tbl = ctx['Tables'].get(cd.group(1))
+        field = cd.group(2)
+        if not tbl:
+            return None
+        tp = tbl['Path']
+        prefix = f"{tbl['Id']}:{LINK_CURRENT_DATA}"
+        if main and (tp == main or tp.startswith(main + '.')):
+            # Таблица на основном реквизите: с заимствованным — текст разрешается (эталоны 7_1, УТ)
+            if ctx['MainBorrowed']:
+                return path
+            if tp == main:
+                # Строки самого основного реквизита — набор записей регистра накопления
+                if ctx['MainKind'] != 'AccumulationRegisterRow':
+                    return None
+                if field in attr_uuids:
+                    return f"{prefix}/0:{attr_uuids[field]}"
+                code = STD_FIELD_CODES['AccumulationRegisterRow'].get(field)
+                return f"{prefix}/{code}" if code else None
+            ts = tp[len(main) + 1:]
+            if '.' in ts:
+                return None
+            if f"{ts}.{field}" in attr_uuids:
+                return f"{prefix}/0:{attr_uuids[ts + '.' + field]}"
+            if f"{tp}.{field}" in ctx['AddCols']:
+                return f"{prefix}/{ctx['AddCols'][tp + '.' + field]}:{LINK_ADD_COLUMN}"
+            code = STD_FIELD_CODES['TabularSectionRow'].get(field)
+            return f"{prefix}/{code}" if code else None
+        # Таблица на реквизите формы: реквизиты формы не заимствуются никогда — только код
+        # (текст платформа отвергает и с заимствованным основным реквизитом, оракул 8.3.27)
+        if tp in ctx['FormAttrIds'] and f"{tp}.{field}" in ctx['FormAttrCols']:
+            return f"{prefix}/{ctx['FormAttrCols'][tp + '.' + field]}"
+        return None
+
+    # Путь от основного реквизита формы
+    if main and path.startswith(main + '.'):
+        rest = path[len(main) + 1:]
+        if ctx['MainBorrowed']:
+            # Реквизит объекта разрешается текстом и остаётся читаемым. Стандартное поле
+            # («Объект.Owner», «Объект.Date») — нет: платформа отвергает «Неверный путь к данным».
+            # Конфигуратор в этом случае оставляет ссылку на сам реквизит (эталон Issue66Example7_1).
+            if rest in attr_uuids:
+                return path
+            return ctx['MainId']
+        segs = rest.split('.')
+        if len(segs) == 1:
+            if rest in attr_uuids:
+                return f"{ctx['MainId']}/0:{attr_uuids[rest]}"
+            codes = STD_FIELD_CODES.get(ctx['MainKind']) if ctx['MainKind'] else None
+            if codes and rest in codes:
+                return f"{ctx['MainId']}/{codes[rest]}"
+            return None
+        if len(segs) == 2 and segs[0] in attr_uuids and rest in attr_uuids:
+            return f"{ctx['MainId']}/0:{attr_uuids[segs[0]]}/0:{attr_uuids[rest]}"
+        return None
+
+    # Путь от реквизита формы — только по id исходной формы, в обоих режимах
+    segs = path.split('.')
+    if segs[0] in ctx['FormAttrIds']:
+        attr_id = ctx['FormAttrIds'][segs[0]]
+        if len(segs) == 1:
+            return attr_id
+        if len(segs) == 2 and path in ctx['FormAttrCols']:
+            return f"{attr_id}/{ctx['FormAttrCols'][path]}"
+        return None
+
+    # Прочее: с заимствованным основным реквизитом текст может разрешиться, без него — нет
+    if ctx['MainBorrowed']:
+        return path
+    return None
+
+
+def rewrite_link_blocks(xml, block_pattern, ctx):
+    """Путь в <xr:DataPath> блока связи → разрешённый; неразрешимый блок вырезается целиком."""
     def repl(m):
         link = m.group(0)
         dp = re.search(r'<xr:DataPath[^>]*>([^<]+)</xr:DataPath>', link)
         if not dp:
             return link
         path = dp.group(1)
-
-        # Путь на основной реквизит формы
-        if main_pat:
-            mm = re.match('^' + main_pat + r'\.(.+)$', path)
-            if mm:
-                attr_name = mm.group(1)
-                if main_attr_borrowed:
-                    # Реквизит объекта разрешается текстом и остаётся читаемым. Стандартное поле
-                    # («Объект.Owner», «Объект.Date») — нет: платформа отвергает «Неверный путь к данным».
-                    # Конфигуратор в этом случае оставляет ссылку на сам реквизит (эталон Issue66Example7_1).
-                    if attr_name in attr_uuids:
-                        return link
-                    return re.sub(r'(<xr:DataPath[^>]*>)[^<]+(</xr:DataPath>)',
-                                  lambda x: f"{x.group(1)}{main_id}{x.group(2)}", link)
-                if attr_name in attr_uuids:
-                    return re.sub(r'(<xr:DataPath[^>]*>)[^<]+(</xr:DataPath>)',
-                                  lambda x: f"{x.group(1)}{main_id}/0:{attr_uuids[attr_name]}{x.group(2)}", link)
-                return ''
-
-        # Односегментный путь на реквизит формы — только по id исходной формы
-        if '.' not in path and path in form_attr_ids:
-            return re.sub(r'(<xr:DataPath[^>]*>)[^<]+(</xr:DataPath>)',
-                          lambda x: f"{x.group(1)}{form_attr_ids[path]}{x.group(2)}", link)
-
-        # Уже непрозрачный путь (форма-источник сама из расширения) — не трогаем
-        if re.match(r'^\d', path):
+        resolved = resolve_link_data_path(path, ctx)
+        if resolved is None:
+            DROPPED_LINKS.append(path)
+            return ''
+        if resolved == path:
             return link
+        return link[:dp.start(1)] + resolved + link[dp.end(1):]
 
-        # С заимствованным основным реквизитом текстовый путь разрешается: элементы формы на месте,
-        # а их данные доступны через основной реквизит. Конфигуратор такие пути и оставляет текстом
-        # (эталон Issue66Example7_1: «Items.Товары.CurrentData.Характеристика» перенесён как есть).
-        if main_attr_borrowed:
-            return link
+    return re.sub(block_pattern, repl, xml, flags=re.DOTALL)
 
-        # Прочее текстом не разрешается: платформа отвергает загрузку «Неверный путь к полю».
-        # Сюда попадают «Items.<Элемент>.CurrentData.<Поле>» — их кодировка непрозрачна и по
-        # имеющимся эталонам не воспроизводима. Связь параметров выбора — удобство подбора, а не
-        # данные: без неё форма заимствуется и работает, с ней — не грузится вовсе.
-        DROPPED_LINKS.append(path)
-        return ''
 
-    xml = re.sub(r'\s*<xr:Link>.*?</xr:Link>', repl, xml, flags=re.DOTALL)
+def rewrite_choice_parameter_links(xml, ctx):
+    if '<ChoiceParameterLinks>' not in xml:
+        return xml
+    xml = rewrite_link_blocks(xml, r'\s*<xr:Link>.*?</xr:Link>', ctx)
     # Опустевший контейнер платформе не нужен
     xml = re.sub(r'\s*<ChoiceParameterLinks>\s*</ChoiceParameterLinks>', '', xml, flags=re.DOTALL)
     return xml
+
+
+def rewrite_type_links(xml, ctx):
+    """Связь по типу — тот же путь и то же правило (эталоны УТ ВводОстатков.ФормаРасчетыМеждуОрганизациями:
+    без основного реквизита — код, с ним — текст)."""
+    if '<TypeLink>' not in xml:
+        return xml
+    return rewrite_link_blocks(xml, r'\s*<TypeLink>.*?</TypeLink>', ctx)
 
 
 def get_own_child_object_names(obj_file):
@@ -931,8 +1026,8 @@ def main():
 
     # --- Helper functions ---
     def get_source_attribute_uuids(type_name, obj_name):
-        """Имена реквизитов исходного объекта → uuid. Нужны для непрозрачной формы пути в ссылках
-        параметров выбора (см. rewrite_choice_parameter_links)."""
+        """Имена реквизитов исходного объекта → uuid: реквизиты, ТЧ, измерения и ресурсы регистра,
+        реквизиты ТЧ — ключом «ТЧ.Реквизит». Нужны для кода пути в связях формы (см. resolve_link_data_path)."""
         result = {}
         dir_name = CHILD_TYPE_DIR_MAP.get(type_name)
         if not dir_name:
@@ -953,21 +1048,36 @@ def main():
             if not isinstance(child.tag, str) or localname(child) != "ChildObjects":
                 continue
             for sub in child:
-                if not isinstance(sub.tag, str) or localname(sub) not in ("Attribute", "TabularSection"):
+                if not isinstance(sub.tag, str) or localname(sub) not in ("Attribute", "TabularSection", "Dimension", "Resource"):
                     continue
                 uuid_val = sub.get("uuid")
-                name_val = None
-                for props in sub:
-                    if isinstance(props.tag, str) and localname(props) == "Properties":
-                        for prop in props:
-                            if isinstance(prop.tag, str) and localname(prop) == "Name":
-                                name_val = (prop.text or "").strip()
-                                break
-                        break
-                if uuid_val and name_val:
-                    result[name_val] = uuid_val
+                name_val = md_name(sub)
+                if not (uuid_val and name_val):
+                    continue
+                result[name_val] = uuid_val
+                if localname(sub) != "TabularSection":
+                    continue
+                for ts_children in sub:
+                    if not isinstance(ts_children.tag, str) or localname(ts_children) != "ChildObjects":
+                        continue
+                    for ts_attr in ts_children:
+                        if not isinstance(ts_attr.tag, str) or localname(ts_attr) != "Attribute":
+                            continue
+                        ts_uuid, ts_name = ts_attr.get("uuid"), md_name(ts_attr)
+                        if ts_uuid and ts_name:
+                            result[f"{name_val}.{ts_name}"] = ts_uuid
             break
         return result
+
+    def md_name(el):
+        """<Properties>/<Name> объекта метаданных."""
+        for props in el:
+            if isinstance(props.tag, str) and localname(props) == "Properties":
+                for prop in props:
+                    if isinstance(prop.tag, str) and localname(prop) == "Name":
+                        return (prop.text or "").strip()
+                break
+        return None
 
     def read_source_object(type_name, obj_name):
         dir_name = CHILD_TYPE_DIR_MAP.get(type_name)
@@ -1259,6 +1369,53 @@ def main():
                     result[nm] = aid
             break
         return result
+
+    def get_link_context(form_el, main_name, main_borrowed, attr_uuids, form_attr_ids):
+        """Контекст разрешения путей в связях формы (см. resolve_link_data_path) — всё по ИСХОДНОЙ
+        форме: колонки реквизитов формы, колонки AdditionalColumns, элементы-таблицы и вид основного
+        реквизита."""
+        cols, add_cols, tables, kind = {}, {}, {}, None
+        for child in form_el:
+            if not isinstance(child.tag, str):
+                continue
+            if localname(child) == "Attributes":
+                for a in child:
+                    if not isinstance(a.tag, str) or localname(a) != "Attribute":
+                        continue
+                    nm = a.get("name")
+                    for sub in a:
+                        if not isinstance(sub.tag, str):
+                            continue
+                        if localname(sub) == "Columns":
+                            for c in sub:
+                                if not isinstance(c.tag, str):
+                                    continue
+                                if localname(c) == "Column":
+                                    cols[f"{nm}.{c.get('name')}"] = c.get("id")
+                                elif localname(c) == "AdditionalColumns":
+                                    tbl_path = c.get("table")
+                                    for ac in c:
+                                        if isinstance(ac.tag, str) and localname(ac) == "Column":
+                                            add_cols[f"{tbl_path}.{ac.get('name')}"] = ac.get("id")
+                        elif localname(sub) == "Type" and main_name and nm == main_name and kind is None:
+                            for tn in sub:
+                                if isinstance(tn.tag, str) and localname(tn) == "Type":
+                                    tm = re.match(r'^(?:\w+:)?(\w+)\.', (tn.text or "").strip())
+                                    if tm and tm.group(1) in MAIN_ATTR_KINDS:
+                                        kind = MAIN_ATTR_KINDS[tm.group(1)]
+                                    break
+            elif localname(child) == "ChildItems":
+                for tbl in child.iter():
+                    if not isinstance(tbl.tag, str) or localname(tbl) != "Table":
+                        continue
+                    for dp in tbl:
+                        if isinstance(dp.tag, str) and localname(dp) == "DataPath":
+                            tables[tbl.get("name")] = {"Id": tbl.get("id"), "Path": (dp.text or "").strip()}
+                            break
+        main_id = form_attr_ids.get(main_name, "1") if main_name else "1"
+        return {"MainName": main_name, "MainId": main_id, "MainBorrowed": main_borrowed, "MainKind": kind,
+                "AttrUuids": attr_uuids, "FormAttrIds": form_attr_ids, "FormAttrCols": cols,
+                "AddCols": add_cols, "Tables": tables}
 
     def get_main_attribute_info(form_el, ns_strip_pattern):
         main_attr = None
@@ -1920,10 +2077,11 @@ def main():
         # Основной реквизит исходной формы: его имя — корень путей к данным, которые нужно сохранить
         # («Объект.» у формы объекта, «Список.» у формы списка, «Запись.» у формы записи регистра)
         main_attr_info = src_main_info if borrow_main_attr else None
-        # Имена реквизитов объекта нужны в обоих режимах: без заимствования — чтобы построить
-        # непрозрачный путь, с заимствованием — чтобы отличить реквизит (разрешается текстом) от
-        # стандартного поля (не разрешается)
+        # Имена реквизитов объекта нужны в обоих режимах: без заимствования — для кода пути в связях
+        # формы, с заимствованием — чтобы отличить реквизит (разрешается текстом) от стандартного поля
         src_attr_uuids = get_source_attribute_uuids(type_name, obj_name)
+        link_ctx = get_link_context(src_form_el, src_main_attr_name, main_attr_info is not None,
+                                    src_attr_uuids, form_attr_ids)
         main_attr_name = main_attr_info["Name"] if main_attr_info else ""
         if borrow_main_attr and main_attr_info is None:
             warn("  У формы нет основного реквизита — -BorrowMainAttribute проигнорирован")
@@ -1941,8 +2099,7 @@ def main():
             auto_cmd_xml = re.sub(r'\s*<CommandSet/>', '', auto_cmd_xml)
             # Strip data-binding tags whose root attribute isn't borrowed
             auto_cmd_xml = strip_form_bindings(auto_cmd_xml, main_attr_name)
-            auto_cmd_xml = rewrite_choice_parameter_links(
-                auto_cmd_xml, src_attr_uuids, form_attr_ids, src_main_attr_name, main_attr_info is not None)
+            auto_cmd_xml = rewrite_choice_parameter_links(auto_cmd_xml, link_ctx)
 
         # ChildItems: copy full tree, clean up base-config references
         child_items_xml = ""
@@ -1975,13 +2132,11 @@ def main():
             child_items_xml = re.sub(r'<CommandName>[^<]*</CommandName>', '<CommandName>0</CommandName>', child_items_xml)
             # Strip data-binding tags whose root attribute isn't borrowed
             child_items_xml = strip_form_bindings(child_items_xml, main_attr_name)
-            child_items_xml = rewrite_choice_parameter_links(
-                child_items_xml, src_attr_uuids, form_attr_ids, src_main_attr_name, main_attr_info is not None)
+            child_items_xml = rewrite_choice_parameter_links(child_items_xml, link_ctx)
             # Вложенные CommandSet (у таблиц, полей табличного документа и т.п.) — целиком, см. выше
             child_items_xml = re.sub(r'(?s)\s*<CommandSet>.*?</CommandSet>', '', child_items_xml)
             child_items_xml = re.sub(r'\s*<CommandSet/>', '', child_items_xml)
-            # Strip TypeLink blocks with human-readable DataPath (Items.XXX)
-            child_items_xml = re.sub(r'\s*<TypeLink>\s*<xr:DataPath>Items\.[^<]*</xr:DataPath>.*?</TypeLink>', '', child_items_xml, flags=re.DOTALL)
+            child_items_xml = rewrite_type_links(child_items_xml, link_ctx)
             # Strip element-level Events
             child_items_xml = re.sub(r'\s*<Events>.*?</Events>', '', child_items_xml, flags=re.DOTALL)
 
@@ -2199,7 +2354,7 @@ def main():
         info(f"  Created: {form_xml_file}")
         if DROPPED_LINKS:
             uniq = sorted(set(DROPPED_LINKS))
-            warn(f"  Вырезано связей параметров выбора: {len(uniq)} — путь не разрешается в расширении: {', '.join(uniq)}")
+            warn(f"  Вырезано связей формы: {len(uniq)} — путь не разрешается в расширении: {', '.join(uniq)}")
             DROPPED_LINKS.clear()
 
         # 6. Create empty Module.bsl — but NEVER overwrite an existing one (re-borrow must

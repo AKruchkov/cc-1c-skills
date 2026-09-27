@@ -1,0 +1,113 @@
+{
+  "name": "Связи формы без основного реквизита кодируются как у Конфигуратора: стандартное поле, ТЧ, AdditionalColumns, реквизит формы, TypeLink; некодируемое — вырезано с предупреждением",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Склады"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Номенклатура"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Страны"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Размещение",
+        "attributes": [
+          "Склад: CatalogRef.Склады"
+        ],
+        "tabularSections": {
+          "Товары": [
+            "Номенклатура: CatalogRef.Номенклатура",
+            "Количество: Number(15,3)"
+          ]
+        }
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Размещение.xml",
+        "-FormName": "ФормаДокумента"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "Documents/Размещение/Forms/ФормаДокумента/Ext/Form.xml",
+        "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Form xmlns=\"http://v8.1c.ru/8.3/xcf/logform\" xmlns:app=\"http://v8.1c.ru/8.2/managed-application/core\" xmlns:cfg=\"http://v8.1c.ru/8.1/data/enterprise/current-config\" xmlns:dcscor=\"http://v8.1c.ru/8.1/data-composition-system/core\" xmlns:dcssch=\"http://v8.1c.ru/8.1/data-composition-system/schema\" xmlns:dcsset=\"http://v8.1c.ru/8.1/data-composition-system/settings\" xmlns:ent=\"http://v8.1c.ru/8.1/data/enterprise\" xmlns:lf=\"http://v8.1c.ru/8.2/managed-application/logform\" xmlns:style=\"http://v8.1c.ru/8.1/data/ui/style\" xmlns:sys=\"http://v8.1c.ru/8.1/data/ui/fonts/system\" xmlns:v8=\"http://v8.1c.ru/8.1/data/core\" xmlns:v8ui=\"http://v8.1c.ru/8.1/data/ui\" xmlns:web=\"http://v8.1c.ru/8.1/data/ui/colors/web\" xmlns:win=\"http://v8.1c.ru/8.1/data/ui/colors/windows\" xmlns:xr=\"http://v8.1c.ru/8.3/xcf/readable\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" version=\"2.17\">\n\t<Title>\n\t\t<v8:item>\n\t\t\t<v8:lang>ru</v8:lang>\n\t\t\t<v8:content>Размещение</v8:content>\n\t\t</v8:item>\n\t</Title>\n\t<AutoTitle>false</AutoTitle>\n\t<AutoCommandBar name=\"ФормаКоманднаяПанель\" id=\"-1\"/>\n\t<ChildItems>\n\t\t<InputField name=\"Склад\" id=\"1\">\n\t\t\t<DataPath>Объект.Склад</DataPath>\n\t\t\t<ChoiceParameterLinks>\n\t\t\t\t<xr:Link>\n\t\t\t\t\t<xr:Name>Отбор.Дата</xr:Name>\n\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Объект.Date</xr:DataPath>\n\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t</xr:Link>\n\t\t\t\t<xr:Link>\n\t\t\t\t\t<xr:Name>Отбор.Номенклатура</xr:Name>\n\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Объект.Товары.Номенклатура</xr:DataPath>\n\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t</xr:Link>\n\t\t\t\t<xr:Link>\n\t\t\t\t\t<xr:Name>Отбор.Подбор</xr:Name>\n\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Подбор.Склад</xr:DataPath>\n\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t</xr:Link>\n\t\t\t\t<xr:Link>\n\t\t\t\t\t<xr:Name>Отбор.Режим</xr:Name>\n\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Режим</xr:DataPath>\n\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t</xr:Link>\n\t\t\t\t<xr:Link>\n\t\t\t\t\t<xr:Name>Отбор.Нет</xr:Name>\n\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Режим.Code</xr:DataPath>\n\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t</xr:Link>\n\t\t\t</ChoiceParameterLinks>\n\t\t\t<ContextMenu name=\"СкладКонтекстноеМеню\" id=\"2\"/>\n\t\t\t<ExtendedTooltip name=\"СкладРасширеннаяПодсказка\" id=\"3\"/>\n\t\t</InputField>\n\t\t<Table name=\"Товары\" id=\"4\">\n\t\t\t<DataPath>Объект.Товары</DataPath>\n\t\t\t<ContextMenu name=\"ТоварыКонтекстноеМеню\" id=\"5\"/>\n\t\t\t<AutoCommandBar name=\"ТоварыКоманднаяПанель\" id=\"6\"/>\n\t\t\t<ExtendedTooltip name=\"ТоварыРасширеннаяПодсказка\" id=\"7\"/>\n\t\t\t<SearchStringAddition name=\"ТоварыСтрокаПоиска\" id=\"8\">\n\t\t\t\t<AdditionSource>\n\t\t\t\t\t<Item>Товары</Item>\n\t\t\t\t\t<Type>SearchStringRepresentation</Type>\n\t\t\t\t</AdditionSource>\n\t\t\t\t<ContextMenu name=\"ТоварыСтрокаПоискаКонтекстноеМеню\" id=\"9\"/>\n\t\t\t\t<ExtendedTooltip name=\"ТоварыСтрокаПоискаРасширеннаяПодсказка\" id=\"10\"/>\n\t\t\t</SearchStringAddition>\n\t\t\t<ViewStatusAddition name=\"ТоварыСостояниеПросмотра\" id=\"11\">\n\t\t\t\t<AdditionSource>\n\t\t\t\t\t<Item>Товары</Item>\n\t\t\t\t\t<Type>ViewStatusRepresentation</Type>\n\t\t\t\t</AdditionSource>\n\t\t\t\t<ContextMenu name=\"ТоварыСостояниеПросмотраКонтекстноеМеню\" id=\"12\"/>\n\t\t\t\t<ExtendedTooltip name=\"ТоварыСостояниеПросмотраРасширеннаяПодсказка\" id=\"13\"/>\n\t\t\t</ViewStatusAddition>\n\t\t\t<SearchControlAddition name=\"ТоварыУправлениеПоиском\" id=\"14\">\n\t\t\t\t<AdditionSource>\n\t\t\t\t\t<Item>Товары</Item>\n\t\t\t\t\t<Type>SearchControl</Type>\n\t\t\t\t</AdditionSource>\n\t\t\t\t<ContextMenu name=\"ТоварыУправлениеПоискомКонтекстноеМеню\" id=\"15\"/>\n\t\t\t\t<ExtendedTooltip name=\"ТоварыУправлениеПоискомРасширеннаяПодсказка\" id=\"16\"/>\n\t\t\t</SearchControlAddition>\n\t\t\t<ChildItems>\n\t\t\t\t<InputField name=\"ТоварыНоменклатура\" id=\"17\">\n\t\t\t\t\t<DataPath>Объект.Товары.Номенклатура</DataPath>\n\t\t\t\t\t<TypeLink>\n\t\t\t\t\t\t<xr:DataPath>Items.Товары.CurrentData.Страна</xr:DataPath>\n\t\t\t\t\t\t<xr:LinkItem>0</xr:LinkItem>\n\t\t\t\t\t</TypeLink>\n\t\t\t\t\t<ChoiceParameterLinks>\n\t\t\t\t\t\t<xr:Link>\n\t\t\t\t\t\t\t<xr:Name>Отбор.НомерСтроки</xr:Name>\n\t\t\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Items.Товары.CurrentData.LineNumber</xr:DataPath>\n\t\t\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t\t\t</xr:Link>\n\t\t\t\t\t</ChoiceParameterLinks>\n\t\t\t\t\t<ContextMenu name=\"ТоварыНоменклатураКонтекстноеМеню\" id=\"18\"/>\n\t\t\t\t\t<ExtendedTooltip name=\"ТоварыНоменклатураРасширеннаяПодсказка\" id=\"19\"/>\n\t\t\t\t</InputField>\n\t\t\t\t<InputField name=\"ТоварыСтрана\" id=\"20\">\n\t\t\t\t\t<DataPath>Объект.Товары.Страна</DataPath>\n\t\t\t\t\t<ChoiceParameterLinks>\n\t\t\t\t\t\t<xr:Link>\n\t\t\t\t\t\t\t<xr:Name>Отбор.Номенклатура</xr:Name>\n\t\t\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Items.Товары.CurrentData.Номенклатура</xr:DataPath>\n\t\t\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t\t\t</xr:Link>\n\t\t\t\t\t</ChoiceParameterLinks>\n\t\t\t\t\t<ContextMenu name=\"ТоварыСтранаКонтекстноеМеню\" id=\"21\"/>\n\t\t\t\t\t<ExtendedTooltip name=\"ТоварыСтранаРасширеннаяПодсказка\" id=\"22\"/>\n\t\t\t\t</InputField>\n\t\t\t</ChildItems>\n\t\t</Table>\n\t\t<Table name=\"Подбор\" id=\"23\">\n\t\t\t<DataPath>Подбор</DataPath>\n\t\t\t<ContextMenu name=\"ПодборКонтекстноеМеню\" id=\"24\"/>\n\t\t\t<AutoCommandBar name=\"ПодборКоманднаяПанель\" id=\"25\"/>\n\t\t\t<ExtendedTooltip name=\"ПодборРасширеннаяПодсказка\" id=\"26\"/>\n\t\t\t<SearchStringAddition name=\"ПодборСтрокаПоиска\" id=\"27\">\n\t\t\t\t<AdditionSource>\n\t\t\t\t\t<Item>Подбор</Item>\n\t\t\t\t\t<Type>SearchStringRepresentation</Type>\n\t\t\t\t</AdditionSource>\n\t\t\t\t<ContextMenu name=\"ПодборСтрокаПоискаКонтекстноеМеню\" id=\"28\"/>\n\t\t\t\t<ExtendedTooltip name=\"ПодборСтрокаПоискаРасширеннаяПодсказка\" id=\"29\"/>\n\t\t\t</SearchStringAddition>\n\t\t\t<ViewStatusAddition name=\"ПодборСостояниеПросмотра\" id=\"30\">\n\t\t\t\t<AdditionSource>\n\t\t\t\t\t<Item>Подбор</Item>\n\t\t\t\t\t<Type>ViewStatusRepresentation</Type>\n\t\t\t\t</AdditionSource>\n\t\t\t\t<ContextMenu name=\"ПодборСостояниеПросмотраКонтекстноеМеню\" id=\"31\"/>\n\t\t\t\t<ExtendedTooltip name=\"ПодборСостояниеПросмотраРасширеннаяПодсказка\" id=\"32\"/>\n\t\t\t</ViewStatusAddition>\n\t\t\t<SearchControlAddition name=\"ПодборУправлениеПоиском\" id=\"33\">\n\t\t\t\t<AdditionSource>\n\t\t\t\t\t<Item>Подбор</Item>\n\t\t\t\t\t<Type>SearchControl</Type>\n\t\t\t\t</AdditionSource>\n\t\t\t\t<ContextMenu name=\"ПодборУправлениеПоискомКонтекстноеМеню\" id=\"34\"/>\n\t\t\t\t<ExtendedTooltip name=\"ПодборУправлениеПоискомРасширеннаяПодсказка\" id=\"35\"/>\n\t\t\t</SearchControlAddition>\n\t\t\t<ChildItems>\n\t\t\t\t<InputField name=\"ПодборСклад\" id=\"36\">\n\t\t\t\t\t<DataPath>Подбор.Склад</DataPath>\n\t\t\t\t\t<ChoiceParameterLinks>\n\t\t\t\t\t\t<xr:Link>\n\t\t\t\t\t\t\t<xr:Name>Отбор.Склад</xr:Name>\n\t\t\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Items.Подбор.CurrentData.Склад</xr:DataPath>\n\t\t\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t\t\t</xr:Link>\n\t\t\t\t\t\t<xr:Link>\n\t\t\t\t\t\t\t<xr:Name>Отбор.Страна</xr:Name>\n\t\t\t\t\t\t\t<xr:DataPath xsi:type=\"xs:string\">Items.Товары.CurrentData.Страна</xr:DataPath>\n\t\t\t\t\t\t\t<xr:ValueChange>Clear</xr:ValueChange>\n\t\t\t\t\t\t</xr:Link>\n\t\t\t\t\t</ChoiceParameterLinks>\n\t\t\t\t\t<ContextMenu name=\"ПодборСкладКонтекстноеМеню\" id=\"37\"/>\n\t\t\t\t\t<ExtendedTooltip name=\"ПодборСкладРасширеннаяПодсказка\" id=\"38\"/>\n\t\t\t\t</InputField>\n\t\t\t</ChildItems>\n\t\t</Table>\n\t</ChildItems>\n\t<Attributes>\n\t\t<Attribute name=\"Объект\" id=\"39\">\n\t\t\t<Type>\n\t\t\t\t<v8:Type>cfg:DocumentObject.Размещение</v8:Type>\n\t\t\t</Type>\n\t\t\t<MainAttribute>true</MainAttribute>\n\t\t\t<SavedData>true</SavedData>\n\t\t\t<Columns>\n\t\t\t\t<AdditionalColumns table=\"Объект.Товары\">\n\t\t\t\t\t<Column name=\"Страна\" id=\"1\">\n\t\t\t\t\t\t<Type>\n\t\t\t\t\t\t\t<v8:Type>cfg:CatalogRef.Страны</v8:Type>\n\t\t\t\t\t\t</Type>\n\t\t\t\t\t</Column>\n\t\t\t\t</AdditionalColumns>\n\t\t\t</Columns>\n\t\t</Attribute>\n\t\t<Attribute name=\"Подбор\" id=\"40\">\n\t\t\t<Title>\n\t\t\t\t<v8:item>\n\t\t\t\t\t<v8:lang>ru</v8:lang>\n\t\t\t\t\t<v8:content>Подбор</v8:content>\n\t\t\t\t</v8:item>\n\t\t\t</Title>\n\t\t\t<Type>\n\t\t\t\t<v8:Type>v8:ValueTable</v8:Type>\n\t\t\t</Type>\n\t\t\t<Columns>\n\t\t\t\t<Column name=\"Склад\" id=\"41\">\n\t\t\t\t\t<Type>\n\t\t\t\t\t\t<v8:Type>cfg:CatalogRef.Склады</v8:Type>\n\t\t\t\t\t</Type>\n\t\t\t\t</Column>\n\t\t\t</Columns>\n\t\t</Attribute>\n\t\t<Attribute name=\"Режим\" id=\"42\">\n\t\t\t<Title>\n\t\t\t\t<v8:item>\n\t\t\t\t\t<v8:lang>ru</v8:lang>\n\t\t\t\t\t<v8:content>Режим</v8:content>\n\t\t\t\t</v8:item>\n\t\t\t</Title>\n\t\t\t<Type>\n\t\t\t\t<v8:Type>cfg:CatalogRef.Склады</v8:Type>\n\t\t\t</Type>\n\t\t</Attribute>\n\t</Attributes>\n</Form>"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "Document.Размещение.Form.ФормаДокумента"
+  },
+  "expect": {
+    "fileContains": {
+      "file": "cfe/Documents/Размещение/Forms/ФормаДокумента/Ext/Form.xml",
+      "text": [
+        "<xr:DataPath xsi:type=\"xs:string\">39/-3</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">40/41</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">42</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">4:02023637-7868-4a5f-8576-835a76e0c9ba/-2</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">4:02023637-7868-4a5f-8576-835a76e0c9ba/1:5bdad865-f2c5-434b-8041-ba4aad3b6687</xr:DataPath>",
+        "<xr:DataPath>4:02023637-7868-4a5f-8576-835a76e0c9ba/1:5bdad865-f2c5-434b-8041-ba4aad3b6687</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">23:02023637-7868-4a5f-8576-835a76e0c9ba/41</xr:DataPath>",
+        "<xr:DataPath xsi:type=\"xs:string\">39/0:",
+        ">4:02023637-7868-4a5f-8576-835a76e0c9ba/0:"
+      ]
+    },
+    "fileNotContains": {
+      "file": "cfe/Documents/Размещение/Forms/ФормаДокумента/Ext/Form.xml",
+      "text": [
+        "Объект.Date",
+        "Объект.Товары.Номенклатура",
+        "Items.",
+        "Подбор.Склад<",
+        "Режим.Code"
+      ]
+    },
+    "stdoutContains": [
+      "Вырезано связей формы: 1",
+      "Режим.Code"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-﻿# cfe-borrow v1.40 — Borrow objects from configuration into extension (CFE)
+﻿# cfe-borrow v1.41 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -80,73 +80,171 @@ function Get-BaseFormIndented {
 	return $firstIndent + ($parts -join '')
 }
 
-# Ссылки параметров выбора (<ChoiceParameterLinks>/<xr:Link>) — привязка особого рода: путь лежит
-# в <xr:DataPath> и обычным стриппингом не снимается. Текстовое имя в расширении разрешается только
-# если его корень объявлен в <Attributes> самой заимствованной формы; иначе платформа отвергает
-# загрузку — «Неверный путь к полю - X». Реквизиты формы не заимствуются никогда, поэтому ссылка на
-# них разрешима только через id: Конфигуратор подставляет id реквизита ИСХОДНОЙ формы (эталоны
-# Issue66Example4/5/6, JR2433, JR2976, JR49904 — совпадение на шести расширениях). Именно id
-# исходной, а не заимствованной: при заимствовании реквизиты перенумеровываются в 1000000+, а
-# ссылка продолжает указывать в нумерацию базовой формы.
-# Путь на основной реквизит («Объект.X») при заимствованном основном реквизите разрешается текстом
-# и остаётся читаемым; без заимствования переводится в «<id>/0:<uuid реквизита объекта>».
-# Реквизит, которого в источнике нет, недоступен и по uuid: такую связь вырезаем целиком.
-# Пути вида «Items.<Элемент>.CurrentData.<Поле>» не трогаем — их кодировка отдельная.
-function Rewrite-ChoiceParameterLinks {
-	param([string]$xml, $attrUuids, $formAttrIds, [string]$mainAttrName, [bool]$mainAttrBorrowed)
+# Связи формы — параметров выбора (<ChoiceParameterLinks>/<xr:Link>) и по типу (<TypeLink>) —
+# хранят путь в <xr:DataPath>, обычным стриппингом он не снимается. Путь — внутренняя ссылка
+# платформы: в выгрузке она пишет имя, а если имя в контексте формы не разрешается — код.
+# Текстовое имя в расширении разрешается, только если его корень объявлен в <Attributes> самой
+# заимствованной формы; иначе платформа отвергает загрузку — «Неверный путь к полю - X».
+# Конфигуратор поэтому пишет текст там, где он разрешается, и код — где нет.
+# Грамматика кода (оракул «код в форму конфигурации → загрузка → выгрузка → имя», 8.3.27; эталоны
+# Конфигуратора УТ и Issue66Example4-7, JR2433, JR2976, JR49904):
+#   первый сегмент  <id>                — реквизит ИСХОДНОЙ формы (в расширении реквизиты
+#                                         перенумерованы в 1000000+, ссылка остаётся в нумерации базы);
+#                   <id>:<CurrentData>  — элемент-таблица исходной формы, её текущая строка;
+#   дальше          0:<uuid>            — реквизит/ТЧ/измерение/ресурс метаданных источника;
+#                   <id>                — колонка реквизита формы;
+#                   <id>:<AddColumn>    — колонка AdditionalColumns;
+#                   -<k>                — стандартный реквизит, код по виду объекта ($script:stdFieldCodes).
+# В расширении платформа код обратно в имя не переводит, а висячий код грузит молча — ошибка
+# кодирования не упадёт, а тихо не сработает. Поэтому кодируется только измеренное; прочее
+# вырезается с предупреждением: связь — удобство подбора, без неё форма работает, с неверной
+# текстовой — не грузится вовсе.
+$script:linkCurrentData = '02023637-7868-4a5f-8576-835a76e0c9ba'
+$script:linkAddColumn = '5bdad865-f2c5-434b-8041-ba4aad3b6687'
+# Коды стандартных реквизитов — свой порядок у каждого вида (оракул 8.3.27; в XML объекта
+# полного списка нет). Незамеренное (-1, скрытые поля, колонки ExtDimensionTypes) — не кодируем.
+$script:stdFieldCodes = @{
+	'Catalog' = @{ Code=-2; Description=-3; Parent=-4; Owner=-5; IsFolder=-6; DeletionMark=-7; Ref=-8; DataVersion=-9; Predefined=-10; PredefinedDataName=-13 }
+	'Document' = @{ Number=-2; Date=-3; DeletionMark=-4; Ref=-5; DataVersion=-6; Posted=-7; RegisterRecords=-8 }
+	'ChartOfCharacteristicTypes' = @{ Ref=-2; DataVersion=-3; DeletionMark=-4; Predefined=-5; Parent=-6; IsFolder=-7; Code=-8; Description=-9; ValueType=-11; PredefinedDataName=-14 }
+	'ChartOfAccounts' = @{ Ref=-2; DataVersion=-3; DeletionMark=-4; Predefined=-5; Parent=-6; Code=-7; Description=-8; Type=-10; OffBalance=-11; ExtDimensionTypes=-12; Order=-17; PredefinedDataName=-28 }
+	'ChartOfCalculationTypes' = @{ Code=-2; Description=-3; ActionPeriodIsBasic=-4; DeletionMark=-5; Ref=-6; DataVersion=-7; Predefined=-8; PredefinedDataName=-11; DisplacingCalculationTypes=-20; LeadingCalculationTypes=-30 }
+	'ExchangePlan' = @{ Code=-2; Description=-3; DeletionMark=-4; Ref=-6; DataVersion=-7; SentNo=-9; ReceivedNo=-10; ThisNode=-13; ExchangeDate=-14 }
+	'BusinessProcess' = @{ Number=-2; Date=-3; DeletionMark=-4; Ref=-5; DataVersion=-6; Completed=-7; HeadTask=-8; Started=-9 }
+	'Task' = @{ Number=-2; Date=-3; DeletionMark=-4; Ref=-5; DataVersion=-6; BusinessProcess=-7; RoutePoint=-8; Description=-9; Executed=-10 }
+	'InformationRegisterRecord' = @{ Period=-2; Recorder=-3; LineNumber=-4; Active=-5 }
+	'AccumulationRegisterRow' = @{ Period=-2; Recorder=-3; LineNumber=-4; Active=-5; RecordType=-9; SecondPeriod=-10; MinutePeriod=-11; HourPeriod=-12; DayPeriod=-13; WeekPeriod=-14; TenDaysPeriod=-15 }
+	'TabularSectionRow' = @{ LineNumber=-2 }
+}
+# Тип основного реквизита → вид для таблицы стандартных кодов (запись РС — сам реквизит,
+# набор записей РН — строка таблицы на нём)
+$script:mainAttrKinds = @{
+	'CatalogObject'='Catalog'; 'DocumentObject'='Document'; 'ChartOfCharacteristicTypesObject'='ChartOfCharacteristicTypes'
+	'ChartOfAccountsObject'='ChartOfAccounts'; 'ChartOfCalculationTypesObject'='ChartOfCalculationTypes'
+	'ExchangePlanObject'='ExchangePlan'; 'BusinessProcessObject'='BusinessProcess'; 'TaskObject'='Task'
+	'InformationRegisterRecordManager'='InformationRegisterRecord'; 'AccumulationRegisterRecordSet'='AccumulationRegisterRow'
+}
 
-	if ($xml -notmatch '<ChoiceParameterLinks>') { return $xml }
+# Путь связи → текст (разрешается в расширении), код или $null (вырезать).
+# $ctx: MainName, MainId, MainBorrowed, MainKind, AttrUuids (имя/«ТЧ.Реквизит» → uuid),
+# FormAttrIds, FormAttrCols («Реквизит.Колонка» → id), AddCols («<путь таблицы>.Колонка» → id),
+# Tables (имя элемента-таблицы → @{ Id; Path }).
+function Resolve-LinkDataPath {
+	param([string]$path, $ctx)
 
-	$mainPat = if ($mainAttrName) { [regex]::Escape($mainAttrName) } else { $null }
-	$mainId = if ($mainAttrName -and $formAttrIds.ContainsKey($mainAttrName)) { $formAttrIds[$mainAttrName] } else { "1" }
+	# Уже код (форма-источник сама из расширения, или висячая ссылка в типовой) — как есть
+	if ($path -match '^-?\d') { return $path }
+	$main = $ctx.MainName
 
-	$xml = [regex]::Replace($xml, '(?s)\s*<xr:Link>.*?</xr:Link>', {
+	# Текущая строка элемента-таблицы
+	$cd = [regex]::Match($path, '^Items\.([^.]+)\.CurrentData\.([^.]+)$')
+	if ($cd.Success) {
+		$tbl = $ctx.Tables[$cd.Groups[1].Value]
+		$field = $cd.Groups[2].Value
+		if (-not $tbl) { return $null }
+		$tp = $tbl.Path
+		$prefix = "$($tbl.Id):$($script:linkCurrentData)"
+		if ($main -and ($tp -ceq $main -or $tp.StartsWith("$main.", [StringComparison]::Ordinal))) {
+			# Таблица на основном реквизите: с заимствованным — текст разрешается (эталоны 7_1, УТ)
+			if ($ctx.MainBorrowed) { return $path }
+			if ($tp -ceq $main) {
+				# Строки самого основного реквизита — набор записей регистра накопления
+				if ($ctx.MainKind -ne 'AccumulationRegisterRow') { return $null }
+				if ($ctx.AttrUuids.ContainsKey($field)) { return "$prefix/0:$($ctx.AttrUuids[$field])" }
+				$code = $script:stdFieldCodes['AccumulationRegisterRow'][$field]
+				if ($code) { return "$prefix/$code" }
+				return $null
+			}
+			$ts = $tp.Substring($main.Length + 1)
+			if ($ts.Contains('.')) { return $null }
+			if ($ctx.AttrUuids.ContainsKey("$ts.$field")) { return "$prefix/0:$($ctx.AttrUuids["$ts.$field"])" }
+			if ($ctx.AddCols.ContainsKey("$tp.$field")) { return "$prefix/$($ctx.AddCols["$tp.$field"]):$($script:linkAddColumn)" }
+			$code = $script:stdFieldCodes['TabularSectionRow'][$field]
+			if ($code) { return "$prefix/$code" }
+			return $null
+		}
+		# Таблица на реквизите формы: реквизиты формы не заимствуются никогда — только код
+		# (текст платформа отвергает и с заимствованным основным реквизитом, оракул 8.3.27)
+		if ($ctx.FormAttrIds.ContainsKey($tp) -and $ctx.FormAttrCols.ContainsKey("$tp.$field")) {
+			return "$prefix/$($ctx.FormAttrCols["$tp.$field"])"
+		}
+		return $null
+	}
+
+	# Путь от основного реквизита формы
+	if ($main -and $path.StartsWith("$main.", [StringComparison]::Ordinal)) {
+		$rest = $path.Substring($main.Length + 1)
+		if ($ctx.MainBorrowed) {
+			# Реквизит объекта разрешается текстом и остаётся читаемым. Стандартное поле
+			# («Объект.Owner», «Объект.Date») — нет: платформа отвергает «Неверный путь к данным».
+			# Конфигуратор в этом случае оставляет ссылку на сам реквизит (эталон Issue66Example7_1).
+			if ($ctx.AttrUuids.ContainsKey($rest)) { return $path }
+			return $ctx.MainId
+		}
+		$segs = $rest.Split('.')
+		if ($segs.Count -eq 1) {
+			if ($ctx.AttrUuids.ContainsKey($rest)) { return "$($ctx.MainId)/0:$($ctx.AttrUuids[$rest])" }
+			$codes = if ($ctx.MainKind) { $script:stdFieldCodes[$ctx.MainKind] } else { $null }
+			if ($codes -and $codes.ContainsKey($rest)) { return "$($ctx.MainId)/$($codes[$rest])" }
+			return $null
+		}
+		if ($segs.Count -eq 2 -and $ctx.AttrUuids.ContainsKey($segs[0]) -and $ctx.AttrUuids.ContainsKey($rest)) {
+			return "$($ctx.MainId)/0:$($ctx.AttrUuids[$segs[0]])/0:$($ctx.AttrUuids[$rest])"
+		}
+		return $null
+	}
+
+	# Путь от реквизита формы — только по id исходной формы, в обоих режимах
+	$segs = $path.Split('.')
+	if ($ctx.FormAttrIds.ContainsKey($segs[0])) {
+		$attrId = $ctx.FormAttrIds[$segs[0]]
+		if ($segs.Count -eq 1) { return $attrId }
+		if ($segs.Count -eq 2 -and $ctx.FormAttrCols.ContainsKey($path)) { return "$attrId/$($ctx.FormAttrCols[$path])" }
+		return $null
+	}
+
+	# Прочее: с заимствованным основным реквизитом текст может разрешиться, без него — нет
+	if ($ctx.MainBorrowed) { return $path }
+	return $null
+}
+
+# Путь в <xr:DataPath> блока связи → разрешённый; неразрешимый блок вырезается целиком
+function Rewrite-LinkBlocks {
+	param([string]$xml, [string]$blockPattern, $ctx)
+
+	return [regex]::Replace($xml, $blockPattern, {
 		param($m)
 		$link = $m.Value
 		$dp = [regex]::Match($link, '<xr:DataPath[^>]*>([^<]+)</xr:DataPath>')
 		if (-not $dp.Success) { return $link }
 		$path = $dp.Groups[1].Value
-
-		# Путь на основной реквизит формы
-		if ($mainPat -and $path -match "^${mainPat}\.(.+)$") {
-			$attrName = $Matches[1]
-			if ($mainAttrBorrowed) {
-				# Реквизит объекта разрешается текстом и остаётся читаемым. Стандартное поле
-				# («Объект.Owner», «Объект.Date») — нет: платформа отвергает «Неверный путь к данным».
-				# Конфигуратор в этом случае оставляет ссылку на сам реквизит (эталон Issue66Example7_1).
-				if ($attrUuids.ContainsKey($attrName)) { return $link }
-				return [regex]::Replace($link, '(<xr:DataPath[^>]*>)[^<]+(</xr:DataPath>)', "`${1}${mainId}`${2}")
-			}
-			if ($attrUuids.ContainsKey($attrName)) {
-				return [regex]::Replace($link, '(<xr:DataPath[^>]*>)[^<]+(</xr:DataPath>)', "`${1}${mainId}/0:$($attrUuids[$attrName])`${2}")
-			}
+		$resolved = Resolve-LinkDataPath $path $ctx
+		if ($null -eq $resolved) {
+			$script:droppedLinks += $path
 			return ''
 		}
-
-		# Односегментный путь на реквизит формы — только по id исходной формы
-		if ($path -notmatch '\.' -and $formAttrIds.ContainsKey($path)) {
-			return [regex]::Replace($link, '(<xr:DataPath[^>]*>)[^<]+(</xr:DataPath>)', "`${1}$($formAttrIds[$path])`${2}")
-		}
-
-		# Уже непрозрачный путь (форма-источник сама из расширения) — не трогаем
-		if ($path -match '^\d') { return $link }
-
-		# С заимствованным основным реквизитом текстовый путь разрешается: элементы формы на месте,
-		# а их данные доступны через основной реквизит. Конфигуратор такие пути и оставляет текстом
-		# (эталон Issue66Example7_1: «Items.Товары.CurrentData.Характеристика» перенесён как есть).
-		if ($mainAttrBorrowed) { return $link }
-
-		# Прочее текстом не разрешается: платформа отвергает загрузку «Неверный путь к полю».
-		# Сюда попадают «Items.<Элемент>.CurrentData.<Поле>» — их кодировка непрозрачна и по
-		# имеющимся эталонам не воспроизводима. Связь параметров выбора — удобство подбора, а не
-		# данные: без неё форма заимствуется и работает, с ней — не грузится вовсе.
-		$script:droppedLinks += $path
-		return ''
+		if ($resolved -ceq $path) { return $link }
+		return $link.Substring(0, $dp.Groups[1].Index) + $resolved + $link.Substring($dp.Groups[1].Index + $dp.Groups[1].Length)
 	})
+}
 
+function Rewrite-ChoiceParameterLinks {
+	param([string]$xml, $ctx)
+
+	if ($xml -notmatch '<ChoiceParameterLinks>') { return $xml }
+	$xml = Rewrite-LinkBlocks $xml '(?s)\s*<xr:Link>.*?</xr:Link>' $ctx
 	# Опустевший контейнер платформе не нужен
 	$xml = [regex]::Replace($xml, '(?s)\s*<ChoiceParameterLinks>\s*</ChoiceParameterLinks>', '')
 	return $xml
+}
+
+# Связь по типу — тот же путь и то же правило (эталоны УТ ВводОстатков.ФормаРасчетыМеждуОрганизациями:
+# без основного реквизита — код, с ним — текст)
+function Rewrite-TypeLinks {
+	param([string]$xml, $ctx)
+
+	if ($xml -notmatch '<TypeLink>') { return $xml }
+	return Rewrite-LinkBlocks $xml '(?s)\s*<TypeLink>.*?</TypeLink>' $ctx
 }
 
 # Имена ПРЯМЫХ детей собственного <ChildObjects> объекта — для дедупа при повторном
@@ -689,8 +787,8 @@ function Resolve-ModuleKinds {
 }
 
 # --- 10. Helper: read source object XML ---
-# Имена реквизитов исходного объекта → uuid. Нужны для непрозрачной формы пути в ссылках
-# параметров выбора (см. Rewrite-ChoiceParameterLinks).
+# Имена реквизитов исходного объекта → uuid: реквизиты, ТЧ, измерения и ресурсы регистра, реквизиты
+# ТЧ — ключом «ТЧ.Реквизит». Нужны для кода пути в связях формы (см. Resolve-LinkDataPath).
 function Get-SourceAttributeUuids {
 	param([string]$typeName, [string]$objName)
 
@@ -712,10 +810,18 @@ function Get-SourceAttributeUuids {
 	if (-not $childObjects) { return $result }
 	foreach ($child in $childObjects.ChildNodes) {
 		if ($child.NodeType -ne 'Element') { continue }
-		if ($child.LocalName -notin @('Attribute','TabularSection')) { continue }
+		if ($child.LocalName -notin @('Attribute','TabularSection','Dimension','Resource')) { continue }
 		$uuid = $child.GetAttribute("uuid")
 		$nameNode = $child.SelectSingleNode("*[local-name()='Properties']/*[local-name()='Name']")
-		if ($uuid -and $nameNode) { $result[$nameNode.InnerText.Trim()] = $uuid }
+		if (-not ($uuid -and $nameNode)) { continue }
+		$name = $nameNode.InnerText.Trim()
+		$result[$name] = $uuid
+		if ($child.LocalName -ne 'TabularSection') { continue }
+		foreach ($tsAttr in @($child.SelectNodes("*[local-name()='ChildObjects']/*[local-name()='Attribute']"))) {
+			$tsUuid = $tsAttr.GetAttribute("uuid")
+			$tsName = $tsAttr.SelectSingleNode("*[local-name()='Properties']/*[local-name()='Name']")
+			if ($tsUuid -and $tsName) { $result["$name.$($tsName.InnerText.Trim())"] = $tsUuid }
+		}
 	}
 	return $result
 }
@@ -955,12 +1061,10 @@ function Borrow-Form {
 		Warn "  У формы нет основного реквизита — -BorrowMainAttribute проигнорирован"
 	}
 
-	# uuid реквизитов объекта нужны ровно там, где основной реквизит НЕ попал в форму:
-	# только тогда путь «<основной>.X» переводится в непрозрачный вид
-	# Имена реквизитов объекта нужны в обоих режимах: без заимствования — чтобы построить
-	# непрозрачный путь, с заимствованием — чтобы отличить реквизит (разрешается текстом) от
-	# стандартного поля (не разрешается)
+	# Имена реквизитов объекта нужны в обоих режимах: без заимствования — для кода пути в связях
+	# формы, с заимствованием — чтобы отличить реквизит (разрешается текстом) от стандартного поля
 	$srcAttrUuids = Get-SourceAttributeUuids $typeName $objName
+	$linkCtx = Get-LinkContext $srcFormEl $srcMainAttrName ([bool]$mainAttrInfo) $srcAttrUuids $formAttrIds
 
 	# AutoCommandBar: keep ChildItems (buttons with CommandName→0), Autofill→false
 	$autoCmdXml = ""
@@ -975,7 +1079,7 @@ function Borrow-Form {
 		$autoCmdXml = [regex]::Replace($autoCmdXml, '\s*<CommandSet/>', '')
 		# Strip data-binding tags whose root attribute isn't borrowed
 		$autoCmdXml = Strip-FormBindings $autoCmdXml $mainAttrName
-		$autoCmdXml = Rewrite-ChoiceParameterLinks $autoCmdXml $srcAttrUuids $formAttrIds $srcMainAttrName ([bool]$mainAttrInfo)
+		$autoCmdXml = Rewrite-ChoiceParameterLinks $autoCmdXml $linkCtx
 	}
 
 	# Картинка декорации в заимствованную форму не переносится: Конфигуратор выбрасывает <Picture>
@@ -1002,12 +1106,11 @@ function Borrow-Form {
 		# Strip data-binding tags whose root attribute isn't borrowed
 		# (DataPath/TitleDataPath/FooterDataPath/HeaderDataPath/MultipleValue*/RowPicture*)
 		$childItemsXml = Strip-FormBindings $childItemsXml $mainAttrName
-		$childItemsXml = Rewrite-ChoiceParameterLinks $childItemsXml $srcAttrUuids $formAttrIds $srcMainAttrName ([bool]$mainAttrInfo)
+		$childItemsXml = Rewrite-ChoiceParameterLinks $childItemsXml $linkCtx
 		# Вложенные CommandSet (у таблиц, полей табличного документа и т.п.) — целиком, см. выше
 		$childItemsXml = [regex]::Replace($childItemsXml, '(?s)\s*<CommandSet>.*?</CommandSet>', '')
 		$childItemsXml = [regex]::Replace($childItemsXml, '\s*<CommandSet/>', '')
-		# Strip TypeLink blocks with human-readable DataPath (Items.XXX — can't convert to UUID)
-		$childItemsXml = [regex]::Replace($childItemsXml, '(?s)\s*<TypeLink>\s*<xr:DataPath>Items\.[^<]*</xr:DataPath>.*?</TypeLink>', '')
+		$childItemsXml = Rewrite-TypeLinks $childItemsXml $linkCtx
 		# Strip element-level Events (base form handlers not in extension)
 		$childItemsXml = [regex]::Replace($childItemsXml, '(?s)\s*<Events>.*?</Events>', '')
 
@@ -1277,7 +1380,7 @@ function Borrow-Form {
 	Info "  Created: $formXmlFile"
 	if ($script:droppedLinks.Count -gt 0) {
 		$uniq = @($script:droppedLinks | Sort-Object -Unique)
-		Warn "  Вырезано связей параметров выбора: $($uniq.Count) — путь не разрешается в расширении: $($uniq -join ', ')"
+		Warn "  Вырезано связей формы: $($uniq.Count) — путь не разрешается в расширении: $($uniq -join ', ')"
 		$script:droppedLinks = @()
 	}
 
@@ -1572,6 +1675,54 @@ function Get-FormAttributeIds {
 	return $result
 }
 
+# Контекст разрешения путей в связях формы (см. Resolve-LinkDataPath) — всё по ИСХОДНОЙ форме:
+# колонки реквизитов формы, колонки AdditionalColumns, элементы-таблицы и вид основного реквизита.
+function Get-LinkContext {
+	param($formEl, [string]$mainName, [bool]$mainBorrowed, $attrUuids, $formAttrIds)
+
+	$cols = @{}; $addCols = @{}; $tables = @{}; $kind = $null
+	$attrs = $formEl.SelectSingleNode("*[local-name()='Attributes']")
+	if ($attrs) {
+		foreach ($a in $attrs.ChildNodes) {
+			if ($a.NodeType -ne 'Element' -or $a.LocalName -ne 'Attribute') { continue }
+			$nm = $a.GetAttribute("name")
+			$columns = $a.SelectSingleNode("*[local-name()='Columns']")
+			if ($columns) {
+				foreach ($c in $columns.ChildNodes) {
+					if ($c.NodeType -ne 'Element') { continue }
+					if ($c.LocalName -eq 'Column') {
+						$cols["$nm.$($c.GetAttribute('name'))"] = $c.GetAttribute('id')
+					} elseif ($c.LocalName -eq 'AdditionalColumns') {
+						$tblPath = $c.GetAttribute('table')
+						foreach ($ac in @($c.SelectNodes("*[local-name()='Column']"))) {
+							$addCols["$tblPath.$($ac.GetAttribute('name'))"] = $ac.GetAttribute('id')
+						}
+					}
+				}
+			}
+			if ($mainName -and $nm -ceq $mainName) {
+				$typeNode = $a.SelectSingleNode("*[local-name()='Type']/*[local-name()='Type']")
+				if ($typeNode) {
+					$tm = [regex]::Match($typeNode.InnerText.Trim(), '^(?:\w+:)?(\w+)\.')
+					if ($tm.Success -and $script:mainAttrKinds.ContainsKey($tm.Groups[1].Value)) { $kind = $script:mainAttrKinds[$tm.Groups[1].Value] }
+				}
+			}
+		}
+	}
+	$items = $formEl.SelectSingleNode("*[local-name()='ChildItems']")
+	if ($items) {
+		foreach ($t in @($items.SelectNodes(".//*[local-name()='Table']"))) {
+			$dp = $t.SelectSingleNode("*[local-name()='DataPath']")
+			if ($dp) { $tables[$t.GetAttribute('name')] = @{ Id = $t.GetAttribute('id'); Path = $dp.InnerText.Trim() } }
+		}
+	}
+	$mainId = if ($mainName -and $formAttrIds.ContainsKey($mainName)) { $formAttrIds[$mainName] } else { "1" }
+	return @{
+		MainName = $mainName; MainId = $mainId; MainBorrowed = $mainBorrowed; MainKind = $kind
+		AttrUuids = $attrUuids; FormAttrIds = $formAttrIds; FormAttrCols = $cols; AddCols = $addCols; Tables = $tables
+	}
+}
+
 function Get-MainAttributeInfo {
 	param($formEl, [string]$nsStripPattern)
 
@@ -1861,7 +2012,8 @@ function Build-AdoptedTabularSectionXml {
 function Collect-ReferenceTypes {
 	param([string[]]$typeXmls)
 
-	$result = @{}
+	# Порядок первого упоминания: от него зависит порядок заимствования в ChildObjects
+	$result = [ordered]@{}
 	foreach ($typeXml in $typeXmls) {
 		# cfg:CatalogRef.XXX, cfg:EnumRef.XXX, cfg:DocumentRef.XXX, etc.
 		$refMatches = [regex]::Matches($typeXml, 'cfg:(\w+)Ref\.(\w+)')
@@ -1869,7 +2021,7 @@ function Collect-ReferenceTypes {
 			$refPrefix = $m.Groups[1].Value  # e.g. "Catalog", "Enum", "Document"
 			$objName = $m.Groups[2].Value
 			$key = "${refPrefix}.${objName}"
-			if (-not $result.ContainsKey($key)) {
+			if (-not $result.Contains($key)) {
 				$result[$key] = @{ TypeName = $refPrefix; ObjName = $objName }
 			}
 		}
@@ -1878,7 +2030,7 @@ function Collect-ReferenceTypes {
 		foreach ($m in $dtMatches) {
 			$dtName = $m.Groups[1].Value
 			$key = "DefinedType.${dtName}"
-			if (-not $result.ContainsKey($key)) {
+			if (-not $result.Contains($key)) {
 				$result[$key] = @{ TypeName = "DefinedType"; ObjName = $dtName }
 			}
 		}

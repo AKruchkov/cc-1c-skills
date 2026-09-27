@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Form xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.17">
+	<Title>
+		<v8:item>
+			<v8:lang>ru</v8:lang>
+			<v8:content>Размещение</v8:content>
+		</v8:item>
+	</Title>
+	<AutoTitle>false</AutoTitle>
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+	<ChildItems>
+		<InputField name="Склад" id="1">
+			<ChoiceParameterLinks>
+				<xr:Link>
+					<xr:Name>Отбор.Дата</xr:Name>
+					<xr:DataPath xsi:type="xs:string">39/-3</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+				<xr:Link>
+					<xr:Name>Отбор.Номенклатура</xr:Name>
+					<xr:DataPath xsi:type="xs:string">39/0:UUID-001/0:UUID-002</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+				<xr:Link>
+					<xr:Name>Отбор.Подбор</xr:Name>
+					<xr:DataPath xsi:type="xs:string">40/41</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+				<xr:Link>
+					<xr:Name>Отбор.Режим</xr:Name>
+					<xr:DataPath xsi:type="xs:string">42</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+			</ChoiceParameterLinks>
+			<ContextMenu name="СкладКонтекстноеМеню" id="2"/>
+			<ExtendedTooltip name="СкладРасширеннаяПодсказка" id="3"/>
+		</InputField>
+		<Table name="Товары" id="4">
+			<ContextMenu name="ТоварыКонтекстноеМеню" id="5"/>
+			<AutoCommandBar name="ТоварыКоманднаяПанель" id="6"/>
+			<ExtendedTooltip name="ТоварыРасширеннаяПодсказка" id="7"/>
+			<SearchStringAddition name="ТоварыСтрокаПоиска" id="8">
+				<AdditionSource>
+					<Item>Товары</Item>
+					<Type>SearchStringRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ТоварыСтрокаПоискаКонтекстноеМеню" id="9"/>
+				<ExtendedTooltip name="ТоварыСтрокаПоискаРасширеннаяПодсказка" id="10"/>
+			</SearchStringAddition>
+			<ViewStatusAddition name="ТоварыСостояниеПросмотра" id="11">
+				<AdditionSource>
+					<Item>Товары</Item>
+					<Type>ViewStatusRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ТоварыСостояниеПросмотраКонтекстноеМеню" id="12"/>
+				<ExtendedTooltip name="ТоварыСостояниеПросмотраРасширеннаяПодсказка" id="13"/>
+			</ViewStatusAddition>
+			<SearchControlAddition name="ТоварыУправлениеПоиском" id="14">
+				<AdditionSource>
+					<Item>Товары</Item>
+					<Type>SearchControl</Type>
+				</AdditionSource>
+				<ContextMenu name="ТоварыУправлениеПоискомКонтекстноеМеню" id="15"/>
+				<ExtendedTooltip name="ТоварыУправлениеПоискомРасширеннаяПодсказка" id="16"/>
+			</SearchControlAddition>
+			<ChildItems>
+				<InputField name="ТоварыНоменклатура" id="17">
+					<TypeLink>
+						<xr:DataPath>4:UUID-003/1:UUID-004</xr:DataPath>
+						<xr:LinkItem>0</xr:LinkItem>
+					</TypeLink>
+					<ChoiceParameterLinks>
+						<xr:Link>
+							<xr:Name>Отбор.НомерСтроки</xr:Name>
+							<xr:DataPath xsi:type="xs:string">4:UUID-003/-2</xr:DataPath>
+							<xr:ValueChange>Clear</xr:ValueChange>
+						</xr:Link>
+					</ChoiceParameterLinks>
+					<ContextMenu name="ТоварыНоменклатураКонтекстноеМеню" id="18"/>
+					<ExtendedTooltip name="ТоварыНоменклатураРасширеннаяПодсказка" id="19"/>
+				</InputField>
+				<InputField name="ТоварыСтрана" id="20">
+					<ChoiceParameterLinks>
+						<xr:Link>
+							<xr:Name>Отбор.Номенклатура</xr:Name>
+							<xr:DataPath xsi:type="xs:string">4:UUID-003/0:UUID-002</xr:DataPath>
+							<xr:ValueChange>Clear</xr:ValueChange>
+						</xr:Link>
+					</ChoiceParameterLinks>
+					<ContextMenu name="ТоварыСтранаКонтекстноеМеню" id="21"/>
+					<ExtendedTooltip name="ТоварыСтранаРасширеннаяПодсказка" id="22"/>
+				</InputField>
+			</ChildItems>
+		</Table>
+		<Table name="Подбор" id="23">
+			<ContextMenu name="ПодборКонтекстноеМеню" id="24"/>
+			<AutoCommandBar name="ПодборКоманднаяПанель" id="25"/>
+			<ExtendedTooltip name="ПодборРасширеннаяПодсказка" id="26"/>
+			<SearchStringAddition name="ПодборСтрокаПоиска" id="27">
+				<AdditionSource>
+					<Item>Подбор</Item>
+					<Type>SearchStringRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ПодборСтрокаПоискаКонтекстноеМеню" id="28"/>
+				<ExtendedTooltip name="ПодборСтрокаПоискаРасширеннаяПодсказка" id="29"/>
+			</SearchStringAddition>
+			<ViewStatusAddition name="ПодборСостояниеПросмотра" id="30">
+				<AdditionSource>
+					<Item>Подбор</Item>
+					<Type>ViewStatusRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ПодборСостояниеПросмотраКонтекстноеМеню" id="31"/>
+				<ExtendedTooltip name="ПодборСостояниеПросмотраРасширеннаяПодсказка" id="32"/>
+			</ViewStatusAddition>
+			<SearchControlAddition name="ПодборУправлениеПоиском" id="33">
+				<AdditionSource>
+					<Item>Подбор</Item>
+					<Type>SearchControl</Type>
+				</AdditionSource>
+				<ContextMenu name="ПодборУправлениеПоискомКонтекстноеМеню" id="34"/>
+				<ExtendedTooltip name="ПодборУправлениеПоискомРасширеннаяПодсказка" id="35"/>
+			</SearchControlAddition>
+			<ChildItems>
+				<InputField name="ПодборСклад" id="36">
+					<ChoiceParameterLinks>
+						<xr:Link>
+							<xr:Name>Отбор.Склад</xr:Name>
+							<xr:DataPath xsi:type="xs:string">23:UUID-003/41</xr:DataPath>
+							<xr:ValueChange>Clear</xr:ValueChange>
+						</xr:Link>
+						<xr:Link>
+							<xr:Name>Отбор.Страна</xr:Name>
+							<xr:DataPath xsi:type="xs:string">4:UUID-003/1:UUID-004</xr:DataPath>
+							<xr:ValueChange>Clear</xr:ValueChange>
+						</xr:Link>
+					</ChoiceParameterLinks>
+					<ContextMenu name="ПодборСкладКонтекстноеМеню" id="37"/>
+					<ExtendedTooltip name="ПодборСкладРасширеннаяПодсказка" id="38"/>
+				</InputField>
+			</ChildItems>
+		</Table>
+	</ChildItems>
+	<Attributes/>
+	<BaseForm version="2.17">
+		<Title>
+			<v8:item>
+				<v8:lang>ru</v8:lang>
+				<v8:content>Размещение</v8:content>
+			</v8:item>
+		</Title>
+		<AutoTitle>false</AutoTitle>
+		<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+		<ChildItems>
+			<InputField name="Склад" id="1">
+				<ChoiceParameterLinks>
+					<xr:Link>
+						<xr:Name>Отбор.Дата</xr:Name>
+						<xr:DataPath xsi:type="xs:string">39/-3</xr:DataPath>
+						<xr:ValueChange>Clear</xr:ValueChange>
+					</xr:Link>
+					<xr:Link>
+						<xr:Name>Отбор.Номенклатура</xr:Name>
+						<xr:DataPath xsi:type="xs:string">39/0:UUID-001/0:UUID-002</xr:DataPath>
+						<xr:ValueChange>Clear</xr:ValueChange>
+					</xr:Link>
+					<xr:Link>
+						<xr:Name>Отбор.Подбор</xr:Name>
+						<xr:DataPath xsi:type="xs:string">40/41</xr:DataPath>
+						<xr:ValueChange>Clear</xr:ValueChange>
+					</xr:Link>
+					<xr:Link>
+						<xr:Name>Отбор.Режим</xr:Name>
+						<xr:DataPath xsi:type="xs:string">42</xr:DataPath>
+						<xr:ValueChange>Clear</xr:ValueChange>
+					</xr:Link>
+				</ChoiceParameterLinks>
+				<ContextMenu name="СкладКонтекстноеМеню" id="2"/>
+				<ExtendedTooltip name="СкладРасширеннаяПодсказка" id="3"/>
+			</InputField>
+			<Table name="Товары" id="4">
+				<ContextMenu name="ТоварыКонтекстноеМеню" id="5"/>
+				<AutoCommandBar name="ТоварыКоманднаяПанель" id="6"/>
+				<ExtendedTooltip name="ТоварыРасширеннаяПодсказка" id="7"/>
+				<SearchStringAddition name="ТоварыСтрокаПоиска" id="8">
+					<AdditionSource>
+						<Item>Товары</Item>
+						<Type>SearchStringRepresentation</Type>
+					</AdditionSource>
+					<ContextMenu name="ТоварыСтрокаПоискаКонтекстноеМеню" id="9"/>
+					<ExtendedTooltip name="ТоварыСтрокаПоискаРасширеннаяПодсказка" id="10"/>
+				</SearchStringAddition>
+				<ViewStatusAddition name="ТоварыСостояниеПросмотра" id="11">
+					<AdditionSource>
+						<Item>Товары</Item>
+						<Type>ViewStatusRepresentation</Type>
+					</AdditionSource>
+					<ContextMenu name="ТоварыСостояниеПросмотраКонтекстноеМеню" id="12"/>
+					<ExtendedTooltip name="ТоварыСостояниеПросмотраРасширеннаяПодсказка" id="13"/>
+				</ViewStatusAddition>
+				<SearchControlAddition name="ТоварыУправлениеПоиском" id="14">
+					<AdditionSource>
+						<Item>Товары</Item>
+						<Type>SearchControl</Type>
+					</AdditionSource>
+					<ContextMenu name="ТоварыУправлениеПоискомКонтекстноеМеню" id="15"/>
+					<ExtendedTooltip name="ТоварыУправлениеПоискомРасширеннаяПодсказка" id="16"/>
+				</SearchControlAddition>
+				<ChildItems>
+					<InputField name="ТоварыНоменклатура" id="17">
+						<TypeLink>
+							<xr:DataPath>4:UUID-003/1:UUID-004</xr:DataPath>
+							<xr:LinkItem>0</xr:LinkItem>
+						</TypeLink>
+						<ChoiceParameterLinks>
+							<xr:Link>
+								<xr:Name>Отбор.НомерСтроки</xr:Name>
+								<xr:DataPath xsi:type="xs:string">4:UUID-003/-2</xr:DataPath>
+								<xr:ValueChange>Clear</xr:ValueChange>
+							</xr:Link>
+						</ChoiceParameterLinks>
+						<ContextMenu name="ТоварыНоменклатураКонтекстноеМеню" id="18"/>
+						<ExtendedTooltip name="ТоварыНоменклатураРасширеннаяПодсказка" id="19"/>
+					</InputField>
+					<InputField name="ТоварыСтрана" id="20">
+						<ChoiceParameterLinks>
+							<xr:Link>
+								<xr:Name>Отбор.Номенклатура</xr:Name>
+								<xr:DataPath xsi:type="xs:string">4:UUID-003/0:UUID-002</xr:DataPath>
+								<xr:ValueChange>Clear</xr:ValueChange>
+							</xr:Link>
+						</ChoiceParameterLinks>
+						<ContextMenu name="ТоварыСтранаКонтекстноеМеню" id="21"/>
+						<ExtendedTooltip name="ТоварыСтранаРасширеннаяПодсказка" id="22"/>
+					</InputField>
+				</ChildItems>
+			</Table>
+			<Table name="Подбор" id="23">
+				<ContextMenu name="ПодборКонтекстноеМеню" id="24"/>
+				<AutoCommandBar name="ПодборКоманднаяПанель" id="25"/>
+				<ExtendedTooltip name="ПодборРасширеннаяПодсказка" id="26"/>
+				<SearchStringAddition name="ПодборСтрокаПоиска" id="27">
+					<AdditionSource>
+						<Item>Подбор</Item>
+						<Type>SearchStringRepresentation</Type>
+					</AdditionSource>
+					<ContextMenu name="ПодборСтрокаПоискаКонтекстноеМеню" id="28"/>
+					<ExtendedTooltip name="ПодборСтрокаПоискаРасширеннаяПодсказка" id="29"/>
+				</SearchStringAddition>
+				<ViewStatusAddition name="ПодборСостояниеПросмотра" id="30">
+					<AdditionSource>
+						<Item>Подбор</Item>
+						<Type>ViewStatusRepresentation</Type>
+					</AdditionSource>
+					<ContextMenu name="ПодборСостояниеПросмотраКонтекстноеМеню" id="31"/>
+					<ExtendedTooltip name="ПодборСостояниеПросмотраРасширеннаяПодсказка" id="32"/>
+				</ViewStatusAddition>
+				<SearchControlAddition name="ПодборУправлениеПоиском" id="33">
+					<AdditionSource>
+						<Item>Подбор</Item>
+						<Type>SearchControl</Type>
+					</AdditionSource>
+					<ContextMenu name="ПодборУправлениеПоискомКонтекстноеМеню" id="34"/>
+					<ExtendedTooltip name="ПодборУправлениеПоискомРасширеннаяПодсказка" id="35"/>
+				</SearchControlAddition>
+				<ChildItems>
+					<InputField name="ПодборСклад" id="36">
+						<ChoiceParameterLinks>
+							<xr:Link>
+								<xr:Name>Отбор.Склад</xr:Name>
+								<xr:DataPath xsi:type="xs:string">23:UUID-003/41</xr:DataPath>
+								<xr:ValueChange>Clear</xr:ValueChange>
+							</xr:Link>
+							<xr:Link>
+								<xr:Name>Отбор.Страна</xr:Name>
+								<xr:DataPath xsi:type="xs:string">4:UUID-003/1:UUID-004</xr:DataPath>
+								<xr:ValueChange>Clear</xr:ValueChange>
+							</xr:Link>
+						</ChoiceParameterLinks>
+						<ContextMenu name="ПодборСкладКонтекстноеМеню" id="37"/>
+						<ExtendedTooltip name="ПодборСкладРасширеннаяПодсказка" id="38"/>
+					</InputField>
+				</ChildItems>
+			</Table>
+		</ChildItems>
+		<Attributes/>
+	</BaseForm>
+</Form>

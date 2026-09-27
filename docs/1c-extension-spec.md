@@ -477,7 +477,33 @@ Form.xml заимствованной формы — **двухчастный ф
 
 6. **TitleDataPath** — аналогично DataPath: удаляются без основного реквизита, `Объект.*` сохраняются с ним.
 
-7. **TypeLink: удаление** (вариант B) — блоки `<TypeLink>` с `<xr:DataPath>Items.*</xr:DataPath>` удаляются (человекочитаемые пути, которые нельзя преобразовать в UUID-формат Конфигуратора).
+7. **Связи формы: текст или код** — путь в `<xr:DataPath>` связи параметров выбора (`<ChoiceParameterLinks>/<xr:Link>`) и связи по типу (`<TypeLink>`) — внутренняя ссылка платформы. В выгрузке она пишет имя, а если имя в контексте формы не разрешается, пишет код. Текст в расширении разрешается, только если его корень объявлен в `<Attributes>` заимствованной формы; иначе загрузка отвергается: «Неверный путь к полю». Конфигуратор поэтому пишет текст, где он разрешается, и код, где нет (эталоны УТ 8.3.27):
+
+   | Путь | Основной реквизит заимствован | Не заимствован |
+   |---|---|---|
+   | `<РеквизитФормы>`, `<РеквизитФормы>.<Колонка>` | код `N`, `N/<колонка>` | то же |
+   | `Объект.<реквизит/ТЧ/измерение/ресурс>`, `Объект.<ТЧ>.<реквизит>` | текст | `N/0:<uuid>`, `N/0:<uuid ТЧ>/0:<uuid>` |
+   | `Объект.<стандартный>` | `N` (ссылка на сам реквизит) | `N/-k` |
+   | `Items.<Т>.CurrentData.<Поле>`, `Т` на `Объект.<ТЧ>` | текст | `<id Т>:CD/0:<uuid>` · `<id Т>:CD/<id>:AC` · `<id Т>:CD/-2` |
+   | `Items.<Т>.CurrentData.<Колонка>`, `Т` на реквизите формы | `<id Т>:CD/<id колонки>` | то же |
+
+   Здесь `N` и `<id Т>` — id реквизита и элемента **исходной** формы (в расширении реквизиты перенумерованы в 1000000+, ссылка остаётся в нумерации базы); `<uuid>` — uuid метаданных источника; `CD` = `02023637-7868-4a5f-8576-835a76e0c9ba` (текущая строка таблицы), `AC` = `5bdad865-f2c5-434b-8041-ba4aad3b6687` (колонка `AdditionalColumns`, `<id>` — её id). Коды `-k` стандартных реквизитов у каждого вида свои (оракул 8.3.27):
+
+   | Вид | Коды |
+   |---|---|
+   | Справочник | −2 Code, −3 Description, −4 Parent, −5 Owner, −6 IsFolder, −7 DeletionMark, −8 Ref, −9 DataVersion, −10 Predefined, −13 PredefinedDataName |
+   | Документ | −2 Number, −3 Date, −4 DeletionMark, −5 Ref, −6 DataVersion, −7 Posted, −8 RegisterRecords |
+   | ПВХ | −2 Ref, −3 DataVersion, −4 DeletionMark, −5 Predefined, −6 Parent, −7 IsFolder, −8 Code, −9 Description, −11 ValueType, −14 PredefinedDataName |
+   | План счетов | −2 Ref, −3 DataVersion, −4 DeletionMark, −5 Predefined, −6 Parent, −7 Code, −8 Description, −10 Type, −11 OffBalance, −12 ExtDimensionTypes, −17 Order, −28 PredefinedDataName |
+   | ПВР | −2 Code, −3 Description, −4 ActionPeriodIsBasic, −5 DeletionMark, −6 Ref, −7 DataVersion, −8 Predefined, −11 PredefinedDataName, −20 DisplacingCalculationTypes, −30 LeadingCalculationTypes |
+   | План обмена | −2 Code, −3 Description, −4 DeletionMark, −6 Ref, −7 DataVersion, −9 SentNo, −10 ReceivedNo, −13 ThisNode, −14 ExchangeDate |
+   | Бизнес-процесс | −2 Number, −3 Date, −4 DeletionMark, −5 Ref, −6 DataVersion, −7 Completed, −8 HeadTask, −9 Started |
+   | Задача | −2 Number, −3 Date, −4 DeletionMark, −5 Ref, −6 DataVersion, −7 BusinessProcess, −8 RoutePoint, −9 Description, −10 Executed |
+   | Запись регистра сведений | −2 Period, −3 Recorder, −4 LineNumber, −5 Active |
+   | Строка набора записей регистра накопления (`<id Т>:CD/-k`) | −2 Period, −3 Recorder, −4 LineNumber, −5 Active, −9 RecordType, −10…−15 SecondPeriod…TenDaysPeriod |
+   | Строка ТЧ | −2 LineNumber |
+
+   В расширении платформа код обратно в имя не переводит, а висячий код грузит молча. Поэтому кодируется только измеренное; прочее (поля ссылочных реквизитов, динамический список, стандартные колонки строки `ExtDimensionTypes`) вырезается вместе со связью — с предупреждением. Уже закодированный путь переносится как есть.
 
 8. **Events элементов: удаление** (вариант B) — все `<Events>` внутри визуальных элементов удаляются в обеих секциях. Обработчики расширения добавляются через `elementEvents` в Part 1 с `callType`.
 
