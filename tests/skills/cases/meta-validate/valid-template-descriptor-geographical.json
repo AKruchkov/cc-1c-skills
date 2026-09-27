@@ -1,0 +1,8 @@
+{
+  "name": "Дескриптор макета с TemplateType GeographicalSchema (географическая схема) — допустимый вид",
+  "setup": "fixture:template-descriptor-geographical",
+  "params": { "objectPath": "Catalogs/Товары/Templates/Описание.xml" },
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру, а не выход проверяемого навыка; проверяется stdout",
+  "expect": { "stdoutContains": ["=== Validation OK: Template.Описание"] },
+  "skipPlatformVerify": "у макета заменён только вид в дескрипторе, тело осталось HTML — фикстура проверяет вход валидатора, не загрузку"
+}

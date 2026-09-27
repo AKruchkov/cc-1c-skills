@@ -1,4 +1,4 @@
-﻿# meta-validate v1.31 — Validate 1C metadata object structure
+﻿# meta-validate v1.32 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -249,7 +249,7 @@ $nestedDescriptorTypes = @("Form","Template")
 $descriptorKindValues = @{
 	"FormType"     = @("Managed","Ordinary")
 	"TemplateType" = @("SpreadsheetDocument","BinaryData","HTMLDocument","TextDocument","ActiveDocument",
-	                   "DataCompositionSchema","DataCompositionAppearanceTemplate","GraphicalSchema","AddIn")
+	                   "DataCompositionSchema","DataCompositionAppearanceTemplate","GraphicalSchema","GeographicalSchema","AddIn")
 }
 
 # GeneratedType categories by type

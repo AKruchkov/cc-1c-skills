@@ -607,7 +607,7 @@ ClassId — фиксированные идентификаторы классо
 
 | Свойство | Тип | Описание |
 |----------|-----|----------|
-| `TemplateType` | enum | Тип макета: `SpreadsheetDocument`, `BinaryData`, `HTMLDocument`, `TextDocument`, `ActiveDocument`, `DataCompositionSchema`, `DataCompositionAppearanceTemplate`, `GraphicalSchema`, `AddIn` |
+| `TemplateType` | enum | Тип макета: `SpreadsheetDocument`, `BinaryData`, `HTMLDocument`, `TextDocument`, `ActiveDocument`, `DataCompositionSchema`, `DataCompositionAppearanceTemplate`, `GraphicalSchema`, `GeographicalSchema`, `AddIn` |
 
 ### 6.3. CommonAttribute — общий реквизит
 

@@ -785,7 +785,7 @@ Ext/                               # Расширение конфигураци
         <Name>ОсновнаяСхемаКомпоновкиДанных</Name>
         <Synonym>...</Synonym>
         <Comment/>
-        <TemplateType>DataCompositionSchema</TemplateType>  <!-- SpreadsheetDocument | BinaryData | HTMLDocument | TextDocument | ActiveDocument | DataCompositionSchema | DataCompositionAppearanceTemplate | GraphicalSchema | AddIn — см. 1c-configuration-spec.md, «Template» -->
+        <TemplateType>DataCompositionSchema</TemplateType>  <!-- SpreadsheetDocument | BinaryData | HTMLDocument | TextDocument | ActiveDocument | DataCompositionSchema | DataCompositionAppearanceTemplate | GraphicalSchema | GeographicalSchema | AddIn — см. 1c-configuration-spec.md, «Template» -->
     </Properties>
 </Template>
 ```
