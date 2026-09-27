@@ -1865,15 +1865,26 @@ def main():
             c_type_xml = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', '', tm.group(1)).replace("\r\n", "\n") if tm else ""
             if c_type_xml:
                 type_xmls.append(c_type_xml)
+            def add_type(xml):
+                # Тип — последним свойством, после ExtendedConfigurationObject (как у Конфигуратора)
+                return re.sub(r'(?P<ind>[ \t]*)<ExtendedConfigurationObject>[^<]*</ExtendedConfigurationObject>',
+                              lambda mm: mm.group(0) + "\n" + mm.group('ind') + c_type_xml, xml, count=1)
             if test_object_borrowed("Constant", c_name):
-                info(f"  Already borrowed: Constant.{c_name}")
+                # Заимствованная раньше оболочкой (-Object Constant.X) — без типа: дописываем, как при
+                # слиянии реквизитов в уже заимствованный объект
+                ext_c_file = os.path.join(ext_dir, "Constants", f"{c_name}.xml")
+                with open(ext_c_file, "r", encoding="utf-8-sig", newline="") as fh:
+                    ext_c_text = fh.read()
+                if c_type_xml and '<Type>' not in ext_c_text:
+                    write_xml_file(ext_c_file, add_type(ext_c_text.replace("\r\n", "\n")))
+                    info(f"  Added type: Constant.{c_name}")
+                else:
+                    info(f"  Already borrowed: Constant.{c_name}")
                 continue
             src = read_source_object("Constant", c_name)
             borrowed_xml = build_borrowed_object_xml("Constant", c_name, src["Uuid"], src["Properties"])
             if c_type_xml:
-                # Тип — последним свойством, после ExtendedConfigurationObject (как у Конфигуратора)
-                borrowed_xml = re.sub(r'(?P<ind>[ \t]*)<ExtendedConfigurationObject>[^<]*</ExtendedConfigurationObject>',
-                                      lambda mm: mm.group(0) + "\n" + mm.group('ind') + c_type_xml, borrowed_xml, count=1)
+                borrowed_xml = add_type(borrowed_xml)
             target_dir = os.path.join(ext_dir, "Constants")
             os.makedirs(target_dir, exist_ok=True)
             target_file = os.path.join(target_dir, f"{c_name}.xml")
@@ -2364,34 +2375,6 @@ def main():
                     if cp_name not in borrowed_pic_set:
                         auto_cmd_xml = auto_cmd_xml[:pm.start()] + auto_cmd_xml[pm.end():]
 
-            # Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
-            # (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle).
-            # Порядок первого упоминания — как в PS-порте (от него зависит порядок в ChildObjects)
-            style_scan_xml = child_items_xml + src_cond_appearance_xml
-            referenced_styles = {}
-            for m in re.finditer(r'ref="style:(\w+)"[^>]*kind="StyleItem"', style_scan_xml):
-                referenced_styles[m.group(1)] = True
-            # Закрывающий тег может быть с префиксом: в оформлении значение — <dcscor:value>style:X</dcscor:value>
-            for m in re.finditer(r'>style:(\w+)</[\w:]+>', style_scan_xml):
-                referenced_styles[m.group(1)] = True
-
-            for style_name in referenced_styles:
-                if not test_object_borrowed("StyleItem", style_name):
-                    style_src_file = os.path.join(cfg_dir, "StyleItems", f"{style_name}.xml")
-                    if os.path.isfile(style_src_file):
-                        src = read_source_object("StyleItem", style_name)
-                        borrowed_xml = build_borrowed_object_xml("StyleItem", style_name, src["Uuid"], src["Properties"])
-                        target_dir = os.path.join(ext_dir, "StyleItems")
-                        os.makedirs(target_dir, exist_ok=True)
-                        target_file = os.path.join(target_dir, f"{style_name}.xml")
-                        write_xml_file(target_file, borrowed_xml)
-                        add_to_child_objects("StyleItem", style_name)
-                        borrowed_files.append(target_file)
-                        info(f"  Auto-borrowed: StyleItem.{style_name}")
-                    # Файла нет — встроенный стиль платформы (ImportantColor, AccentColor…): заимствовать
-                    # нечего, пропускаем молча. Пользовательский стиль, на который ссылается форма, в
-                    # валидном источнике существует всегда — предупреждение было только шумом.
-
             # Auto-borrow Enums + EnumValues referenced via DesignTimeRef
             referenced_enum_values = {}  # enum_name -> set of value_names
             for m in re.finditer(r'xr:DesignTimeRef">Enum\.(\w+)\.EnumValue\.(\w+)', child_items_xml):
@@ -2455,6 +2438,35 @@ def main():
                         info(f"  Auto-borrowed: Enum.{enum_name} (with {len(ev_xmls)} EnumValue(s))")
                     else:
                         warn(f"  Enum.{enum_name} not found in source config")
+
+    # Вне блока ChildItems: стили нужны и оформлению формы без элементов
+        # Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
+        # (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle).
+        # Порядок первого упоминания — как в PS-порте (от него зависит порядок в ChildObjects)
+        style_scan_xml = child_items_xml + src_cond_appearance_xml
+        referenced_styles = {}
+        for m in re.finditer(r'ref="style:(\w+)"[^>]*kind="StyleItem"', style_scan_xml):
+            referenced_styles[m.group(1)] = True
+        # Закрывающий тег может быть с префиксом: в оформлении значение — <dcscor:value>style:X</dcscor:value>
+        for m in re.finditer(r'>style:(\w+)</[\w:]+>', style_scan_xml):
+            referenced_styles[m.group(1)] = True
+
+        for style_name in referenced_styles:
+            if not test_object_borrowed("StyleItem", style_name):
+                style_src_file = os.path.join(cfg_dir, "StyleItems", f"{style_name}.xml")
+                if os.path.isfile(style_src_file):
+                    src = read_source_object("StyleItem", style_name)
+                    borrowed_xml = build_borrowed_object_xml("StyleItem", style_name, src["Uuid"], src["Properties"])
+                    target_dir = os.path.join(ext_dir, "StyleItems")
+                    os.makedirs(target_dir, exist_ok=True)
+                    target_file = os.path.join(target_dir, f"{style_name}.xml")
+                    write_xml_file(target_file, borrowed_xml)
+                    add_to_child_objects("StyleItem", style_name)
+                    borrowed_files.append(target_file)
+                    info(f"  Auto-borrowed: StyleItem.{style_name}")
+                # Файла нет — встроенный стиль платформы (ImportantColor, AccentColor…): заимствовать
+                # нечего, пропускаем молча. Пользовательский стиль, на который ссылается форма, в
+                # валидном источнике существует всегда — предупреждение было только шумом.
 
         # Открывающий тег <Form ...> берём из исходной формы — ради её объявлений пространств
         # имён, но version подставляем СВОЮ: форма обязана нести версию расширения, иначе

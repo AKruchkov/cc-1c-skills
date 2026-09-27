@@ -1253,41 +1253,6 @@ function Borrow-Form {
 			}
 		}
 
-		# Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
-		# (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle)
-		# Pattern 1: <Font ref="style:XXX" kind="StyleItem"/>, <TitleFont ref="style:XXX" ... kind="StyleItem"/>
-		# Pattern 2: <BackColor>style:XXX</BackColor>, <TextColor>style:XXX</TextColor>, etc.
-		# Порядок первого упоминания — как в Python-порте (от него зависит порядок в ChildObjects)
-		$styleScanXml = $childItemsXml + $srcCondAppearanceXml
-		$referencedStyles = [ordered]@{}
-		$styleRefs1 = [regex]::Matches($styleScanXml, 'ref="style:(\w+)"[^>]*kind="StyleItem"')
-		foreach ($m in $styleRefs1) { $referencedStyles[$m.Groups[1].Value] = $true }
-		# Закрывающий тег может быть с префиксом: в оформлении значение — <dcscor:value>style:X</dcscor:value>
-		$styleRefs2 = [regex]::Matches($styleScanXml, '>style:(\w+)</[\w:]+>')
-		foreach ($m in $styleRefs2) { $referencedStyles[$m.Groups[1].Value] = $true }
-
-		foreach ($styleName in $referencedStyles.Keys) {
-			if (-not (Test-ObjectBorrowed "StyleItem" $styleName)) {
-				$styleSrcFile = Join-Path (Join-Path $cfgDir "StyleItems") "${styleName}.xml"
-				if (Test-Path $styleSrcFile) {
-					$src = Read-SourceObject "StyleItem" $styleName
-					$borrowedXml = Build-BorrowedObjectXml "StyleItem" $styleName $src.Uuid $src.Properties
-					$targetDir = Join-Path $extDir "StyleItems"
-					if (-not (Test-Path $targetDir)) {
-						New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-					}
-					$targetFile = Join-Path $targetDir "${styleName}.xml"
-					$encBom = New-Object System.Text.UTF8Encoding($true)
-					[System.IO.File]::WriteAllText($targetFile, $borrowedXml, $encBom)
-					Add-ToChildObjects "StyleItem" $styleName
-					$script:borrowedFiles += $targetFile
-					Info "  Auto-borrowed: StyleItem.${styleName}"
-				}
-				# Файла нет — встроенный стиль платформы (ImportantColor, AccentColor…): заимствовать
-				# нечего, пропускаем молча. Пользовательский стиль, на который ссылается форма, в
-				# валидном источнике существует всегда — предупреждение было только шумом.
-			}
-		}
 		# Auto-borrow Enums + EnumValues referenced via DesignTimeRef in ChoiceParameters
 		# Collect Enum -> [EnumValue names] map
 		$dtRefs = [regex]::Matches($childItemsXml, 'xr:DesignTimeRef">Enum\.(\w+)\.EnumValue\.(\w+)')
@@ -1363,6 +1328,42 @@ function Borrow-Form {
 		}
 	}
 
+	# Вне блока ChildItems: стили нужны и оформлению формы без элементов
+	# Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
+	# (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle)
+	# Pattern 1: <Font ref="style:XXX" kind="StyleItem"/>, <TitleFont ref="style:XXX" ... kind="StyleItem"/>
+	# Pattern 2: <BackColor>style:XXX</BackColor>, <TextColor>style:XXX</TextColor>, etc.
+	# Порядок первого упоминания — как в Python-порте (от него зависит порядок в ChildObjects)
+	$styleScanXml = $childItemsXml + $srcCondAppearanceXml
+	$referencedStyles = [ordered]@{}
+	$styleRefs1 = [regex]::Matches($styleScanXml, 'ref="style:(\w+)"[^>]*kind="StyleItem"')
+	foreach ($m in $styleRefs1) { $referencedStyles[$m.Groups[1].Value] = $true }
+	# Закрывающий тег может быть с префиксом: в оформлении значение — <dcscor:value>style:X</dcscor:value>
+	$styleRefs2 = [regex]::Matches($styleScanXml, '>style:(\w+)</[\w:]+>')
+	foreach ($m in $styleRefs2) { $referencedStyles[$m.Groups[1].Value] = $true }
+
+	foreach ($styleName in $referencedStyles.Keys) {
+		if (-not (Test-ObjectBorrowed "StyleItem" $styleName)) {
+			$styleSrcFile = Join-Path (Join-Path $cfgDir "StyleItems") "${styleName}.xml"
+			if (Test-Path $styleSrcFile) {
+				$src = Read-SourceObject "StyleItem" $styleName
+				$borrowedXml = Build-BorrowedObjectXml "StyleItem" $styleName $src.Uuid $src.Properties
+				$targetDir = Join-Path $extDir "StyleItems"
+				if (-not (Test-Path $targetDir)) {
+					New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+				}
+				$targetFile = Join-Path $targetDir "${styleName}.xml"
+				$encBom = New-Object System.Text.UTF8Encoding($true)
+				[System.IO.File]::WriteAllText($targetFile, $borrowedXml, $encBom)
+				Add-ToChildObjects "StyleItem" $styleName
+				$script:borrowedFiles += $targetFile
+				Info "  Auto-borrowed: StyleItem.${styleName}"
+			}
+			# Файла нет — встроенный стиль платформы (ImportantColor, AccentColor…): заимствовать
+			# нечего, пропускаем молча. Пользовательский стиль, на который ссылается форма, в
+			# валидном источнике существует всегда — предупреждение было только шумом.
+		}
+	}
 	# Открывающий тег <Form ...> берём из исходной формы — ради её объявлений пространств имён,
 	# но version подставляем СВОЮ: форма обязана нести версию расширения, иначе платформа
 	# отвергает импорт (форма 2.13 внутри расширения 2.17). Раньше тег копировался целиком,
@@ -2296,18 +2297,29 @@ function Borrow-FormConstants {
 		$cTypeNode = $cDoc.SelectSingleNode("//*[local-name()='Constant']/*[local-name()='Properties']/*[local-name()='Type']")
 		$cTypeXml = if ($cTypeNode) { ([regex]::Replace($cTypeNode.OuterXml, '\s+xmlns(?::\w+)?="[^"]*"', '') -replace "`r?`n", "`r`n") } else { "" }
 		if ($cTypeXml) { $typeXmls += $cTypeXml }
+		# Тип — последним свойством, после ExtendedConfigurationObject (как у Конфигуратора)
+		$addType = {
+			param([string]$xml)
+			([regex]'(?<ind>[ \t]*)<ExtendedConfigurationObject>[^<]*</ExtendedConfigurationObject>').Replace($xml, {
+				param($mm) $mm.Value + "`r`n" + $mm.Groups['ind'].Value + $cTypeXml
+			}, 1)
+		}
 		if (Test-ObjectBorrowed "Constant" $cName) {
-			Info "  Already borrowed: Constant.${cName}"
+			# Заимствованная раньше оболочкой (-Object Constant.X) — без типа: дописываем, как при
+			# слиянии реквизитов в уже заимствованный объект
+			$extCFile = Join-Path (Join-Path $extDir "Constants") "${cName}.xml"
+			$extCText = [System.IO.File]::ReadAllText($extCFile, $encBom)
+			if ($cTypeXml -and $extCText -cnotmatch '<Type>') {
+				[System.IO.File]::WriteAllText($extCFile, (& $addType $extCText), $encBom)
+				Info "  Added type: Constant.${cName}"
+			} else {
+				Info "  Already borrowed: Constant.${cName}"
+			}
 			continue
 		}
 		$src = Read-SourceObject "Constant" $cName
 		$borrowedXml = Build-BorrowedObjectXml "Constant" $cName $src.Uuid $src.Properties
-		if ($cTypeXml) {
-			# Тип — последним свойством, после ExtendedConfigurationObject (как у Конфигуратора)
-			$borrowedXml = ([regex]'(?<ind>[ \t]*)<ExtendedConfigurationObject>[^<]*</ExtendedConfigurationObject>').Replace($borrowedXml, {
-				param($mm) $mm.Value + "`r`n" + $mm.Groups['ind'].Value + $cTypeXml
-			}, 1)
-		}
+		if ($cTypeXml) { $borrowedXml = & $addType $borrowedXml }
 		$targetDir = Join-Path $extDir "Constants"
 		if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
 		$targetFile = Join-Path $targetDir "${cName}.xml"

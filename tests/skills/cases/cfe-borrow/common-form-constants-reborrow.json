@@ -1,0 +1,126 @@
+{
+  "name": "Набор констант общей формы: константа, заимствованная раньше оболочкой без типа, получает тип",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Enum",
+        "name": "Сервисы",
+        "values": [
+          "Первый",
+          "Второй"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "Использовать",
+        "valueType": "Boolean"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "Сервис",
+        "valueType": "EnumRef.Сервисы"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "НеНаФорме",
+        "valueType": "String(10)"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "НастройкаКонстант"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "check": "Использовать",
+            "path": "НаборКонстант.Использовать"
+          },
+          {
+            "input": "Сервис",
+            "path": "НаборКонстант.Сервис"
+          }
+        ],
+        "attributes": [
+          {
+            "name": "НаборКонстант",
+            "type": "ConstantsSet",
+            "main": true
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/НастройкаКонстант/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": {
+        "-ExtensionPath": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}",
+        "-Object": "Constant.Сервис"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "CommonForm.НастройкаКонстант"
+  },
+  "expect": {
+    "fileContains": {
+      "file": "cfe/Constants/Сервис.xml",
+      "text": "<v8:Type>cfg:EnumRef.Сервисы</v8:Type>"
+    },
+    "files": [
+      "cfe/Enums/Сервисы.xml"
+    ]
+  },
+  "args_extra": [
+    "-BorrowMainAttribute",
+    "Form"
+  ]
+}
