@@ -1,0 +1,15 @@
+{
+  "name": "Справка к обработке 2.20 при ObjectName с косой чертой на конце — версия корня обработки",
+  "preRun": [
+    {
+      "script": "epf-init/scripts/init",
+      "args": { "-Name": "Обработка220", "-SrcDir": "{workDir}", "-FormatVersion": "2.20" }
+    }
+  ],
+  "params": { "objectName": "Обработка220/" },
+  "expect": {
+    "fileContains": [
+      { "file": "Обработка220/Ext/Help.xml", "text": "version=\"2.20\"" }
+    ]
+  }
+}

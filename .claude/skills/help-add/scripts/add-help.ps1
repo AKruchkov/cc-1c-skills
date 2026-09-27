@@ -1,4 +1,4 @@
-﻿# help-add v1.23 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# help-add v1.24 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -187,13 +187,15 @@ if (-not (Test-Path $extDir)) {
 # мержа веток), и только без него — подъёмом от каталога объекта. Не от SrcDir: у внешней обработки
 # корень <Имя>.xml лежит В SrcDir, подъём его не видел, и справка обработки 2.20 писалась 2.17.
 $formatVersion = $null
-$ownerXml = "$((Resolve-Path $objectDir).Path).xml"
+# Resolve-Path сохраняет завершающий разделитель («Обр/» → «…\Обр\»): без обрезки искался бы «…\Обр\.xml».
+$objectFull = (Resolve-Path $objectDir).Path.TrimEnd('\', '/')
+$ownerXml = "$objectFull.xml"
 if (Test-Path $ownerXml) {
 	$ownerHead = [System.IO.File]::ReadAllText($ownerXml, [System.Text.Encoding]::UTF8)
 	$ownerHead = $ownerHead.Substring(0, [Math]::Min(2000, $ownerHead.Length))
 	if ($ownerHead -match '<MetaDataObject[^>]+version="(\d+\.\d+)"') { $formatVersion = $Matches[1] }
 }
-if (-not $formatVersion) { $formatVersion = Detect-FormatVersion (Resolve-Path $objectDir).Path }
+if (-not $formatVersion) { $formatVersion = Detect-FormatVersion $objectFull }
 
 # Код языка идёт и в текст XML, и в имя файла страницы, поэтому проверяем его до записи:
 # пустое значение дало бы файл «.html» и пустой <Page></Page>, разделитель пути — запись мимо

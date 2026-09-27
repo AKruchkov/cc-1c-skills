@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# help-add v1.23 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
+# help-add v1.24 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
