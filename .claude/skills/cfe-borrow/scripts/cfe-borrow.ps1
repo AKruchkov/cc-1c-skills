@@ -1225,9 +1225,10 @@ function Borrow-Form {
 					Add-ToChildObjects "StyleItem" $styleName
 					$script:borrowedFiles += $targetFile
 					Info "  Auto-borrowed: StyleItem.${styleName}"
-				} else {
-					Warn "  StyleItem.${styleName} not found in source config"
 				}
+				# Файла нет — встроенный стиль платформы (ImportantColor, AccentColor…): заимствовать
+				# нечего, пропускаем молча. Пользовательский стиль, на который ссылается форма, в
+				# валидном источнике существует всегда — предупреждение было только шумом.
 			}
 		}
 		# Auto-borrow Enums + EnumValues referenced via DesignTimeRef in ChoiceParameters

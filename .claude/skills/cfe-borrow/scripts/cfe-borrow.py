@@ -2237,8 +2237,9 @@ def main():
                         add_to_child_objects("StyleItem", style_name)
                         borrowed_files.append(target_file)
                         info(f"  Auto-borrowed: StyleItem.{style_name}")
-                    else:
-                        warn(f"  StyleItem.{style_name} not found in source config")
+                    # Файла нет — встроенный стиль платформы (ImportantColor, AccentColor…): заимствовать
+                    # нечего, пропускаем молча. Пользовательский стиль, на который ссылается форма, в
+                    # валидном источнике существует всегда — предупреждение было только шумом.
 
             # Auto-borrow Enums + EnumValues referenced via DesignTimeRef
             referenced_enum_values = {}  # enum_name -> set of value_names
