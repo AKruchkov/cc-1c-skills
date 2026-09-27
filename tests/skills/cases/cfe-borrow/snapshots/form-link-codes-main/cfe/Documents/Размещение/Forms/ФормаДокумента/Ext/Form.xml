@@ -13,6 +13,11 @@
 			<DataPath>Объект.Склад</DataPath>
 			<ChoiceParameterLinks>
 				<xr:Link>
+					<xr:Name>Отбор.Ответственный</xr:Name>
+					<xr:DataPath xsi:type="xs:string">39</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+				<xr:Link>
 					<xr:Name>Отбор.Дата</xr:Name>
 					<xr:DataPath xsi:type="xs:string">39</xr:DataPath>
 					<xr:ValueChange>Clear</xr:ValueChange>
@@ -175,6 +180,11 @@
 			<InputField name="Склад" id="1">
 				<DataPath>Объект.Склад</DataPath>
 				<ChoiceParameterLinks>
+					<xr:Link>
+						<xr:Name>Отбор.Ответственный</xr:Name>
+						<xr:DataPath xsi:type="xs:string">39</xr:DataPath>
+						<xr:ValueChange>Clear</xr:ValueChange>
+					</xr:Link>
 					<xr:Link>
 						<xr:Name>Отбор.Дата</xr:Name>
 						<xr:DataPath xsi:type="xs:string">39</xr:DataPath>

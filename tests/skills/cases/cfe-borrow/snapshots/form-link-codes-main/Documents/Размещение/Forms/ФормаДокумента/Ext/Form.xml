@@ -13,6 +13,11 @@
 			<DataPath>Объект.Склад</DataPath>
 			<ChoiceParameterLinks>
 				<xr:Link>
+					<xr:Name>Отбор.Ответственный</xr:Name>
+					<xr:DataPath xsi:type="xs:string">Объект.Ответственный</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+				<xr:Link>
 					<xr:Name>Отбор.Дата</xr:Name>
 					<xr:DataPath xsi:type="xs:string">Объект.Date</xr:DataPath>
 					<xr:ValueChange>Clear</xr:ValueChange>

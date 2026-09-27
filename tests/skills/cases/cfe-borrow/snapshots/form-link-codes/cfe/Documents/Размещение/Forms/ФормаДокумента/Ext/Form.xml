@@ -12,13 +12,18 @@
 		<InputField name="Склад" id="1">
 			<ChoiceParameterLinks>
 				<xr:Link>
+					<xr:Name>Отбор.Ответственный</xr:Name>
+					<xr:DataPath xsi:type="xs:string">39/0:UUID-001</xr:DataPath>
+					<xr:ValueChange>Clear</xr:ValueChange>
+				</xr:Link>
+				<xr:Link>
 					<xr:Name>Отбор.Дата</xr:Name>
 					<xr:DataPath xsi:type="xs:string">39/-3</xr:DataPath>
 					<xr:ValueChange>Clear</xr:ValueChange>
 				</xr:Link>
 				<xr:Link>
 					<xr:Name>Отбор.Номенклатура</xr:Name>
-					<xr:DataPath xsi:type="xs:string">39/0:UUID-001/0:UUID-002</xr:DataPath>
+					<xr:DataPath xsi:type="xs:string">39/0:UUID-002/0:UUID-003</xr:DataPath>
 					<xr:ValueChange>Clear</xr:ValueChange>
 				</xr:Link>
 				<xr:Link>
@@ -66,13 +71,13 @@
 			<ChildItems>
 				<InputField name="ТоварыНоменклатура" id="17">
 					<TypeLink>
-						<xr:DataPath>4:UUID-003/1:UUID-004</xr:DataPath>
+						<xr:DataPath>4:UUID-004/1:UUID-005</xr:DataPath>
 						<xr:LinkItem>0</xr:LinkItem>
 					</TypeLink>
 					<ChoiceParameterLinks>
 						<xr:Link>
 							<xr:Name>Отбор.НомерСтроки</xr:Name>
-							<xr:DataPath xsi:type="xs:string">4:UUID-003/-2</xr:DataPath>
+							<xr:DataPath xsi:type="xs:string">4:UUID-004/-2</xr:DataPath>
 							<xr:ValueChange>Clear</xr:ValueChange>
 						</xr:Link>
 					</ChoiceParameterLinks>
@@ -83,7 +88,7 @@
 					<ChoiceParameterLinks>
 						<xr:Link>
 							<xr:Name>Отбор.Номенклатура</xr:Name>
-							<xr:DataPath xsi:type="xs:string">4:UUID-003/0:UUID-002</xr:DataPath>
+							<xr:DataPath xsi:type="xs:string">4:UUID-004/0:UUID-003</xr:DataPath>
 							<xr:ValueChange>Clear</xr:ValueChange>
 						</xr:Link>
 					</ChoiceParameterLinks>
@@ -125,12 +130,12 @@
 					<ChoiceParameterLinks>
 						<xr:Link>
 							<xr:Name>Отбор.Склад</xr:Name>
-							<xr:DataPath xsi:type="xs:string">23:UUID-003/41</xr:DataPath>
+							<xr:DataPath xsi:type="xs:string">23:UUID-004/41</xr:DataPath>
 							<xr:ValueChange>Clear</xr:ValueChange>
 						</xr:Link>
 						<xr:Link>
 							<xr:Name>Отбор.Страна</xr:Name>
-							<xr:DataPath xsi:type="xs:string">4:UUID-003/1:UUID-004</xr:DataPath>
+							<xr:DataPath xsi:type="xs:string">4:UUID-004/1:UUID-005</xr:DataPath>
 							<xr:ValueChange>Clear</xr:ValueChange>
 						</xr:Link>
 					</ChoiceParameterLinks>
@@ -154,13 +159,18 @@
 			<InputField name="Склад" id="1">
 				<ChoiceParameterLinks>
 					<xr:Link>
+						<xr:Name>Отбор.Ответственный</xr:Name>
+						<xr:DataPath xsi:type="xs:string">39/0:UUID-001</xr:DataPath>
+						<xr:ValueChange>Clear</xr:ValueChange>
+					</xr:Link>
+					<xr:Link>
 						<xr:Name>Отбор.Дата</xr:Name>
 						<xr:DataPath xsi:type="xs:string">39/-3</xr:DataPath>
 						<xr:ValueChange>Clear</xr:ValueChange>
 					</xr:Link>
 					<xr:Link>
 						<xr:Name>Отбор.Номенклатура</xr:Name>
-						<xr:DataPath xsi:type="xs:string">39/0:UUID-001/0:UUID-002</xr:DataPath>
+						<xr:DataPath xsi:type="xs:string">39/0:UUID-002/0:UUID-003</xr:DataPath>
 						<xr:ValueChange>Clear</xr:ValueChange>
 					</xr:Link>
 					<xr:Link>
@@ -208,13 +218,13 @@
 				<ChildItems>
 					<InputField name="ТоварыНоменклатура" id="17">
 						<TypeLink>
-							<xr:DataPath>4:UUID-003/1:UUID-004</xr:DataPath>
+							<xr:DataPath>4:UUID-004/1:UUID-005</xr:DataPath>
 							<xr:LinkItem>0</xr:LinkItem>
 						</TypeLink>
 						<ChoiceParameterLinks>
 							<xr:Link>
 								<xr:Name>Отбор.НомерСтроки</xr:Name>
-								<xr:DataPath xsi:type="xs:string">4:UUID-003/-2</xr:DataPath>
+								<xr:DataPath xsi:type="xs:string">4:UUID-004/-2</xr:DataPath>
 								<xr:ValueChange>Clear</xr:ValueChange>
 							</xr:Link>
 						</ChoiceParameterLinks>
@@ -225,7 +235,7 @@
 						<ChoiceParameterLinks>
 							<xr:Link>
 								<xr:Name>Отбор.Номенклатура</xr:Name>
-								<xr:DataPath xsi:type="xs:string">4:UUID-003/0:UUID-002</xr:DataPath>
+								<xr:DataPath xsi:type="xs:string">4:UUID-004/0:UUID-003</xr:DataPath>
 								<xr:ValueChange>Clear</xr:ValueChange>
 							</xr:Link>
 						</ChoiceParameterLinks>
@@ -267,12 +277,12 @@
 						<ChoiceParameterLinks>
 							<xr:Link>
 								<xr:Name>Отбор.Склад</xr:Name>
-								<xr:DataPath xsi:type="xs:string">23:UUID-003/41</xr:DataPath>
+								<xr:DataPath xsi:type="xs:string">23:UUID-004/41</xr:DataPath>
 								<xr:ValueChange>Clear</xr:ValueChange>
 							</xr:Link>
 							<xr:Link>
 								<xr:Name>Отбор.Страна</xr:Name>
-								<xr:DataPath xsi:type="xs:string">4:UUID-003/1:UUID-004</xr:DataPath>
+								<xr:DataPath xsi:type="xs:string">4:UUID-004/1:UUID-005</xr:DataPath>
 								<xr:ValueChange>Clear</xr:ValueChange>
 							</xr:Link>
 						</ChoiceParameterLinks>

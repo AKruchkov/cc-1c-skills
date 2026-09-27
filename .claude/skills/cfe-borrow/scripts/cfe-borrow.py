@@ -147,7 +147,8 @@ MAIN_ATTR_KINDS = {
 
 def resolve_link_data_path(path, ctx):
     """Путь связи → текст (разрешается в расширении), код или None (вырезать).
-    ctx: MainName, MainId, MainBorrowed, MainKind, AttrUuids (имя/«ТЧ.Реквизит» → uuid),
+    ctx: MainName, MainId, MainBorrowed, MainKind, BorrowedNames (реквизиты объекта в расширении;
+    None — все), AttrUuids (имя/«ТЧ.Реквизит» → uuid),
     FormAttrIds, FormAttrCols («Реквизит.Колонка» → id), AddCols («<путь таблицы>.Колонка» → id),
     Tables (имя элемента-таблицы → {Id, Path})."""
     # Уже код (форма-источник сама из расширения, или висячая ссылка в типовой) — как есть
@@ -196,10 +197,13 @@ def resolve_link_data_path(path, ctx):
     if main and path.startswith(main + '.'):
         rest = path[len(main) + 1:]
         if ctx['MainBorrowed']:
-            # Реквизит объекта разрешается текстом и остаётся читаемым. Стандартное поле
-            # («Объект.Owner», «Объект.Date») — нет: платформа отвергает «Неверный путь к данным».
-            # Конфигуратор в этом случае оставляет ссылку на сам реквизит (эталон Issue66Example7_1).
-            if rest in attr_uuids:
+            # Заимствованный реквизит объекта разрешается текстом и остаётся читаемым. Стандартное
+            # поле («Объект.Owner», «Объект.Date») и реквизит, который в расширение не попал (в режиме
+            # Form заимствуется только используемое формой) — нет: платформа отвергает «Неверный путь
+            # к полю». Конфигуратор в обоих случаях ставит ссылку на сам основной реквизит (эталоны
+            # Issue66Example7_1 и УТ Претензии.ФормаЭлементаСамообслуживание).
+            borrowed = ctx['BorrowedNames'] is None or rest.split('.')[0] in ctx['BorrowedNames']
+            if borrowed and rest in attr_uuids:
                 return path
             return ctx['MainId']
         segs = rest.split('.')
@@ -1370,7 +1374,7 @@ def main():
             break
         return result
 
-    def get_link_context(form_el, main_name, main_borrowed, attr_uuids, form_attr_ids):
+    def get_link_context(form_el, main_name, main_borrowed, borrowed_names, attr_uuids, form_attr_ids):
         """Контекст разрешения путей в связях формы (см. resolve_link_data_path) — всё по ИСХОДНОЙ
         форме: колонки реквизитов формы, колонки AdditionalColumns, элементы-таблицы и вид основного
         реквизита."""
@@ -1414,6 +1418,7 @@ def main():
                             break
         main_id = form_attr_ids.get(main_name, "1") if main_name else "1"
         return {"MainName": main_name, "MainId": main_id, "MainBorrowed": main_borrowed, "MainKind": kind,
+                "BorrowedNames": borrowed_names,
                 "AttrUuids": attr_uuids, "FormAttrIds": form_attr_ids, "FormAttrCols": cols,
                 "AddCols": add_cols, "Tables": tables}
 
@@ -2080,8 +2085,13 @@ def main():
         # Имена реквизитов объекта нужны в обоих режимах: без заимствования — для кода пути в связях
         # формы, с заимствованием — чтобы отличить реквизит (разрешается текстом) от стандартного поля
         src_attr_uuids = get_source_attribute_uuids(type_name, obj_name)
+        # Реквизиты объекта, которые попадут в расширение: в режиме Form — только используемые формой
+        # (тот же сбор, что в borrow_main_attribute), в режиме All — все (None)
+        borrowed_names = None
+        if main_attr_info is not None and borrow_main_attribute_mode == "Form":
+            borrowed_names = collect_form_data_paths(src_form_xml_path, src_main_attr_name)["FirstLevel"]
         link_ctx = get_link_context(src_form_el, src_main_attr_name, main_attr_info is not None,
-                                    src_attr_uuids, form_attr_ids)
+                                    borrowed_names, src_attr_uuids, form_attr_ids)
         main_attr_name = main_attr_info["Name"] if main_attr_info else ""
         if borrow_main_attr and main_attr_info is None:
             warn("  У формы нет основного реквизита — -BorrowMainAttribute проигнорирован")

@@ -126,7 +126,8 @@ $script:mainAttrKinds = @{
 }
 
 # Путь связи → текст (разрешается в расширении), код или $null (вырезать).
-# $ctx: MainName, MainId, MainBorrowed, MainKind, AttrUuids (имя/«ТЧ.Реквизит» → uuid),
+# $ctx: MainName, MainId, MainBorrowed, MainKind, BorrowedNames (реквизиты объекта в расширении;
+# $null — все), AttrUuids (имя/«ТЧ.Реквизит» → uuid),
 # FormAttrIds, FormAttrCols («Реквизит.Колонка» → id), AddCols («<путь таблицы>.Колонка» → id),
 # Tables (имя элемента-таблицы → @{ Id; Path }).
 function Resolve-LinkDataPath {
@@ -175,10 +176,13 @@ function Resolve-LinkDataPath {
 	if ($main -and $path.StartsWith("$main.", [StringComparison]::Ordinal)) {
 		$rest = $path.Substring($main.Length + 1)
 		if ($ctx.MainBorrowed) {
-			# Реквизит объекта разрешается текстом и остаётся читаемым. Стандартное поле
-			# («Объект.Owner», «Объект.Date») — нет: платформа отвергает «Неверный путь к данным».
-			# Конфигуратор в этом случае оставляет ссылку на сам реквизит (эталон Issue66Example7_1).
-			if ($ctx.AttrUuids.ContainsKey($rest)) { return $path }
+			# Заимствованный реквизит объекта разрешается текстом и остаётся читаемым. Стандартное
+			# поле («Объект.Owner», «Объект.Date») и реквизит, который в расширение не попал (в режиме
+			# Form заимствуется только используемое формой) — нет: платформа отвергает «Неверный путь
+			# к полю». Конфигуратор в обоих случаях ставит ссылку на сам основной реквизит (эталоны
+			# Issue66Example7_1 и УТ Претензии.ФормаЭлементаСамообслуживание).
+			$borrowed = $null -eq $ctx.BorrowedNames -or $ctx.BorrowedNames.ContainsKey($rest.Split('.')[0])
+			if ($borrowed -and $ctx.AttrUuids.ContainsKey($rest)) { return $path }
 			return $ctx.MainId
 		}
 		$segs = $rest.Split('.')
@@ -1064,7 +1068,13 @@ function Borrow-Form {
 	# Имена реквизитов объекта нужны в обоих режимах: без заимствования — для кода пути в связях
 	# формы, с заимствованием — чтобы отличить реквизит (разрешается текстом) от стандартного поля
 	$srcAttrUuids = Get-SourceAttributeUuids $typeName $objName
-	$linkCtx = Get-LinkContext $srcFormEl $srcMainAttrName ([bool]$mainAttrInfo) $srcAttrUuids $formAttrIds
+	# Реквизиты объекта, которые попадут в расширение: в режиме Form — только используемые формой
+	# (тот же сбор, что в Borrow-MainAttribute), в режиме All — все ($null)
+	$borrowedNames = $null
+	if ($mainAttrInfo -and $BorrowMainAttribute -eq 'Form') {
+		$borrowedNames = (Collect-FormDataPaths $srcFormXmlPath $srcMainAttrName).FirstLevel
+	}
+	$linkCtx = Get-LinkContext $srcFormEl $srcMainAttrName ([bool]$mainAttrInfo) $borrowedNames $srcAttrUuids $formAttrIds
 
 	# AutoCommandBar: keep ChildItems (buttons with CommandName→0), Autofill→false
 	$autoCmdXml = ""
@@ -1678,7 +1688,7 @@ function Get-FormAttributeIds {
 # Контекст разрешения путей в связях формы (см. Resolve-LinkDataPath) — всё по ИСХОДНОЙ форме:
 # колонки реквизитов формы, колонки AdditionalColumns, элементы-таблицы и вид основного реквизита.
 function Get-LinkContext {
-	param($formEl, [string]$mainName, [bool]$mainBorrowed, $attrUuids, $formAttrIds)
+	param($formEl, [string]$mainName, [bool]$mainBorrowed, $borrowedNames, $attrUuids, $formAttrIds)
 
 	$cols = @{}; $addCols = @{}; $tables = @{}; $kind = $null
 	$attrs = $formEl.SelectSingleNode("*[local-name()='Attributes']")
@@ -1718,7 +1728,7 @@ function Get-LinkContext {
 	}
 	$mainId = if ($mainName -and $formAttrIds.ContainsKey($mainName)) { $formAttrIds[$mainName] } else { "1" }
 	return @{
-		MainName = $mainName; MainId = $mainId; MainBorrowed = $mainBorrowed; MainKind = $kind
+		MainName = $mainName; MainId = $mainId; MainBorrowed = $mainBorrowed; MainKind = $kind; BorrowedNames = $borrowedNames
 		AttrUuids = $attrUuids; FormAttrIds = $formAttrIds; FormAttrCols = $cols; AddCols = $addCols; Tables = $tables
 	}
 }
