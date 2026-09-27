@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# db-load-xml v1.32 — Load 1C configuration from XML files
+# db-load-xml v1.33 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -962,14 +962,16 @@ def main():
         # Поток — stdout, как у PS1-порта: предупреждение относится к содержимому загрузки, а не к
         # отказу навыка, и при code 0 остаётся предупреждением. Раньше py писал его в stderr —
         # наблюдаемое поведение портов расходилось, и один кейс не мог проверить оба.
-        if silent_failures:
+        # Только при успехе: при провале лог уже выведен целиком, а блок повторял бы его строки
+        # под заголовком «reported success» — неправдой рядом с «Error … (code: N)».
+        if exit_code == 0 and silent_failures:
             print(
                 f"[warning] platform reported success, but the log contains "
                 f"{len(silent_failures)} problem(s):"
             )
             for f in silent_failures:
                 print(f"  {f}")
-            if args.StrictLog and exit_code == 0:
+            if args.StrictLog:
                 exit_code = 1
 
         # Расширение могло загрузиться «успешно» и остаться неприменимым — спрашиваем платформу.

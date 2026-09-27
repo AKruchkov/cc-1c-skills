@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# db-load-git v1.30 — Load Git changes into 1C database
+# db-load-git v1.31 — Load Git changes into 1C database
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -1108,14 +1108,16 @@ def main():
         # разный — от отброшенного свойства до нерабочей на этой платформе конфигурации. Подсказку
         # про -StrictLog не даём: операция уже выполнена, повторять её ради того же текста незачем.
         silent_failures = find_silent_rejections(log_content)
-        if silent_failures:
+        # Только при успехе: при провале лог уже выведен целиком, а блок повторял бы его строки
+        # под заголовком «reported success» — неправдой рядом с «Error … (code: N)».
+        if exit_code == 0 and silent_failures:
             print(
                 f"[warning] platform reported success, but the log contains "
                 f"{len(silent_failures)} problem(s):"
             )
             for line in silent_failures:
                 print(f"  {line}")
-            if args.StrictLog and exit_code == 0:
+            if args.StrictLog:
                 exit_code = 1
 
         # Расширение могло загрузиться «успешно» и остаться неприменимым — спрашиваем платформу.

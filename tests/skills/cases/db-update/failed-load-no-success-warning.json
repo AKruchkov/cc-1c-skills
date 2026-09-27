@@ -1,0 +1,19 @@
+{
+  "name": "Провал загрузки (код 1) со строкой-отказом в логе: лог выведен, блока «reported success» нет (fake platform)",
+  "fakePlatform": {
+    "log": "﻿Загрузка конфигурации из файлов.\r\nНеверное свойство объекта метаданных. Свойство LineNumberLength не входит в состав объекта метаданных TabularSection. - LineNumberLength\r\n",
+    "exit": 1
+  },
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "Свойство LineNumberLength не входит в состав объекта метаданных",
+    "stdoutNotContains": "reported success"
+  },
+  "noSnapshot": "навык ничего не пишет в рабочий каталог — проверяется вывод при провале платформы"
+}

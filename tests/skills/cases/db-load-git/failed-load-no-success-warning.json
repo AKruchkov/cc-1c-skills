@@ -1,0 +1,76 @@
+{
+  "name": "Провал загрузки (код 1) со строкой-отказом в логе: лог выведен, блока «reported success» нет (fake platform)",
+  "fakePlatform": {
+    "log": "﻿Загрузка конфигурации из файлов.\r\nНеверное свойство объекта метаданных. Свойство LineNumberLength не входит в состав объекта метаданных TabularSection. - LineNumberLength\r\n",
+    "exit": 1
+  },
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "src/Configuration.xml",
+        "content": "<MetaDataObject>\n\t<Configuration>\n\t\t<ChildObjects>\n\t\t\t<Catalog>Товары</Catalog>\n\t\t</ChildObjects>\n\t</Configuration>\n</MetaDataObject>\n"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "src/Catalogs/Товары.xml",
+        "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects/>\n\t</Catalog>\n</MetaDataObject>\n"
+      }
+    },
+    {
+      "git": [
+        "-C",
+        "src",
+        "init",
+        "-q"
+      ]
+    },
+    {
+      "git": [
+        "-C",
+        "src",
+        "add",
+        "-A"
+      ]
+    },
+    {
+      "git": [
+        "-C",
+        "src",
+        "commit",
+        "-qm",
+        "base"
+      ]
+    },
+    {
+      "writeFile": {
+        "path": "src/Catalogs/Товары.xml",
+        "content": "<MetaDataObject>\n\t<Catalog>\n\t\t<ChildObjects/>\n\t</Catalog>\n</MetaDataObject>\n<!-- изменение -->\n"
+      }
+    },
+    {
+      "git": [
+        "-C",
+        "src",
+        "add",
+        "-A"
+      ]
+    }
+  ],
+  "args_extra": [
+    "-V8Path",
+    "{fakePlatform}",
+    "-InfoBasePath",
+    "{workDir}/ib",
+    "-ConfigDir",
+    "{workDir}/src",
+    "-Source",
+    "Staged"
+  ],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "Свойство LineNumberLength не входит в состав объекта метаданных",
+    "stdoutNotContains": "reported success"
+  },
+  "noSnapshot": "навык ничего не пишет в рабочий каталог — проверяется вывод при провале платформы"
+}

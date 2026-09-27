@@ -1,4 +1,4 @@
-﻿# db-load-xml v1.32 — Load 1C configuration from XML files
+﻿# db-load-xml v1.33 — Load 1C configuration from XML files
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: *nix-раскладку платформы (/opt/1cv8/<ver>/1cv8, без .exe) знает только .py-порт — PS на *nix не исполняется.
 <#
@@ -931,10 +931,12 @@ try {
     # Причину не называем: строки лога печатаются следом и говорят за себя, а класс проблемы
     # разный — от отброшенного свойства до нерабочей на этой платформе конфигурации. Подсказку
     # про -StrictLog не даём: загрузка уже выполнена, повторять её ради того же текста незачем.
-    if ($silentFailures.Count -gt 0) {
+    # Только при успехе: при провале лог уже выведен целиком, а блок повторял бы его строки
+    # под заголовком «reported success» — неправдой рядом с «Error … (code: N)».
+    if ($exitCode -eq 0 -and $silentFailures.Count -gt 0) {
         Write-Host "[warning] platform reported success, but the log contains $($silentFailures.Count) problem(s):" -ForegroundColor Yellow
         foreach ($f in $silentFailures) { Write-Host "  $f" -ForegroundColor Yellow }
-        if ($StrictLog -and $exitCode -eq 0) { $exitCode = 1 }
+        if ($StrictLog) { $exitCode = 1 }
     }
 
     # Расширение могло загрузиться «успешно» и при этом остаться неприменимым — спрашиваем платформу.
