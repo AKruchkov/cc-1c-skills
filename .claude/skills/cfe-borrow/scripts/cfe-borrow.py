@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-borrow v1.39 — Borrow objects from configuration into extension (CFE)
+# cfe-borrow v1.40 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -75,6 +75,26 @@ def strip_form_bindings(xml, main_attr_name):
     for tag in FORM_BINDING_PICTURE_TAGS:
         xml = re.sub(rf'\s*<{tag}>[^<]*</{tag}>', '', xml)
     return xml
+
+
+def indent_for_base_form(xml, first_indent):
+    """Сдвиг блока на уровень вглубь для <BaseForm>; first_indent — отступ первой строки.
+    Таб добавляется только в пробельные промежутки между тегами: строки продолжения многострочного
+    текста (<v8:content>, текст запроса) — часть значения. Со сдвигом снимок расходился с формой,
+    и Конфигуратор показывал такой текст изменённым в расширении. Пробельный промежуток между
+    открывающим и закрывающим тегом одного элемента — тоже значение, его не сдвигаем."""
+    parts = re.split(r'''(<(?:[^>"']|"[^"]*"|'[^']*')*>)''', xml)
+    for i in range(0, len(parts), 2):
+        seg = parts[i]
+        if '\n' not in seg or seg.strip():
+            continue
+        prev_tag = parts[i - 1] if i > 0 else ''
+        next_tag = parts[i + 1] if i + 1 < len(parts) else ''
+        m = re.match(r'<([\w:.-]+)[^>]*(?<!/)>$', prev_tag)
+        if m and next_tag == f'</{m.group(1)}>':
+            continue
+        parts[i] = seg.replace('\n', '\n\t')
+    return first_indent + ''.join(parts)
 
 
 DROPPED_LINKS = []
@@ -2149,36 +2169,22 @@ def main():
             parts.append("\t<Attributes/>")
         parts.append("\r\n")
 
-        # BaseForm: same content, indented one more level
+        # BaseForm: same content, indented one more level (многострочный текст не сдвигается)
         parts.append(f'\t<BaseForm version="{form_version}">\r\n')
 
         for prop_xml in form_props:
             prop_xml_clean = ns_strip_pattern.sub("", prop_xml)
-            parts.append(f"\t\t{prop_xml_clean}\r\n")
+            parts.append(indent_for_base_form(prop_xml_clean, "\t\t") + "\r\n")
         if auto_cmd_xml:
-            ac_lines = auto_cmd_xml.split("\n")
-            for li, line in enumerate(ac_lines):
-                if li == 0:
-                    parts.append(f"\t\t{line}")
-                else:
-                    parts.append(f"\t{line}")
-                parts.append("\r\n")
+            parts.append(indent_for_base_form(auto_cmd_xml, "\t\t") + "\r\n")
         if child_items_xml:
-            ci_lines = child_items_xml.split("\n")
-            for li, line in enumerate(ci_lines):
-                if li == 0:
-                    parts.append(f"\t\t{line}")
-                else:
-                    parts.append(f"\t{line}")
-                parts.append("\r\n")
+            parts.append(indent_for_base_form(child_items_xml, "\t\t") + "\r\n")
 
         # BaseForm Attributes: same as main section
         if borrow_main_attr and main_attr_info:
             parts.append("\t\t<Attributes>\r\n")
-            # В BaseForm та же секция на уровень глубже — приём переиндентации тот же, что у ChildItems
-            for li, line in enumerate(main_attr_info['Xml'].split('\n')):
-                parts.append(f"\t\t\t{line}" if li == 0 else f"\t{line}")
-                parts.append("\r\n")
+            # В BaseForm та же секция на уровень глубже — сдвиг тот же, что у ChildItems
+            parts.append(indent_for_base_form(main_attr_info['Xml'], "\t\t\t") + "\r\n")
             parts.append("\t\t</Attributes>")
         else:
             parts.append("\t\t<Attributes/>")

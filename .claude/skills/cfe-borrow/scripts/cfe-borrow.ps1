@@ -1,4 +1,4 @@
-﻿# cfe-borrow v1.39 — Borrow objects from configuration into extension (CFE)
+﻿# cfe-borrow v1.40 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -58,6 +58,26 @@ function Strip-FormBindings {
 		$xml = [regex]::Replace($xml, "\s*<$tag>[^<]*</$tag>", '')
 	}
 	return $xml
+}
+
+# Сдвиг блока на уровень вглубь для <BaseForm>; $firstIndent — отступ первой строки.
+# Таб добавляется только в пробельные промежутки между тегами: строки продолжения многострочного
+# текста (<v8:content>, текст запроса) — часть значения. Со сдвигом снимок расходился с формой,
+# и Конфигуратор показывал такой текст изменённым в расширении. Пробельный промежуток между
+# открывающим и закрывающим тегом одного элемента — тоже значение, его не сдвигаем.
+function Get-BaseFormIndented {
+	param([string]$xml, [string]$firstIndent)
+	$parts = [regex]::Split($xml, '(<(?:[^>"'']|"[^"]*"|''[^'']*'')*>)')
+	for ($i = 0; $i -lt $parts.Count; $i += 2) {
+		$seg = $parts[$i]
+		if (-not $seg.Contains("`n") -or $seg.Trim()) { continue }
+		$prevTag = if ($i -gt 0) { $parts[$i - 1] } else { '' }
+		$nextTag = if ($i + 1 -lt $parts.Count) { $parts[$i + 1] } else { '' }
+		$m = [regex]::Match($prevTag, '^<([\w:.-]+)[^>]*(?<!/)>$')
+		if ($m.Success -and $nextTag -ceq "</$($m.Groups[1].Value)>") { continue }
+		$parts[$i] = $seg.Replace("`n", "`n`t")
+	}
+	return $firstIndent + ($parts -join '')
 }
 
 # Ссылки параметров выбора (<ChoiceParameterLinks>/<xr:Link>) — привязка особого рода: путь лежит
@@ -1210,42 +1230,26 @@ function Borrow-Form {
 	}
 	$formXmlSb.Append("`r`n") | Out-Null
 
-	# BaseForm: same content, indented one more level
+	# BaseForm: same content, indented one more level (многострочный текст не сдвигается)
 	$formXmlSb.Append("`t<BaseForm version=`"${formVersion}`">") | Out-Null
 	$formXmlSb.Append("`r`n") | Out-Null
 
 	foreach ($propXml in $formProps) {
 		$propXml = [regex]::Replace($propXml, $nsStripPattern, '')
-		$formXmlSb.Append("`t`t$propXml`r`n") | Out-Null
+		$formXmlSb.Append((Get-BaseFormIndented $propXml "`t`t") + "`r`n") | Out-Null
 	}
 	if ($autoCmdXml) {
-		$acLines = $autoCmdXml -split "`r?`n"
-		for ($li = 0; $li -lt $acLines.Count; $li++) {
-			if ($li -eq 0) { $formXmlSb.Append("`t`t$($acLines[$li])") | Out-Null }
-			else { $formXmlSb.Append("`t$($acLines[$li])") | Out-Null }
-			$formXmlSb.Append("`r`n") | Out-Null
-		}
+		$formXmlSb.Append((Get-BaseFormIndented $autoCmdXml "`t`t") + "`r`n") | Out-Null
 	}
 	if ($childItemsXml) {
-		# Reindent ChildItems for BaseForm (+1 tab level)
-		$ciLines = $childItemsXml -split "`r?`n"
-		for ($li = 0; $li -lt $ciLines.Count; $li++) {
-			if ($li -eq 0) { $formXmlSb.Append("`t`t$($ciLines[$li])") | Out-Null }
-			else { $formXmlSb.Append("`t$($ciLines[$li])") | Out-Null }
-			$formXmlSb.Append("`r`n") | Out-Null
-		}
+		$formXmlSb.Append((Get-BaseFormIndented $childItemsXml "`t`t") + "`r`n") | Out-Null
 	}
 
 	# BaseForm Attributes: same as main section
 	if ($BorrowMainAttr -and $mainAttrInfo) {
 		$formXmlSb.Append("`t`t<Attributes>`r`n") | Out-Null
-		# В BaseForm та же секция на уровень глубже — приём переиндентации тот же, что у ChildItems
-		$maLines = $mainAttrInfo.Xml -split "`r?`n"
-		for ($li = 0; $li -lt $maLines.Count; $li++) {
-			if ($li -eq 0) { $formXmlSb.Append("`t`t`t$($maLines[$li])") | Out-Null }
-			else { $formXmlSb.Append("`t$($maLines[$li])") | Out-Null }
-			$formXmlSb.Append("`r`n") | Out-Null
-		}
+		# В BaseForm та же секция на уровень глубже — сдвиг тот же, что у ChildItems
+		$formXmlSb.Append((Get-BaseFormIndented $mainAttrInfo.Xml "`t`t`t") + "`r`n") | Out-Null
 		$formXmlSb.Append("`t`t</Attributes>") | Out-Null
 	} else {
 		$formXmlSb.Append("`t`t<Attributes/>") | Out-Null
