@@ -1,0 +1,115 @@
+{
+  "name": "Общая форма заимствуется вместе с содержимым: описание <CommonForm>, тело с BaseForm, модуль, регистрация",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Склады"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "Подбор"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "title": "Подбор",
+        "elements": [
+          {
+            "check": "Режим",
+            "path": "Режим"
+          },
+          {
+            "table": "Таблица",
+            "path": "Таблица",
+            "columns": [
+              {
+                "input": "ТаблицаСклад",
+                "path": "Таблица.Склад",
+                "choiceParameterLinks": [
+                  {
+                    "name": "Отбор.Ссылка",
+                    "dataPath": "Items.Таблица.CurrentData.Склад"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Режим",
+            "type": "boolean"
+          },
+          {
+            "name": "Таблица",
+            "type": "ValueTable",
+            "columns": [
+              {
+                "name": "Склад",
+                "type": "CatalogRef.Склады"
+              }
+            ]
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/Подбор/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "CommonForm.Подбор"
+  },
+  "expect": {
+    "files": [
+      "cfe/CommonForms/Подбор.xml",
+      "cfe/CommonForms/Подбор/Ext/Form.xml",
+      "cfe/CommonForms/Подбор/Ext/Form/Module.bsl"
+    ],
+    "fileContains": [
+      {
+        "file": "cfe/CommonForms/Подбор.xml",
+        "text": [
+          "<CommonForm uuid=",
+          "<ObjectBelonging>Adopted</ObjectBelonging>",
+          "<FormType>Managed</FormType>"
+        ]
+      },
+      {
+        "file": "cfe/CommonForms/Подбор/Ext/Form.xml",
+        "text": [
+          "<BaseForm",
+          ":02023637-7868-4a5f-8576-835a76e0c9ba/"
+        ]
+      },
+      {
+        "file": "cfe/Configuration.xml",
+        "text": "<CommonForm>Подбор</CommonForm>"
+      }
+    ]
+  }
+}

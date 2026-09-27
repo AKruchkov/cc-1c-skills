@@ -1,0 +1,296 @@
+{
+  "name": "Общие формы с -BorrowMainAttribute: владелец из типа основного реквизита — обработка, динамический список, набор констант, примитив",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Поиск",
+        "attributes": [
+          "Строка: String(100)",
+          "Лишний: String(10)"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Тома"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Пользователи"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Enum",
+        "name": "Сервисы",
+        "values": [
+          "Первый",
+          "Второй"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "Использовать",
+        "valueType": "Boolean"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "Сервис",
+        "valueType": "EnumRef.Сервисы"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "НеНаФорме",
+        "valueType": "String(10)"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "ФормаПоиска"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "input": "Строка",
+            "path": "Объект.Строка"
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Объект",
+            "type": "DataProcessorObject.Поиск",
+            "main": true
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/ФормаПоиска/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "ФайлыВТоме"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "excludedCommands": [
+              "Find"
+            ],
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокАвтор",
+                "path": "Список.Автор"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Catalog.Тома",
+              "query": "ВЫБРАТЬ Т.Ссылка КАК Ссылка, ЗНАЧЕНИЕ(Справочник.Пользователи.ПустаяСсылка) КАК Автор ИЗ Справочник.Тома КАК Т"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/ФайлыВТоме/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "НастройкаКонстант"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "check": "Использовать",
+            "path": "НаборКонстант.Использовать"
+          },
+          {
+            "input": "Сервис",
+            "path": "НаборКонстант.Сервис"
+          }
+        ],
+        "attributes": [
+          {
+            "name": "НаборКонстант",
+            "type": "ConstantsSet",
+            "main": true
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/НастройкаКонстант/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "ВыборСвойства"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "input": "Значение",
+            "path": "Объект"
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Объект",
+            "type": "string",
+            "main": true
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/ВыборСвойства/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "CommonForm.ФормаПоиска ;; CommonForm.ФайлыВТоме ;; CommonForm.НастройкаКонстант ;; CommonForm.ВыборСвойства"
+  },
+  "expect": {
+    "files": [
+      "cfe/DataProcessors/Поиск.xml",
+      "cfe/Catalogs/Тома.xml",
+      "cfe/Constants/Использовать.xml",
+      "cfe/Constants/Сервис.xml",
+      "cfe/Enums/Сервисы.xml"
+    ],
+    "filesAbsent": [
+      "cfe/Constants/НеНаФорме.xml"
+    ],
+    "fileContains": [
+      {
+        "file": "cfe/DataProcessors/Поиск.xml",
+        "text": "<Name>Строка</Name>"
+      },
+      {
+        "file": "cfe/Constants/Сервис.xml",
+        "text": "<v8:Type>cfg:EnumRef.Сервисы</v8:Type>"
+      },
+      {
+        "file": "cfe/CommonForms/ФайлыВТоме/Ext/Form.xml",
+        "text": "<ExcludedCommand>Find</ExcludedCommand>"
+      },
+      {
+        "file": "cfe/CommonForms/ВыборСвойства/Ext/Form.xml",
+        "text": "<Attribute name=\"Объект\" id=\"1000001\">"
+      }
+    ],
+    "fileNotContains": {
+      "file": "cfe/DataProcessors/Поиск.xml",
+      "text": "<Name>Лишний</Name>"
+    }
+  },
+  "args_extra": [
+    "-BorrowMainAttribute",
+    "Form"
+  ]
+}
