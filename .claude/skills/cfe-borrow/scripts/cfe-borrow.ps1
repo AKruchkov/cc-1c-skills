@@ -1,4 +1,4 @@
-﻿# cfe-borrow v1.41 — Borrow objects from configuration into extension (CFE)
+﻿# cfe-borrow v1.42 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1059,6 +1059,11 @@ function Borrow-Form {
 	$srcMainInfo = Get-MainAttributeInfo $srcFormEl $nsStripPattern
 	$srcMainAttrName = if ($srcMainInfo) { $srcMainInfo.Name } else { "" }
 	$formAttrIds = Get-FormAttributeIds $srcFormEl
+	# Условное оформление формы Конфигуратор копирует как есть в обе части, внутрь <Attributes>
+	# после реквизитов — и без основного реквизита тоже; ссылки на незаимствованные реквизиты формы
+	# платформа принимает (эталоны УТ StdPic, StdPic_WithMain, CAStyle, УНФ Номенклатура)
+	$srcCondAppearance = $srcFormEl.SelectSingleNode("*[local-name()='Attributes']/*[local-name()='ConditionalAppearance']")
+	$srcCondAppearanceXml = if ($srcCondAppearance) { [regex]::Replace($srcCondAppearance.OuterXml, $nsStripPattern, '') } else { "" }
 	$mainAttrInfo = if ($BorrowMainAttr) { $srcMainInfo } else { $null }
 	$mainAttrName = if ($mainAttrInfo) { $mainAttrInfo.Name } else { "" }
 	if ($BorrowMainAttr -and -not $mainAttrInfo) {
@@ -1191,13 +1196,17 @@ function Borrow-Form {
 			}
 		}
 
-		# Auto-borrow StyleItems referenced in ChildItems
+		# Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
+		# (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle)
 		# Pattern 1: <Font ref="style:XXX" kind="StyleItem"/>, <TitleFont ref="style:XXX" ... kind="StyleItem"/>
 		# Pattern 2: <BackColor>style:XXX</BackColor>, <TextColor>style:XXX</TextColor>, etc.
-		$referencedStyles = @{}
-		$styleRefs1 = [regex]::Matches($childItemsXml, 'ref="style:(\w+)"[^>]*kind="StyleItem"')
+		# Порядок первого упоминания — как в Python-порте (от него зависит порядок в ChildObjects)
+		$styleScanXml = $childItemsXml + $srcCondAppearanceXml
+		$referencedStyles = [ordered]@{}
+		$styleRefs1 = [regex]::Matches($styleScanXml, 'ref="style:(\w+)"[^>]*kind="StyleItem"')
 		foreach ($m in $styleRefs1) { $referencedStyles[$m.Groups[1].Value] = $true }
-		$styleRefs2 = [regex]::Matches($childItemsXml, '>style:(\w+)</\w+>')
+		# Закрывающий тег может быть с префиксом: в оформлении значение — <dcscor:value>style:X</dcscor:value>
+		$styleRefs2 = [regex]::Matches($styleScanXml, '>style:(\w+)</[\w:]+>')
 		foreach ($m in $styleRefs2) { $referencedStyles[$m.Groups[1].Value] = $true }
 
 		foreach ($styleName in $referencedStyles.Keys) {
@@ -1333,10 +1342,12 @@ function Borrow-Form {
 		$formXmlSb.Append("`t$childItemsXml") | Out-Null
 		$formXmlSb.Append("`r`n") | Out-Null
 	}
-	# Attributes: empty or with MainAttribute when BorrowMainAttr
-	if ($BorrowMainAttr -and $mainAttrInfo) {
+	# Attributes: основной реквизит (с -BorrowMainAttribute) и условное оформление формы — после него
+	$withMainAttr = $BorrowMainAttr -and $mainAttrInfo
+	if ($withMainAttr -or $srcCondAppearanceXml) {
 		$formXmlSb.Append("`t<Attributes>`r`n") | Out-Null
-		$formXmlSb.Append("`t`t$($mainAttrInfo.Xml)`r`n") | Out-Null
+		if ($withMainAttr) { $formXmlSb.Append("`t`t$($mainAttrInfo.Xml)`r`n") | Out-Null }
+		if ($srcCondAppearanceXml) { $formXmlSb.Append("`t`t$srcCondAppearanceXml`r`n") | Out-Null }
 		$formXmlSb.Append("`t</Attributes>") | Out-Null
 	} else {
 		$formXmlSb.Append("`t<Attributes/>") | Out-Null
@@ -1359,10 +1370,11 @@ function Borrow-Form {
 	}
 
 	# BaseForm Attributes: same as main section
-	if ($BorrowMainAttr -and $mainAttrInfo) {
+	if ($withMainAttr -or $srcCondAppearanceXml) {
 		$formXmlSb.Append("`t`t<Attributes>`r`n") | Out-Null
 		# В BaseForm та же секция на уровень глубже — сдвиг тот же, что у ChildItems
-		$formXmlSb.Append((Get-BaseFormIndented $mainAttrInfo.Xml "`t`t`t") + "`r`n") | Out-Null
+		if ($withMainAttr) { $formXmlSb.Append((Get-BaseFormIndented $mainAttrInfo.Xml "`t`t`t") + "`r`n") | Out-Null }
+		if ($srcCondAppearanceXml) { $formXmlSb.Append((Get-BaseFormIndented $srcCondAppearanceXml "`t`t`t") + "`r`n") | Out-Null }
 		$formXmlSb.Append("`t`t</Attributes>") | Out-Null
 	} else {
 		$formXmlSb.Append("`t`t<Attributes/>") | Out-Null

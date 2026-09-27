@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-borrow v1.41 — Borrow objects from configuration into extension (CFE)
+# cfe-borrow v1.42 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -2078,6 +2078,18 @@ def main():
         src_main_info = get_main_attribute_info(src_form_el, ns_strip_pattern)
         src_main_attr_name = src_main_info["Name"] if src_main_info else ""
         form_attr_ids = get_form_attribute_ids(src_form_el)
+        # Условное оформление формы Конфигуратор копирует как есть в обе части, внутрь <Attributes>
+        # после реквизитов — и без основного реквизита тоже; ссылки на незаимствованные реквизиты формы
+        # платформа принимает (эталоны УТ StdPic, StdPic_WithMain, CAStyle, УНФ Номенклатура)
+        src_cond_appearance_xml = ""
+        for attrs_el in src_form_el:
+            if isinstance(attrs_el.tag, str) and localname(attrs_el) == "Attributes":
+                for ca_el in attrs_el:
+                    if isinstance(ca_el.tag, str) and localname(ca_el) == "ConditionalAppearance":
+                        src_cond_appearance_xml = ns_strip_pattern.sub("", decode_numeric_entities(
+                            etree.tostring(ca_el, encoding="unicode", with_tail=False)))
+                        break
+                break
 
         # Основной реквизит исходной формы: его имя — корень путей к данным, которые нужно сохранить
         # («Объект.» у формы объекта, «Список.» у формы списка, «Запись.» у формы записи регистра)
@@ -2201,12 +2213,16 @@ def main():
                     if cp_name not in borrowed_pic_set:
                         auto_cmd_xml = auto_cmd_xml[:pm.start()] + auto_cmd_xml[pm.end():]
 
-            # Auto-borrow StyleItems referenced in ChildItems
-            referenced_styles = set()
-            for m in re.finditer(r'ref="style:(\w+)"[^>]*kind="StyleItem"', child_items_xml):
-                referenced_styles.add(m.group(1))
-            for m in re.finditer(r'>style:(\w+)</\w+>', child_items_xml):
-                referenced_styles.add(m.group(1))
+            # Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
+            # (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle).
+            # Порядок первого упоминания — как в PS-порте (от него зависит порядок в ChildObjects)
+            style_scan_xml = child_items_xml + src_cond_appearance_xml
+            referenced_styles = {}
+            for m in re.finditer(r'ref="style:(\w+)"[^>]*kind="StyleItem"', style_scan_xml):
+                referenced_styles[m.group(1)] = True
+            # Закрывающий тег может быть с префиксом: в оформлении значение — <dcscor:value>style:X</dcscor:value>
+            for m in re.finditer(r'>style:(\w+)</[\w:]+>', style_scan_xml):
+                referenced_styles[m.group(1)] = True
 
             for style_name in referenced_styles:
                 if not test_object_borrowed("StyleItem", style_name):
@@ -2325,10 +2341,14 @@ def main():
         if child_items_xml:
             parts.append(f"\t{child_items_xml}\r\n")
 
-        # Attributes: empty or with MainAttribute when borrow_main_attr
-        if borrow_main_attr and main_attr_info:
+        # Attributes: основной реквизит (с -BorrowMainAttribute) и условное оформление формы — после него
+        with_main_attr = bool(borrow_main_attr and main_attr_info)
+        if with_main_attr or src_cond_appearance_xml:
             parts.append("\t<Attributes>\r\n")
-            parts.append(f"\t\t{main_attr_info['Xml']}\r\n")
+            if with_main_attr:
+                parts.append(f"\t\t{main_attr_info['Xml']}\r\n")
+            if src_cond_appearance_xml:
+                parts.append(f"\t\t{src_cond_appearance_xml}\r\n")
             parts.append("\t</Attributes>")
         else:
             parts.append("\t<Attributes/>")
@@ -2346,10 +2366,13 @@ def main():
             parts.append(indent_for_base_form(child_items_xml, "\t\t") + "\r\n")
 
         # BaseForm Attributes: same as main section
-        if borrow_main_attr and main_attr_info:
+        if with_main_attr or src_cond_appearance_xml:
             parts.append("\t\t<Attributes>\r\n")
             # В BaseForm та же секция на уровень глубже — сдвиг тот же, что у ChildItems
-            parts.append(indent_for_base_form(main_attr_info['Xml'], "\t\t\t") + "\r\n")
+            if with_main_attr:
+                parts.append(indent_for_base_form(main_attr_info['Xml'], "\t\t\t") + "\r\n")
+            if src_cond_appearance_xml:
+                parts.append(indent_for_base_form(src_cond_appearance_xml, "\t\t\t") + "\r\n")
             parts.append("\t\t</Attributes>")
         else:
             parts.append("\t\t<Attributes/>")
