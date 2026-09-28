@@ -1,4 +1,4 @@
-﻿# form-validate v1.21 — Validate 1C managed form
+﻿# form-validate v1.22 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -944,7 +944,9 @@ if (-not $stopped) {
 		if ($tv -in $validClosedTypes) { continue }
 		if ($tv -match '^cfg:(.+)$') {
 			$cfgVal = $Matches[1]
-			if ($cfgVal -eq "DynamicList") { continue }
+			# Тип без имени объекта: динамический список, набор констант, любой отчёт — ровно те три,
+			# что встречаются в формах корпуса (УТ, ERP, БП, УНФ); иное без имени — вероятная опечатка
+			if ($cfgVal -cin @("DynamicList", "ConstantsSet", "ReportObject")) { continue }
 			if ($cfgVal -match '^([^.]+)\.') {
 				$pfx = $Matches[1]
 				if ($pfx -in $validCfgPrefixes) {

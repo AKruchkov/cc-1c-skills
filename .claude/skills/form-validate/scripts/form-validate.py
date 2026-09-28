@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-validate v1.21 — Validate 1C managed form
+# form-validate v1.22 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -900,7 +900,9 @@ def main():
             elif tv.startswith("cfg:"):
                 suffix = tv[4:]  # after "cfg:"
                 prefix = suffix.split(".")[0]
-                if prefix in VALID_CFG_PREFIXES or suffix == "DynamicList":
+                # Тип без имени объекта: динамический список, набор констант, любой отчёт — ровно те три,
+                # что встречаются в формах корпуса (УТ, ERP, БП, УНФ); иное без имени — вероятная опечатка
+                if ("." in suffix and prefix in VALID_CFG_PREFIXES) or suffix in ("DynamicList", "ConstantsSet", "ReportObject"):
                     # ExternalDataProcessorObject/ExternalReportObject valid only in EPF/ERF context
                     if is_config_context and prefix in ('ExternalDataProcessorObject', 'ExternalReportObject'):
                         report_error(f'12. Type "{tv}": External* type in configuration context (use DataProcessorObject/ReportObject instead)')
