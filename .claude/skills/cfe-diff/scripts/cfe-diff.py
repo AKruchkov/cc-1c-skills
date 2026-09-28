@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cfe-diff v1.6 — Analyze and compare 1C configuration extension (CFE)
+# cfe-diff v1.7 — Analyze and compare 1C configuration extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -153,6 +153,11 @@ def get_bsl_files(obj_type, obj_name, extension_path):
         for item in os.listdir(ext_dir):
             if item.lower().endswith(".bsl"):
                 bsl_files.append(os.path.join(ext_dir, item))
+
+    # Модуль общей формы — у неё самой, Ext/Form/Module.bsl (у прочих объектов такого файла нет)
+    own_form_module = os.path.join(ext_dir, "Form", "Module.bsl")
+    if os.path.isfile(own_form_module):
+        bsl_files.append(own_form_module)
 
     # Forms
     forms_dir = os.path.join(obj_dir, "Forms")
@@ -444,6 +449,15 @@ def mode_a(objects, extension_path):
                                 print(f"               {ic}")
                         else:
                             print(f"             Form.{fn} ({form_tag})")
+
+            # Общая форма — сама форма: перехваты событий и команд из её Ext/Form.xml
+            if obj["Type"] == "CommonForm":
+                cf_form_xml = os.path.join(extension_path, info["DirName"], info["Name"], "Ext", "Form.xml")
+                cfi = get_form_interceptors(cf_form_xml)
+                if cfi is not None and len(cfi["Interceptors"]) > 0:
+                    print("             Form:")
+                    for ic in cfi["Interceptors"]:
+                        print(f"               {ic}")
         else:
             own_list.append(obj)
             print(f"  [OWN]      {obj['Type']}.{obj['Name']}")
