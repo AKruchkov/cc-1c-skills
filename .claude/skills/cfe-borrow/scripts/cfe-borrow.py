@@ -2439,7 +2439,7 @@ def main():
                     else:
                         warn(f"  Enum.{enum_name} not found in source config")
 
-    # Вне блока ChildItems: стили нужны и оформлению формы без элементов
+        # Вне блока ChildItems: стили нужны и оформлению формы без элементов
         # Auto-borrow StyleItems referenced in ChildItems and in the form's conditional appearance
         # (стиль только из оформления Конфигуратор тоже заимствует — эталон УТ CAStyle).
         # Порядок первого упоминания — как в PS-порте (от него зависит порядок в ChildObjects)

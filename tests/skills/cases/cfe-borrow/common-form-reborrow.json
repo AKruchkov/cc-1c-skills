@@ -1,0 +1,109 @@
+{
+  "name": "Повторное заимствование общей формы: модуль расширения сохранён, регистрация в Configuration.xml не задвоена",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Склады"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "CommonForm",
+        "name": "Подбор"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "title": "Подбор",
+        "elements": [
+          {
+            "check": "Режим",
+            "path": "Режим"
+          },
+          {
+            "table": "Таблица",
+            "path": "Таблица",
+            "columns": [
+              {
+                "input": "ТаблицаСклад",
+                "path": "Таблица.Склад",
+                "choiceParameterLinks": [
+                  {
+                    "name": "Отбор.Ссылка",
+                    "dataPath": "Items.Таблица.CurrentData.Склад"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Режим",
+            "type": "boolean"
+          },
+          {
+            "name": "Таблица",
+            "type": "ValueTable",
+            "columns": [
+              {
+                "name": "Склад",
+                "type": "CatalogRef.Склады"
+              }
+            ]
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/CommonForms/Подбор/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    },
+    {
+      "script": "cfe-borrow/scripts/cfe-borrow",
+      "args": {
+        "-ExtensionPath": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}",
+        "-Object": "CommonForm.Подбор"
+      }
+    },
+    {
+      "writeFile": {
+        "path": "cfe/CommonForms/Подбор/Ext/Form/Module.bsl",
+        "content": "// код расширения\n"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "CommonForm.Подбор"
+  },
+  "expect": {
+    "fileContains": {
+      "file": "cfe/CommonForms/Подбор/Ext/Form/Module.bsl",
+      "text": "// код расширения"
+    },
+    "stdoutContains": "Preserved existing Module.bsl",
+    "stdoutNotContains": "Already in ChildObjects"
+  }
+}
