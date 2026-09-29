@@ -133,6 +133,23 @@ if ($missing.Count -gt 0) {
 
 # --- Загрузка ---
 if (-not (Test-Path -LiteralPath $target)) { New-Item -ItemType Directory -Path $target -Force | Out-Null }
+$fetched = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+# Происхождение — по версиям: уже лежащие файлы без -Force не перекачиваются, поэтому коммит
+# версии обновляем, только когда её файлы действительно скачаны в этом запуске
+$srcPath = Join-Path $target "source.json"
+$srcVers = @{}
+if (Test-Path -LiteralPath $srcPath) {
+	try {
+		$old = Get-Content -LiteralPath $srcPath -Raw -Encoding UTF8 | ConvertFrom-Json
+		if ($old.versions -is [PSCustomObject]) {
+			foreach ($pr in $old.versions.PSObject.Properties) {
+				$srcVers[$pr.Name] = @{ ref = "$($pr.Value.ref)"; commit = "$($pr.Value.commit)"; fetched = "$($pr.Value.fetched)" }
+			}
+		}
+	} catch { }
+}
+
 $totalNew = 0
 foreach ($v in ($wanted | Sort-Object { [version]$_ })) {
 	$dir = Join-Path $target $v
@@ -152,6 +169,7 @@ foreach ($v in ($wanted | Sort-Object { [version]$_ })) {
 		$got++
 	}
 	$totalNew += $got
+	if ($got -gt 0) { $srcVers[$v] = @{ ref = $Ref; commit = $commit; fetched = $fetched } }
 	$line = "  ${v}: скачано $got"
 	if ($kept -gt 0) { $line += ", уже было $kept" }
 	Write-Host $line
@@ -165,11 +183,17 @@ if (-not (Test-Path -LiteralPath $readmePath) -and (Test-Path -LiteralPath $read
 $localVersions = @(Get-ChildItem -LiteralPath $target -Directory |
 	Where-Object { $_.Name -match '^\d+\.\d+$' } |
 	ForEach-Object { $_.Name } | Sort-Object { [version]$_ })
-# Руками, а не ConvertTo-Json: форматирование PS 5.1 не совпало бы с py-портом
-$fetched = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$verJson = ($localVersions | ForEach-Object { "`"$_`"" }) -join ", "
-$srcJson = "{`n  `"repository`": `"$repoUrl`",`n  `"ref`": `"$($Ref -replace '\\','\\' -replace '"','\"')`",`n  `"commit`": `"$commit`",`n  `"fetched`": `"$fetched`",`n  `"versions`": [$verJson]`n}`n"
+# Руками, а не ConvertTo-Json: форматирование PS 5.1 не совпало бы с py-портом.
+# Версия без записи о происхождении (скопирована вручную) — с пустыми полями.
+function Esc-Json([string]$s) { return ($s -replace '\\', '\\' -replace '"', '\"') }
+$verLines = @()
+foreach ($v in $localVersions) {
+	$e = if ($srcVers.ContainsKey($v)) { $srcVers[$v] } else { @{ ref = ''; commit = ''; fetched = '' } }
+	$verLines += "    `"$v`": { `"ref`": `"$(Esc-Json $e.ref)`", `"commit`": `"$(Esc-Json $e.commit)`", `"fetched`": `"$(Esc-Json $e.fetched)`" }"
+}
+$verBlock = if ($verLines.Count -gt 0) { "{`n" + ($verLines -join ",`n") + "`n  }" } else { "{}" }
+$srcJson = "{`n  `"repository`": `"$repoUrl`",`n  `"versions`": $verBlock`n}`n"
 $enc = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText((Join-Path $target "source.json"), $srcJson, $enc)
+[System.IO.File]::WriteAllText($srcPath, $srcJson, $enc)
 
 Write-Host "Схемы: $target (скачано файлов: $totalNew)"

@@ -1334,7 +1334,10 @@ def emit_calc_fields(lines, defn):
         if restrict_obj or restrict_tokens:
             lines.append('\t\t<useRestriction>')
             if restrict_obj:
-                flag_names = [xml_name for xml_name, flag in restrict_obj.items() if flag is True]
+                # Как -eq $true в PS-мастере: true, 1 и строка "true" в любом регистре
+                flag_names = [xml_name for xml_name, flag in restrict_obj.items()
+                              if flag is True or (not isinstance(flag, bool) and isinstance(flag, (int, float)) and flag == 1)
+                              or (isinstance(flag, str) and flag.lower() == 'true')]
             else:
                 flag_names = [restrict_map.get(str(r)) for r in restrict_tokens]
             emit_restriction_flags(lines, flag_names, '\t\t\t')

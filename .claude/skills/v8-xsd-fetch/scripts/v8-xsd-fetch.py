@@ -160,6 +160,24 @@ def main():
 
     # --- Загрузка ---
     os.makedirs(target, exist_ok=True)
+    fetched = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Происхождение — по версиям: уже лежащие файлы без -Force не перекачиваются, поэтому коммит
+    # версии обновляем, только когда её файлы действительно скачаны в этом запуске
+    src_path = os.path.join(target, "source.json")
+    src_vers = {}
+    if os.path.isfile(src_path):
+        try:
+            with open(src_path, encoding="utf-8-sig") as fh:
+                old = json.load(fh)
+            if isinstance(old.get("versions"), dict):
+                for k, e in old["versions"].items():
+                    e = e if isinstance(e, dict) else {}
+                    src_vers[k] = {"ref": str(e.get("ref") or ""), "commit": str(e.get("commit") or ""),
+                                   "fetched": str(e.get("fetched") or "")}
+        except Exception:
+            pass
+
     total_new = 0
     for v in sorted(wanted, key=version_key):
         vdir = os.path.join(target, v)
@@ -180,6 +198,8 @@ def main():
                 out.write(data)
             got += 1
         total_new += got
+        if got > 0:
+            src_vers[v] = {"ref": ref, "commit": commit, "fetched": fetched}
         line = "  %s: скачано %d" % (v, got)
         if kept > 0:
             line += ", уже было %d" % kept
@@ -192,12 +212,18 @@ def main():
     local_versions = sorted((d for d in os.listdir(target)
                              if re.match(r"^\d+\.\d+$", d) and os.path.isdir(os.path.join(target, d))),
                             key=version_key)
-    fetched = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ver_json = ", ".join('"%s"' % v for v in local_versions)
-    ref_json = ref.replace("\\", "\\\\").replace('"', '\\"')
-    src_json = ('{\n  "repository": "%s",\n  "ref": "%s",\n  "commit": "%s",\n  "fetched": "%s",\n  "versions": [%s]\n}\n'
-                % (REPO_URL, ref_json, commit, fetched, ver_json))
-    with open(os.path.join(target, "source.json"), "w", encoding="utf-8", newline="\n") as out:
+    # Руками, а не json.dumps: форматирование совпадает с PS-мастером.
+    # Версия без записи о происхождении (скопирована вручную) — с пустыми полями.
+    def esc_json(s):
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+    ver_lines = []
+    for v in local_versions:
+        e = src_vers.get(v) or {"ref": "", "commit": "", "fetched": ""}
+        ver_lines.append('    "%s": { "ref": "%s", "commit": "%s", "fetched": "%s" }'
+                         % (v, esc_json(e["ref"]), esc_json(e["commit"]), esc_json(e["fetched"])))
+    ver_block = "{\n" + ",\n".join(ver_lines) + "\n  }" if ver_lines else "{}"
+    src_json = '{\n  "repository": "%s",\n  "versions": %s\n}\n' % (REPO_URL, ver_block)
+    with open(src_path, "w", encoding="utf-8", newline="\n") as out:
         out.write(src_json)
 
     print("Схемы: %s (скачано файлов: %d)" % (target, total_new))
