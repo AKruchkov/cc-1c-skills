@@ -1,0 +1,34 @@
+{
+  "name": "Шаблон вне выгрузки — версия формата неизвестна, проверка не выполняется",
+  "setup": "fixture:xsd-no-anchor",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": ".v8-project.json",
+        "content": {
+          "xsdPath": "xsd"
+        }
+      }
+    },
+    {
+      "writeFile": {
+        "path": "xsd/2.20/README.txt",
+        "content": "каталог версии"
+      }
+    }
+  ],
+  "params": {
+    "templatePath": "Template.xml"
+  },
+  "args_extra": [
+    "-Detailed"
+  ],
+  "expect": {
+    "stdoutContains": "[OK]    XSD: format version unknown (template outside a dump) — not checked",
+    "stdoutNotContains": [
+      "[ERROR]",
+      "[WARN]"
+    ]
+  },
+  "noSnapshot": "результат — только вывод"
+}

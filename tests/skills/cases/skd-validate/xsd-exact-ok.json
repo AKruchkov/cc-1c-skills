@@ -1,0 +1,29 @@
+{
+  "name": "XSD точной версии: правильная схема проходит без строк XSD",
+  "setup": "fixture:xsd-good-220",
+  "requires": ".v8-xsd/2.20",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": ".v8-project.json",
+        "content": {
+          "xsdPath": "{repoRoot}/.v8-xsd"
+        }
+      }
+    }
+  ],
+  "params": {
+    "templatePath": "Reports/Отчет/Templates/Схема/Ext/Template.xml"
+  },
+  "args_extra": [
+    "-Detailed"
+  ],
+  "expect": {
+    "stdoutContains": "[OK]    XSD 2.20: order, types and values OK",
+    "stdoutNotContains": [
+      "[ERROR]",
+      "[WARN]"
+    ]
+  },
+  "noSnapshot": "результат — только вывод"
+}

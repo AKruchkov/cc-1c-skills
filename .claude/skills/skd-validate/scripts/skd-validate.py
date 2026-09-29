@@ -1,4 +1,4 @@
-# skd-validate v1.4 — Validate 1C DCS structure (Python port)
+# skd-validate v1.5 — Validate 1C DCS structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -880,6 +880,290 @@ for vn in value_nodes:
 
 if v_checked > 0 and v_ok:
     report_ok(f"{v_checked} <value> element(s) with xsi:type: content OK")
+
+if stopped:
+    finalize()
+    sys.exit(1)
+
+# ── 18. XSD (schemas of the platform, /v8-xsd-fetch) ──────────
+# Порядок элементов, типы и значения — по XSD платформы, если они есть в проекте. Нет схем —
+# нет проверки. Схемы XDTO совпадают с выгрузкой конфигуратора только в СКД, и то кроме
+# нескольких мест, которые платформа пишет иначе, — они отсекаются ниже (xsd_platform_noise).
+import json
+import re
+import shutil
+import tempfile
+from pathlib import Path
+
+
+def _sg_find_v8project(start_dir):
+    d = start_dir
+    for _ in range(20):
+        if not d:
+            break
+        pj = os.path.join(d, ".v8-project.json")
+        if os.path.isfile(pj):
+            return pj
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return None
+
+
+# Штамп версии формата — атрибут version КОРНЕВОГО элемента файла. Именно корневого: в Form.xml
+# расширения ниже стоит <BaseForm version=…>. Читается только заголовок, без разбора файла.
+def root_version(xml_path):
+    if not os.path.isfile(xml_path):
+        return None
+    with open(xml_path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'<[A-Za-z_][\w.:-]*(\s[^>]*)?/?>', head)
+    if not m:
+        return None
+    v = re.search(r'(?:^|\s)version="([^"]*)"', m.group(1) or "")
+    if v:
+        return v.group(1)
+    return None
+
+
+# Корень автономной внешней обработки/отчёта. Копия общего эталона (семья is_external_root,
+# авторитет — cf-edit).
+def _sg_is_external_root(xml_path):
+    if not os.path.isfile(xml_path):
+        return False
+    try:
+        mx = etree.parse(xml_path).getroot()
+        for child in mx:
+            if isinstance(child.tag, str):
+                return child.tag.split("}")[-1] in ("ExternalDataProcessor", "ExternalReport")
+    except Exception:
+        return False
+    return False
+
+
+# Якорь выгрузки, в чьём дереве лежит файл: корень автономной EPF/ERF либо Configuration.xml,
+# ближайший вверх. Корень обработки проверяется первым — иначе обработка, лежащая в дереве
+# конфигурации, сверялась бы с конфигурацией. Нет якоря — сверять не с чем.
+def find_dump_anchor(start_dir):
+    d = start_dir
+    for _ in range(15):
+        if not d:
+            break
+        if _sg_is_external_root(d + ".xml"):
+            return d + ".xml"
+        cfg = os.path.join(d, "Configuration.xml")
+        if os.path.exists(cfg):
+            return cfg
+        parent = os.path.dirname(d)
+        if not parent or parent == d:
+            break
+        d = parent
+    return None
+
+
+def format_rank(ver):
+    """"2.20" → 220, "2.9" → 209. Строковое сравнение неверно ("2.9" > "2.17")."""
+    m = re.match(r'^(\d+)\.(\d+)$', ver or '')
+    return int(m.group(1)) * 100 + int(m.group(2)) if m else 0
+
+
+XSD_DCS_NS = "http://v8.1c.ru/8.1/data-composition-system/schema"
+XS_NS = "http://www.w3.org/2001/XMLSchema"
+
+
+def xsd_target_ns(path):
+    """targetNamespace схемы — из заголовка файла, без разбора."""
+    with open(path, "rb") as f:
+        head = f.read(4096).decode("utf-8", errors="ignore")
+    m = re.search(r'targetNamespace="([^"]*)"', head)
+    return m.group(1) if m else None
+
+
+def xsd_index(vdir):
+    """namespace → файл схемы в каталоге версии."""
+    idx = {}
+    for name in sorted(os.listdir(vdir)):
+        fp = os.path.join(vdir, name)
+        if name.lower().endswith(".xsd") and os.path.isfile(fp):
+            ns = xsd_target_ns(fp)
+            if ns and ns not in idx:
+                idx[ns] = fp
+    return idx
+
+
+def resolve_xsd_root(template_dir):
+    """Каталог схем: .v8-project.json — сначала от шаблона (проект, которому он принадлежит),
+    потом от текущего каталога; xsdPath из него, иначе .v8-xsd рядом с ним. Нет проекта — нет схем."""
+    pj = _sg_find_v8project(template_dir) or _sg_find_v8project(os.getcwd())
+    if not pj:
+        return None
+    pj_dir = os.path.dirname(pj)
+    rel = ".v8-xsd"
+    try:
+        with open(pj, encoding="utf-8-sig") as f:
+            cfg = json.load(f)
+        if isinstance(cfg, dict) and cfg.get("xsdPath"):
+            rel = str(cfg["xsdPath"])
+    except Exception:
+        pass
+    d = rel if os.path.isabs(rel) else os.path.join(pj_dir, rel)
+    return d if os.path.isdir(d) else None
+
+
+def xsd_platform_noise(info):
+    """Места, которые платформа пишет не так, как описывает XSD, — сверено на всех схемах
+    компоновки выгрузок БП и УНФ. Правило — по месту (элемент, родитель, xsi:type), не по тексту:
+    текст зависит от движка и языка."""
+    e, p = info["elem"], info["parent"]
+    if p in ("groupTemplate", "groupHeaderTemplate") and e in ("templateType", "groupName"):
+        return True
+    if p == "right" and e == "lastId":
+        return True
+    if p == "nestedSchema" and e == "schema":
+        return True
+    if info["xsiNs"] == "http://v8.1c.ru/8.2/data/chart":
+        return True
+    # Пустое выражение параметра макета платформа не пишет, схема требует
+    if e == "parameter" and info["xsiLocal"] == "ExpressionAreaTemplateParameter":
+        return True
+    return False
+
+
+def _xsd_build_schema(vdir, tmp):
+    """Схема для lxml. У import в схемах платформы нет schemaLocation, а libxml2 сам по namespace
+    не ищет, — корневая схема импортирует замыкание зависимостей СКД с путями, листья первыми.
+    Корень DataCompositionSchema в схеме объявлен как dataCompositionSchema (строчная) — схему
+    СКД подключаем через обёртку: xs:include настоящего файла плюс элемент с нужным именем."""
+    idx = xsd_index(vdir)
+    order, seen = [], set()
+
+    def visit(ns):
+        if ns in seen or ns not in idx:
+            return
+        seen.add(ns)
+        doc = etree.parse(idx[ns])
+        for imp in doc.getroot().iter("{%s}import" % XS_NS):
+            visit(imp.get("namespace"))
+        order.append(ns)
+
+    # Сначала замыкание СКД, затем остальные схемы каталога: значения в выгрузке ссылаются через
+    # xsi:type на типы, которые схема СКД не импортирует (data/enterprise: LinkedValueChangeMode,
+    # FoldersAndItemsUse …) — как и в PS-мастере, где в набор кладутся все схемы.
+    visit(XSD_DCS_NS)
+    for ns in idx:
+        visit(ns)
+    dcs_doc = etree.parse(idx[XSD_DCS_NS])
+    has_root = any(el.get("name") == "DataCompositionSchema"
+                   for el in dcs_doc.getroot().findall("{%s}element" % XS_NS))
+    locations = {ns: Path(idx[ns]).as_uri() for ns in order}
+    if not has_root:
+        wrapper = os.path.join(tmp, "dcs-root.xsd")
+        with open(wrapper, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n'
+                    '<xs:schema xmlns:xs="%s" xmlns:tns="%s" targetNamespace="%s" elementFormDefault="qualified">\n'
+                    '  <xs:include schemaLocation="%s"/>\n'
+                    '  <xs:element name="DataCompositionSchema" type="tns:DataCompositionSchema"/>\n'
+                    '</xs:schema>\n' % (XS_NS, XSD_DCS_NS, XSD_DCS_NS, locations[XSD_DCS_NS]))
+        locations[XSD_DCS_NS] = Path(wrapper).as_uri()
+    root = os.path.join(tmp, "root.xsd")
+    with open(root, "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n<xs:schema xmlns:xs="%s" targetNamespace="urn:v8-xsd-root">\n' % XS_NS)
+        for ns in order:
+            f.write('  <xs:import namespace="%s" schemaLocation="%s"/>\n' % (ns, locations[ns]))
+        f.write('</xs:schema>\n')
+    return etree.XMLSchema(etree.parse(root))
+
+
+def _xsd_elem_info(el):
+    if el is None or not isinstance(el.tag, str):
+        return {"elem": "", "parent": "", "xsiNs": "", "xsiLocal": ""}
+    par = el.getparent()
+    info = {"elem": etree.QName(el).localname,
+            "parent": etree.QName(par).localname if par is not None and isinstance(par.tag, str) else "",
+            "xsiNs": "", "xsiLocal": ""}
+    xt = el.get(XSI_TYPE)
+    if xt:
+        pp = xt.split(":")
+        info["xsiLocal"] = pp[-1]
+        if len(pp) > 1:
+            info["xsiNs"] = el.nsmap.get(pp[0]) or ""
+    return info
+
+
+def _xsd_error_element(err):
+    """Элемент нарушения по error.path. Путь несёт префиксы документа (dcsset:settings) — xpath
+    получает их из корня; префикс, объявленный глубже, не разрешится — тогда ищем по строке и
+    имени последнего шага."""
+    if not err.path:
+        return None
+    ns = {k: v for k, v in tree.getroot().nsmap.items() if k}
+    try:
+        hits = tree.xpath(err.path, namespaces=ns)
+        if hits and isinstance(hits[0], etree._Element):
+            return hits[0]
+    except Exception:
+        pass
+    last = re.sub(r'\[\d+\]$', '', err.path.rsplit('/', 1)[-1]).split(':')[-1]
+    for el in tree.iter():
+        if isinstance(el.tag, str) and el.sourceline == err.line and etree.QName(el).localname == last:
+            return el
+    return None
+
+
+def xsd_check():
+    xsd_root = resolve_xsd_root(os.path.dirname(resolved_path))
+    if not xsd_root:
+        report_ok("XSD: no schemas in project — not checked")
+        return
+    anchor = find_dump_anchor(os.path.dirname(resolved_path))
+    ver = root_version(anchor) if anchor else None
+    if not ver or format_rank(ver) == 0:
+        report_ok("XSD: format version unknown (template outside a dump) — not checked")
+        return
+
+    # Точная версия — ошибки; ближайшая более новая — предупреждения; только старше — пропуск
+    cands = sorted((d for d in os.listdir(xsd_root)
+                    if re.match(r'^\d+\.\d+$', d) and os.path.isdir(os.path.join(xsd_root, d))
+                    and format_rank(d) >= format_rank(ver)), key=format_rank)
+    cands = [d for d in cands if XSD_DCS_NS in xsd_index(os.path.join(xsd_root, d))]
+    if not cands:
+        report_warn(f"XSD: no schemas for format {ver} in '{xsd_root}' — not checked")
+        return
+    use_ver = cands[0]
+    exact = use_ver == ver
+
+    tmp = tempfile.mkdtemp(prefix="skd-xsd-")
+    try:
+        try:
+            schema = _xsd_build_schema(os.path.join(xsd_root, use_ver), tmp)
+        except Exception as ex:
+            report_warn(f"XSD: schemas in '{os.path.join(xsd_root, use_ver)}' do not compile — not checked: {ex}")
+            return
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    tag = f"XSD {use_ver}" if exact else f"XSD {use_ver} (no schemas for {ver})"
+    schema.validate(tree)
+    found = 0
+    for err in schema.error_log:
+        if stopped:
+            break
+        el = _xsd_error_element(err)
+        info = _xsd_elem_info(el)
+        if xsd_platform_noise(info):
+            continue
+        found += 1
+        msg = f"{tag}, line {err.line}: {info['parent']}/{info['elem']}: {' '.join(err.message.split())}"
+        if exact:
+            report_error(msg)
+        else:
+            report_warn(msg)
+    if found == 0:
+        report_ok(f"{tag}: order, types and values OK")
+
+
+xsd_check()
 
 if stopped:
     finalize()

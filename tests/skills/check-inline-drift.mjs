@@ -81,7 +81,7 @@ const FAMILIES = [
           'form-info', 'meta-info', 'mxl-info', 'role-info', 'skd-info', 'subsystem-info',
           // Валидаторы отличают автономную обработку от конфигурации: тот же корень — якорь выгрузки
           // для сверки штампа версии (find_dump_anchor)
-          'form-validate', 'interface-validate', 'meta-validate', 'role-validate', 'subsystem-validate'] },
+          'form-validate', 'interface-validate', 'meta-validate', 'role-validate', 'skd-validate', 'subsystem-validate'] },
     ],
   },
   {
@@ -93,7 +93,7 @@ const FAMILIES = [
       { id: 'full', authority: 'cf-edit',
         consumers: ['cfe-borrow', 'db-cfe-admin', 'db-create', 'db-dump-cf', 'db-dump-dt', 'db-dump-xml',
           'db-load-cf', 'db-load-dt', 'db-load-git', 'db-load-xml', 'db-repo', 'db-run', 'db-update',
-          'epf-build', 'epf-dump', 'web-publish', 'v8-xsd-fetch',
+          'epf-build', 'epf-dump', 'web-publish', 'v8-xsd-fetch', 'skd-validate',
           'form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
           'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'] },
@@ -130,13 +130,13 @@ const FAMILIES = [
   {
     name: 'root_version', py: 'root_version', ps1: 'Get-RootVersion',
     variants: [
-      { id: 'base', authority: 'meta-validate', consumers: ['cf-validate', 'cfe-validate', 'epf-validate', 'form-validate', 'interface-validate', 'role-validate', 'subsystem-validate'] },
+      { id: 'base', authority: 'meta-validate', consumers: ['cf-validate', 'cfe-validate', 'epf-validate', 'form-validate', 'interface-validate', 'role-validate', 'skd-validate', 'subsystem-validate'] },
     ],
   },
   {
     name: 'find_dump_anchor', py: 'find_dump_anchor', ps1: 'Find-DumpAnchor',
     variants: [
-      { id: 'base', authority: 'meta-validate', consumers: ['form-validate', 'interface-validate', 'role-validate', 'subsystem-validate'] },
+      { id: 'base', authority: 'meta-validate', consumers: ['form-validate', 'interface-validate', 'role-validate', 'skd-validate', 'subsystem-validate'] },
     ],
   },
   {
@@ -151,7 +151,7 @@ const FAMILIES = [
       { id: 'base', authority: 'meta-compile',
         consumers: ['cf-init', 'cf-validate', 'cfe-borrow', 'cfe-init', 'cfe-patch-method', 'cfe-validate', 'epf-build',
           'epf-init', 'epf-validate', 'erf-init', 'form-add', 'form-compile', 'form-validate',
-          'meta-validate', 'mxl-compile', 'role-compile', 'role-edit', 'subsystem-compile', 'subsystem-edit',
+          'meta-validate', 'mxl-compile', 'role-compile', 'role-edit', 'skd-validate', 'subsystem-compile', 'subsystem-edit',
           'template-add', 'xdto-compile'] },
     ],
   },

@@ -22,7 +22,7 @@ const runtime = argv.includes('--runtime') ? argv[argv.indexOf('--runtime') + 1]
 const listMode = argv.includes('--list');
 const os = process.platform;
 
-const reasons = { external: [], runtimeOnly: [], osOnly: [] };
+const reasons = { external: [], runtimeOnly: [], osOnly: [], requires: [] };
 
 for (const skill of readdirSync(CASES)) {
   const dir = join(CASES, skill);
@@ -38,6 +38,7 @@ for (const skill of readdirSync(CASES)) {
     // Порядок совпадает с раннером: сначала ОС, потом порт, потом фикстура.
     if (c.osOnly && ![].concat(c.osOnly).includes(os)) { reasons.osOnly.push(id); continue; }
     if (c.runtimeOnly && c.runtimeOnly !== runtime) { reasons.runtimeOnly.push(id); continue; }
+    if (c.requires && ![].concat(c.requires).every(p => existsSync(join(HERE, '..', '..', p)))) { reasons.requires.push(id); continue; }
     const setup = String(c.setup || skillCfg.setup || '');
     if (setup.startsWith('external:') && !existsSync(setup.slice('external:'.length))) {
       reasons.external.push(id);
@@ -45,7 +46,7 @@ for (const skill of readdirSync(CASES)) {
   }
 }
 
-const total = reasons.external.length + reasons.runtimeOnly.length + reasons.osOnly.length;
+const total = reasons.external.length + reasons.runtimeOnly.length + reasons.osOnly.length + reasons.requires.length;
 
 if (listMode) {
   for (const [key, ids] of Object.entries(reasons)) {
@@ -58,6 +59,7 @@ if (listMode) {
 
 console.log(
   `Ожидается пропущенных: ${total}  [${os}, runtime: ${runtime}]  ` +
-    `= external ${reasons.external.length} + runtimeOnly ${reasons.runtimeOnly.length} + osOnly ${reasons.osOnly.length}`,
+    `= external ${reasons.external.length} + runtimeOnly ${reasons.runtimeOnly.length} + osOnly ${reasons.osOnly.length}` +
+      ` + requires ${reasons.requires.length}`,
 );
 console.log('Сверить с "Skipped: N" из прогона runner.mjs с теми же --runtime.');

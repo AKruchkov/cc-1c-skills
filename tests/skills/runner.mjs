@@ -282,7 +282,7 @@ function cleanupWorkspace(ws) {
 // выбор платформы пришлось бы писать двумя копиями под osOnly.
 function substPlaceholders(s, workDir) {
   const fakePath = join(workDir, process.platform === 'win32' ? 'fake.cmd' : 'fake.sh');
-  return s.replaceAll('{workDir}', workDir).replaceAll('{fakePlatform}', fakePath);
+  return s.replaceAll('{workDir}', workDir).replaceAll('{fakePlatform}', fakePath).replaceAll('{repoRoot}', REPO_ROOT);
 }
 
 function substDeep(value, workDir) {
@@ -832,6 +832,13 @@ async function runCaseAsync(testCase, opts) {
   // runtimeOnly: gate a case to a single port (e.g. a .cmd fake platform only runs via
   // PowerShell's Start-Process; python's list-exec can't launch it). Skipped elsewhere.
   if (caseData.runtimeOnly && caseData.runtimeOnly !== opts.runtime) {
+    return { id: testCase.id, skill: testCase.skillDir, name: testCase.name, passed: true, skipped: true, errors: [], elapsed: '0.0s' };
+  }
+
+  // requires: кейс опирается на локальные данные, которые в репозиторий не входят (XSD-схемы 1С
+  // в .v8-xsd — их правообладатель 1С). Пути от корня репозитория; нет хотя бы одного — skipped.
+  // Не external: тот отдаёт каталог на месте только для чтения, а кейсу нужно разложить свои файлы.
+  if (caseData.requires && ![].concat(caseData.requires).every(p => existsSync(resolve(REPO_ROOT, p)))) {
     return { id: testCase.id, skill: testCase.skillDir, name: testCase.name, passed: true, skipped: true, errors: [], elapsed: '0.0s' };
   }
 
