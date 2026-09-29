@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<DataCompositionSchema xmlns="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<dataCompositionSchema xmlns="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<dataSource>
 		<name>Источник</name>
 		<dataSourceType>Local</dataSourceType>
@@ -62,10 +62,6 @@
 							<dcscor:parameter>Шрифт</dcscor:parameter>
 							<dcscor:value xsi:type="v8ui:Font" faceName="Arial" height="10" bold="false" italic="false" underline="false" strikeout="false" kind="Absolute" scale="100" />
 						</dcscor:item>
-						<dcscor:item>
-							<dcscor:parameter>Расшифровка</dcscor:parameter>
-							<dcscor:value xsi:type="dcscor:Parameter">Расшифровка_Ресурс1</dcscor:value>
-						</dcscor:item>
 					</dcsat:appearance>
 				</dcsat:tableCell>
 				<dcsat:tableCell>
@@ -76,10 +72,6 @@
 						<dcscor:item>
 							<dcscor:parameter>Шрифт</dcscor:parameter>
 							<dcscor:value xsi:type="v8ui:Font" faceName="Arial" height="10" bold="false" italic="false" underline="false" strikeout="false" kind="Absolute" scale="100" />
-						</dcscor:item>
-						<dcscor:item>
-							<dcscor:parameter>Расшифровка</dcscor:parameter>
-							<dcscor:value xsi:type="dcscor:Parameter">Расшифровка_Ресурс2</dcscor:value>
 						</dcscor:item>
 					</dcsat:appearance>
 				</dcsat:tableCell>
@@ -97,25 +89,9 @@
 			<dcsat:name>Рес2</dcsat:name>
 			<dcsat:expression>Ресурс2</dcsat:expression>
 		</parameter>
-		<parameter xmlns:dcsat="http://v8.1c.ru/8.1/data-composition-system/area-template" xsi:type="dcsat:DetailsAreaTemplateParameter">
-			<dcsat:name>Расшифровка_Ресурс1</dcsat:name>
-			<dcsat:fieldExpression>
-				<dcsat:field>ИмяРесурса</dcsat:field>
-				<dcsat:expression>"Ресурс1"</dcsat:expression>
-			</dcsat:fieldExpression>
-			<dcsat:mainAction>DrillDown</dcsat:mainAction>
-		</parameter>
-		<parameter xmlns:dcsat="http://v8.1c.ru/8.1/data-composition-system/area-template" xsi:type="dcsat:DetailsAreaTemplateParameter">
-			<dcsat:name>Расшифровка_Ресурс2</dcsat:name>
-			<dcsat:fieldExpression>
-				<dcsat:field>ИмяРесурса</dcsat:field>
-				<dcsat:expression>"Ресурс2"</dcsat:expression>
-			</dcsat:fieldExpression>
-			<dcsat:mainAction>DrillDown</dcsat:mainAction>
-		</parameter>
 	</template>
 	<settingsVariant>
 		<dcsset:name>Основной</dcsset:name>
 		<dcsset:settings />
 	</settingsVariant>
-</DataCompositionSchema>
+</dataCompositionSchema>

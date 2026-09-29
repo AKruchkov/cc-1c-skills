@@ -1,6 +1,6 @@
 {
   "name": "В каталоге схем только старшие версии — предупреждение, проверка не выполняется",
-  "setup": "fixture:xsd-bad-220",
+  "setup": "fixture:xsd-good-220",
   "preRun": [
     {
       "writeFile": {

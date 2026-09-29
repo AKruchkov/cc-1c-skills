@@ -1,6 +1,6 @@
 {
-  "name": "Каталога схем нет, -Detailed — строка о пропуске",
-  "setup": "fixture:xsd-bad-220",
+  "name": "Каталога схем нет, -Detailed — пометка в итоговой строке",
+  "setup": "fixture:xsd-good-220",
   "preRun": [
     {
       "writeFile": {
@@ -18,7 +18,7 @@
     "-Detailed"
   ],
   "expect": {
-    "stdoutContains": "[OK]    XSD: no schemas in project — not checked",
+    "stdoutContains": "checks; XSD not checked: no schemas (/v8-xsd-fetch)) ===",
     "stdoutNotContains": [
       "[ERROR]",
       "[WARN]"

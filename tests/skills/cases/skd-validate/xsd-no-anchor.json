@@ -1,5 +1,5 @@
 {
-  "name": "Шаблон вне выгрузки — версия формата неизвестна, проверка не выполняется",
+  "name": "Шаблон вне выгрузки — версия формата неизвестна, пометка в итоговой строке",
   "setup": "fixture:xsd-no-anchor",
   "preRun": [
     {
@@ -24,7 +24,7 @@
     "-Detailed"
   ],
   "expect": {
-    "stdoutContains": "[OK]    XSD: format version unknown (template outside a dump) — not checked",
+    "stdoutContains": "checks; XSD not checked: template outside a dump) ===",
     "stdoutNotContains": [
       "[ERROR]",
       "[WARN]"

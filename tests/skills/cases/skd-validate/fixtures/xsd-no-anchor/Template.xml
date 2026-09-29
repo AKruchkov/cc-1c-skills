@@ -9,6 +9,7 @@
 		<field xsi:type="DataSetFieldField">
 			<dataPath>Число</dataPath>
 			<field>Число</field>
+			<presentationExpression>Формат(Число, "ЧГ=")</presentationExpression>
 			<valueType>
 				<v8:Type>xs:decimal</v8:Type>
 				<v8:NumberQualifiers>
@@ -17,7 +18,6 @@
 					<v8:AllowedSign>Any</v8:AllowedSign>
 				</v8:NumberQualifiers>
 			</valueType>
-			<presentationExpression>Формат(Число, "ЧГ=")</presentationExpression>
 		</field>
 		<field xsi:type="DataSetFieldField">
 			<dataPath>Флаг</dataPath>
@@ -32,6 +32,9 @@
 	<calculatedField>
 		<dataPath>Удвоенное</dataPath>
 		<expression>Число * 2</expression>
+		<useRestriction>
+			<group>true</group>
+		</useRestriction>
 		<valueType>
 			<v8:Type>xs:decimal</v8:Type>
 			<v8:NumberQualifiers>
@@ -40,16 +43,13 @@
 				<v8:AllowedSign>Any</v8:AllowedSign>
 			</v8:NumberQualifiers>
 		</valueType>
-		<useRestriction>
-			<group>true</group>
-		</useRestriction>
 	</calculatedField>
 	<parameter>
 		<name>П</name>
 		<valueType>
 			<v8:Type>xs:boolean</v8:Type>
 		</valueType>
-		<value xsi:type="xs:boolean">False</value>
+		<value xsi:type="xs:boolean">false</value>
 		<useRestriction>false</useRestriction>
 	</parameter>
 	<settingsVariant>
@@ -73,6 +73,13 @@
 					<dcsset:right xsi:type="xs:boolean">true</dcsset:right>
 				</dcsset:item>
 			</dcsset:filter>
+			<dcsset:dataParameters>
+				<dcscor:item xsi:type="dcsset:SettingsParameterValue">
+					<dcscor:parameter>П</dcscor:parameter>
+					<dcscor:value xsi:type="xs:boolean">false</dcscor:value>
+					<dcsset:userSettingID>0eb70b37-3a01-40a0-81c1-98028ef06a05</dcsset:userSettingID>
+				</dcscor:item>
+			</dcsset:dataParameters>
 			<dcsset:outputParameters>
 				<dcscor:item xsi:type="dcsset:SettingsParameterValue">
 					<dcscor:parameter>Заголовок</dcscor:parameter>
@@ -84,13 +91,6 @@
 					</dcscor:value>
 				</dcscor:item>
 			</dcsset:outputParameters>
-			<dcsset:dataParameters>
-				<dcscor:item xsi:type="dcsset:SettingsParameterValue">
-					<dcscor:parameter>П</dcscor:parameter>
-					<dcscor:value xsi:type="xs:boolean">false</dcscor:value>
-					<dcsset:userSettingID>0930043f-cf2a-42c1-ae8c-4accf2fd2604</dcsset:userSettingID>
-				</dcscor:item>
-			</dcsset:dataParameters>
 			<dcsset:item xsi:type="dcsset:StructureItemGroup">
 				<dcsset:order>
 					<dcsset:item xsi:type="dcsset:OrderItemAuto"/>

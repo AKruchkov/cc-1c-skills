@@ -1,0 +1,10 @@
+{
+  "name": "Корень dataCompositionSchema со строчной — предупреждение: платформа загружает, конфигуратор пишет с заглавной",
+  "setup": "fixture:root-lowercase",
+  "params": { "templatePath": "Template.xml" },
+  "expect": {
+    "stdoutContains": "[WARN]  Root element is 'dataCompositionSchema' — the platform loads it, but the Designer writes 'DataCompositionSchema'",
+    "stdoutNotContains": "[ERROR]"
+  },
+  "noSnapshot": "результат — только вывод"
+}

@@ -1,5 +1,5 @@
 {
-  "name": "XSD точной версии: подсказки по порядку и сжатый текст без пространств имён",
+  "name": "XSD точной версии: подсказки по порядку; False — один раз, собственной проверкой",
   "setup": "fixture:xsd-bad-220",
   "requires": ".v8-xsd/2.20",
   "preRun": [
@@ -20,10 +20,14 @@
     "stdoutContains": [
       "[ERROR] XSD 2.20, line 20: field/presentationExpression: must come before <valueType>",
       "[ERROR] XSD 2.20, line 43: calculatedField/useRestriction: must come before <valueType>",
-      "[ERROR] XSD 2.20, line 52: parameter/value:",
-      "[ERROR] XSD 2.20, line 87: settings/dataParameters: must come before <outputParameters>"
+      "[ERROR] XSD 2.20, line 87: settings/dataParameters: must come before <outputParameters>",
+      "<value xsi:type=\"xs:boolean\">False</value> — boolean must be true or false (lowercase)",
+      "=== Result: 4 errors"
     ],
-    "stdoutNotContains": "http://v8.1c.ru"
+    "stdoutNotContains": [
+      "http://v8.1c.ru",
+      "parameter/value"
+    ]
   },
   "noSnapshot": "результат — только вывод; схемы 1С не должны попасть в эталон"
 }

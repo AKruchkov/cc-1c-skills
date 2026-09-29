@@ -1,4 +1,4 @@
-# skd-validate v1.6 — Validate 1C DCS structure (Python port)
+# skd-validate v1.7 — Validate 1C DCS structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -78,6 +78,9 @@ errors = 0
 warnings = 0
 ok_count = 0
 stopped = False
+# Проверка, которая не выполнялась, — в итоговую строку: без этого «Validation OK» читается как
+# «проверено всё» (модель так и докладывала пользователю при нарушенном порядке)
+xsd_note = None
 output_lines = []
 
 
@@ -109,10 +112,12 @@ def report_warn(msg):
 def finalize():
     checks = ok_count + errors + warnings
     if errors == 0 and warnings == 0 and not detailed:
-        result = f"=== Validation OK: {file_name} ({checks} checks) ==="
+        note = f"; {xsd_note}" if xsd_note else ""
+        result = f"=== Validation OK: {file_name} ({checks} checks{note}) ==="
     else:
         out_line("")
-        out_line(f"=== Result: {errors} errors, {warnings} warnings ({checks} checks) ===")
+        note = f"; {xsd_note}" if xsd_note else ""
+        out_line(f"=== Result: {errors} errors, {warnings} warnings ({checks} checks{note}) ===")
         result = "\n".join(output_lines)
     print(result)
     if out_file:
@@ -187,10 +192,14 @@ def inner_text(node):
 
 # ── 3. Root element checks ───────────────────────────────────
 
-if local_name(root) != "DataCompositionSchema":
-    report_error(f"Root element is '{local_name(root)}', expected 'DataCompositionSchema'")
-else:
+# Строчную (dataCompositionSchema — имя из XSD, так пишет сериализатор XDTO) платформа загружает,
+# но конфигуратор всегда пишет DataCompositionSchema — это предупреждение, не ошибка.
+if local_name(root) == "DataCompositionSchema":
     report_ok("Root element: DataCompositionSchema")
+elif local_name(root).lower() == "datacompositionschema":
+    report_warn(f"Root element is '{local_name(root)}' — the platform loads it, but the Designer writes 'DataCompositionSchema'")
+else:
+    report_error(f"Root element is '{local_name(root)}', expected 'DataCompositionSchema'")
 
 expected_ns = "http://v8.1c.ru/8.1/data-composition-system/schema"
 root_ns = etree.QName(root.tag).namespace or ""
@@ -877,6 +886,10 @@ for vn in value_nodes:
             v_ok = False
         elif not _re_vt.match(r'^[A-Za-zА-Яа-яЁё]+\.[A-Za-zА-Яа-яЁё0-9_]+', stripped):
             report_warn(f"<value xsi:type=\"dcscor:DesignTimeValue\">{text}</value> — doesn't look like a typical ref path")
+    elif xsi_type == 'xs:boolean' and text.strip() not in ('true', 'false', '1', '0'):
+        # Платформа прощает True/False, чтение по схеме (XDTO) — нет
+        report_error(f"<value xsi:type=\"xs:boolean\">{text}</value> — boolean must be true or false (lowercase)")
+        v_ok = False
 
 if v_checked > 0 and v_ok:
     report_ok(f"{v_checked} <value> element(s) with xsi:type: content OK")
@@ -1289,13 +1302,14 @@ def compress_xsd_message(m):
 
 def xsd_check():
     xsd_root = resolve_xsd_root(os.path.dirname(resolved_path))
+    global xsd_note
     if not xsd_root:
-        report_ok("XSD: no schemas in project — not checked")
+        xsd_note = "XSD not checked: no schemas (/v8-xsd-fetch)"
         return
     anchor = find_dump_anchor(os.path.dirname(resolved_path))
     ver = root_version(anchor) if anchor else None
     if not ver or format_rank(ver) == 0:
-        report_ok("XSD: format version unknown (template outside a dump) — not checked")
+        xsd_note = "XSD not checked: template outside a dump"
         return
 
     # Точная версия — ошибки; ближайшая более новая — предупреждения; только старше — пропуск
@@ -1330,6 +1344,9 @@ def xsd_check():
         el = _xsd_error_element(err)
         info = _xsd_elem_info(el)
         if xsd_platform_noise(info):
+            continue
+        # Недопустимое булево значение уже сообщила собственная проверка значений (раздел 17)
+        if info["elem"] == "value" and info["xsiNs"] == XS_NS and info["xsiLocal"] == "boolean":
             continue
         found += 1
         hint = None

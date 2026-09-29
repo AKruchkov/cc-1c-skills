@@ -49,7 +49,7 @@
 		<valueType>
 			<v8:Type>xs:boolean</v8:Type>
 		</valueType>
-		<value xsi:type="xs:boolean">False</value>
+		<value xsi:type="xs:boolean">false</value>
 		<useRestriction>false</useRestriction>
 	</parameter>
 	<settingsVariant>

@@ -1,4 +1,4 @@
-﻿# skd-validate v1.6 — Validate 1C DCS structure
+﻿# skd-validate v1.7 — Validate 1C DCS structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -55,6 +55,9 @@ $script:errors = 0
 $script:warnings = 0
 $script:okCount = 0
 $script:stopped = $false
+# Проверка, которая не выполнялась, — в итоговую строку: без этого «Validation OK» читается как
+# «проверено всё» (модель так и докладывала пользователю при нарушенном порядке)
+$script:xsdNote = $null
 $script:output = New-Object System.Text.StringBuilder 4096
 
 function Out-Line {
@@ -86,10 +89,12 @@ function Report-Warn {
 $finalize = {
 	$checks = $script:okCount + $script:errors + $script:warnings
 	if ($script:errors -eq 0 -and $script:warnings -eq 0 -and -not $Detailed) {
-		$result = "=== Validation OK: $fileName ($checks checks) ==="
+		$note = if ($script:xsdNote) { "; $($script:xsdNote)" } else { "" }
+		$result = "=== Validation OK: $fileName ($checks checks$note) ==="
 	} else {
 		Out-Line ""
-		Out-Line "=== Result: $($script:errors) errors, $($script:warnings) warnings ($checks checks) ==="
+		$note = if ($script:xsdNote) { "; $($script:xsdNote)" } else { "" }
+		Out-Line "=== Result: $($script:errors) errors, $($script:warnings) warnings ($checks checks$note) ==="
 		$result = $script:output.ToString()
 	}
 	Write-Host $result
@@ -141,10 +146,15 @@ $root = $xmlDoc.DocumentElement
 
 # --- 3. Root element checks ---
 
-if ($root.LocalName -ne "DataCompositionSchema") {
-	Report-Error "Root element is '$($root.LocalName)', expected 'DataCompositionSchema'"
-} else {
+# Регистр значим: -ne его не различает, и корень со строчной пропускался молча. Строчную
+# (dataCompositionSchema — имя из XSD, так пишет сериализатор XDTO) платформа загружает, но
+# конфигуратор всегда пишет DataCompositionSchema — это предупреждение, не ошибка.
+if ($root.LocalName -ceq "DataCompositionSchema") {
 	Report-OK "Root element: DataCompositionSchema"
+} elseif ($root.LocalName -eq "DataCompositionSchema") {
+	Report-Warn "Root element is '$($root.LocalName)' — the platform loads it, but the Designer writes 'DataCompositionSchema'"
+} else {
+	Report-Error "Root element is '$($root.LocalName)', expected 'DataCompositionSchema'"
 }
 
 $expectedNs = "http://v8.1c.ru/8.1/data-composition-system/schema"
@@ -918,6 +928,10 @@ foreach ($vn in $valueNodes) {
 		} elseif (-not ($text -match '^[A-Za-zА-Яа-яЁё]+\.[A-Za-zА-Яа-яЁё0-9_]+')) {
 			Report-Warn "<value xsi:type=`"dcscor:DesignTimeValue`">$text</value> — doesn't look like a typical ref path"
 		}
+	} elseif ($xsiType -ceq 'xs:boolean' -and @('true', 'false', '1', '0') -cnotcontains $text.Trim()) {
+		# Платформа прощает True/False, чтение по схеме (XDTO) — нет
+		Report-Error "<value xsi:type=`"xs:boolean`">$text</value> — boolean must be true or false (lowercase)"
+		$vOk = $false
 	}
 }
 if ($vChecked -gt 0 -and $vOk) {
@@ -1191,10 +1205,10 @@ function Compress-XsdMessage([string]$m) {
 
 function Invoke-XsdCheck {
 	$xsdRoot = Resolve-XsdRoot ([System.IO.Path]::GetDirectoryName($resolvedPath))
-	if (-not $xsdRoot) { Report-OK "XSD: no schemas in project — not checked"; return }
+	if (-not $xsdRoot) { $script:xsdNote = "XSD not checked: no schemas (/v8-xsd-fetch)"; return }
 	$anchor = Find-DumpAnchor ([System.IO.Path]::GetDirectoryName($resolvedPath))
 	$ver = if ($anchor) { Get-RootVersion $anchor } else { $null }
-	if (-not $ver -or (Get-FormatRank $ver) -eq 0) { Report-OK "XSD: format version unknown (template outside a dump) — not checked"; return }
+	if (-not $ver -or (Get-FormatRank $ver) -eq 0) { $script:xsdNote = "XSD not checked: template outside a dump"; return }
 
 	# Точная версия — ошибки; ближайшая более новая — предупреждения; только старше — пропуск
 	$cands = @(Get-ChildItem -LiteralPath $xsdRoot -Directory |
@@ -1264,6 +1278,8 @@ function Invoke-XsdCheck {
 			$info = @{ elem = $top.name; parent = $(if ($st.Count -gt 1) { $st[$st.Count - 2].name } else { '' }); xsiNs = $top.xsiNs; xsiLocal = $top.xsiLocal }
 		}
 		if (Test-XsdPlatformNoise $info) { return }
+		# Недопустимое булево значение уже сообщила собственная проверка значений (раздел 17)
+		if ($info.elem -ceq 'value' -and $info.xsiNs -ceq 'http://www.w3.org/2001/XMLSchema' -and $info.xsiLocal -ceq 'boolean') { return }
 		$script:xsdFound++
 		$hint = $null
 		if ($sender.NodeType -eq 'Element') {
