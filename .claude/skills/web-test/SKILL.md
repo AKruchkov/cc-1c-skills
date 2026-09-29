@@ -35,10 +35,10 @@ SCRIPT
 ## Setup (first time)
 
 ```bash
-cd "${CLAUDE_SKILL_DIR}/scripts" && npm install
+cd "${CLAUDE_SKILL_DIR}/scripts" && npm install && npx playwright install chromium
 ```
 
-Requires Node.js 18+. `npm install` downloads Playwright and Chromium.
+Requires Node.js 18+. `npm install` fetches Playwright; `npx playwright install chromium` downloads the browser.
 
 ## URL resolution
 

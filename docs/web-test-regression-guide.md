@@ -11,7 +11,7 @@
 ## Предусловия
 
 - База опубликована через Apache (`/web-publish`).
-- Установлен Node.js 18+, зависимости подняты: `cd .claude/skills/web-test/scripts && npm install`.
+- Установлен Node.js 18+, зависимости и браузер подняты: `cd .claude/skills/web-test/scripts && npm install && npx playwright install chromium`.
 - ffmpeg — нужен только если хотите видеозапись прогона как доказательство падения. Без него падения фиксируются скриншотами. Установка описана в [web-test-recording-guide.md](web-test-recording-guide.md).
 
 ## Как это устроено

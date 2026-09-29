@@ -12,7 +12,7 @@
 
 - База опубликована через Apache (`/web-publish`)
 - Node.js 18+ установлен
-- Зависимости установлены: `cd .claude/skills/web-test/scripts && npm install`
+- Зависимости и браузер установлены: `cd .claude/skills/web-test/scripts && npm install && npx playwright install chromium`
 
 ## Рабочий цикл
 

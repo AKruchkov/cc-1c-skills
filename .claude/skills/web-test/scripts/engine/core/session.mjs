@@ -1,12 +1,12 @@
-// web-test core/session v1.21 — Browser session lifecycle: connect/disconnect/attach/detach, multi-context registry.
+// web-test core/session v1.22 — Browser session lifecycle: connect/disconnect/attach/detach, multi-context registry.
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import { chromium } from 'playwright';
 import { softDeadline } from './deadline.mjs';
-import { statSync, mkdirSync, readdirSync } from 'fs';
-import { join as pathJoin } from 'path';
+import { statSync, mkdirSync, readdirSync, openSync, closeSync } from 'fs';
+import { join as pathJoin, dirname } from 'path';
 import { removePathSync } from './fsutil.mjs';
-import { tmpdir } from 'os';
+import { tmpdir, userInfo } from 'os';
 import {
   browser, page, sessionPrefix, seanceId, recorder, highlightMode,
   contexts, activeContextName, activeMode, persistentUserDataDir,
@@ -50,6 +50,47 @@ function findExtension(overridePath) {
     }
   }
   return null;
+}
+
+/**
+ * On Windows a Chromium that cannot start reports only "spawn UNKNOWN". The usual cause is the
+ * side-by-side manifest next to chrome.exe (<version>.manifest): missing from the install, or not
+ * readable by the current user (agent sandboxes). Append what we can establish to the first line
+ * of the error — some callers print only that line. Silent when nothing is established.
+ * Only after a failure: Windows caches the activation context of a chrome.exe that already ran,
+ * so an unreadable manifest does not by itself mean a launch will fail.
+ */
+function explainLaunchFailure(e) {
+  try {
+    if (process.platform !== 'win32' || !/spawn UNKNOWN/.test(e?.message || '')) return e;
+    const dir = dirname(chromium.executablePath());
+    const manifests = readdirSync(dir).filter(f => f.toLowerCase().endsWith('.manifest'));
+    let hint = null;
+    if (manifests.length === 0) {
+      hint = `Chromium side-by-side manifest (<version>.manifest) is missing next to chrome.exe in ${dir} — ` +
+        'the browser install is incomplete. Reinstall: npx playwright install --force chromium';
+    } else {
+      for (const m of manifests) {
+        try { closeSync(openSync(pathJoin(dir, m), 'r')); }
+        catch (err) {
+          if (err.code !== 'EPERM' && err.code !== 'EACCES') continue;
+          hint = `${pathJoin(dir, m)} exists but is not readable by user ${userInfo().username} (${err.code}) — ` +
+            'likely a sandbox/permissions restriction, not a broken install. Check the launch outside the sandbox';
+          break;
+        }
+      }
+    }
+    if (hint) {
+      const nl = e.message.indexOf('\n');
+      e.message = nl < 0 ? `${e.message} — ${hint}` : `${e.message.slice(0, nl)} — ${hint}${e.message.slice(nl)}`;
+    }
+  } catch {}
+  return e;
+}
+
+async function launchWithDiagnosis(fn) {
+  try { return await fn(); }
+  catch (e) { throw explainLaunchFailure(e); }
 }
 
 /* isConnected moved to core/state.mjs */
@@ -151,7 +192,7 @@ export async function connect(url, { extensionPath } = {}) {
       // Launch with 1C browser extension via persistent context
       setPersistentUserDataDir(pathJoin(tmpdir(), 'pw-1c-ext-' + Date.now()));
       mkdirSync(persistentUserDataDir, { recursive: true });
-      const context = await chromium.launchPersistentContext(persistentUserDataDir, {
+      const context = await launchWithDiagnosis(() => chromium.launchPersistentContext(persistentUserDataDir, {
         headless: false,
         args: [
           '--start-maximized',
@@ -160,12 +201,12 @@ export async function connect(url, { extensionPath } = {}) {
         ],
         viewport: null,
         permissions: ['clipboard-read', 'clipboard-write'],
-      });
+      }));
       setBrowser(context); // persistent context IS the browser
       setPage(context.pages()[0] || await context.newPage());
     } else {
       // Fallback: launch without extension
-      setBrowser(await chromium.launch({ headless: false, args: ['--start-maximized'] }));
+      setBrowser(await launchWithDiagnosis(() => chromium.launch({ headless: false, args: ['--start-maximized'] })));
       const context = await browser.newContext({
         viewport: null,
         permissions: ['clipboard-read', 'clipboard-write'],
@@ -429,15 +470,15 @@ export async function createContext(name, url, { extensionPath, isolation = 'tab
       // Persistent context: extension loads reliably, one window with tabs per context
       setPersistentUserDataDir(pathJoin(tmpdir(), 'pw-1c-test-' + Date.now()));
       mkdirSync(persistentUserDataDir, { recursive: true });
-      setBrowser(await chromium.launchPersistentContext(persistentUserDataDir, {
+      setBrowser(await launchWithDiagnosis(() => chromium.launchPersistentContext(persistentUserDataDir, {
         headless: false,
         args: launchArgs,
         viewport: null,
         permissions: ['clipboard-read', 'clipboard-write'],
-      }));
+      })));
     } else {
       // Window mode: separate BrowserContext per slot, full cookie isolation
-      setBrowser(await chromium.launch({ headless: false, args: launchArgs }));
+      setBrowser(await launchWithDiagnosis(() => chromium.launch({ headless: false, args: launchArgs })));
     }
     setActiveMode(isolation);
   }
