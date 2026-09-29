@@ -1,0 +1,5 @@
+{
+  "script": "v8-xsd-fetch/scripts/v8-xsd-fetch",
+  "setup": "none",
+  "args": []
+}

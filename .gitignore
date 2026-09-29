@@ -31,6 +31,10 @@ __pycache__/
 # на чистом клоне не сойдётся с результатом прогона.
 !tests/skills/cases/**/.v8-project.json
 
+# XSD-схемы платформы (/v8-xsd-fetch) — собственность 1С, не распространяем
+.v8-xsd/*
+!.v8-xsd/README.md
+
 # web-test: Node.js зависимости и runtime-артефакты
 .claude/skills/web-test/scripts/node_modules/
 .claude/skills/web-test/.browser-session.json

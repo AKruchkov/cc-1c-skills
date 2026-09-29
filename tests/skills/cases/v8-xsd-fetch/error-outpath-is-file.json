@@ -1,0 +1,10 @@
+{
+  "name": "каталог схем указывает на файл — отказ до обращения к сети",
+  "preRun": [{ "writeFile": { "path": "schemas", "content": "x" } }],
+  "args_extra": ["-OutPath", "{workDir}/schemas", "-Versions", "2.20"],
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "это файл"
+  },
+  "noSnapshot": "негативный кейс — навык отказывает до загрузки"
+}

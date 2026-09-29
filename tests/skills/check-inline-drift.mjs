@@ -93,7 +93,7 @@ const FAMILIES = [
       { id: 'full', authority: 'cf-edit',
         consumers: ['cfe-borrow', 'db-cfe-admin', 'db-create', 'db-dump-cf', 'db-dump-dt', 'db-dump-xml',
           'db-load-cf', 'db-load-dt', 'db-load-git', 'db-load-xml', 'db-repo', 'db-run', 'db-update',
-          'epf-build', 'epf-dump', 'web-publish',
+          'epf-build', 'epf-dump', 'web-publish', 'v8-xsd-fetch',
           'form-add', 'form-compile', 'form-edit', 'help-add', 'interface-edit', 'meta-compile',
           'meta-edit', 'meta-remove', 'mxl-compile', 'role-compile', 'role-edit', 'skd-compile', 'skd-edit',
           'subsystem-compile', 'subsystem-edit', 'template-add', 'xdto-compile', 'xdto-edit'] },
@@ -543,7 +543,7 @@ const FAMILIES = [
           'skd-info', 'skd-validate', 'subsystem-compile', 'subsystem-edit', 'subsystem-info',
           'subsystem-validate', 'support-edit', 'template-add', 'template-remove', 'web-info',
           'web-publish', 'web-stop', 'web-unpublish', 'xdto-compile', 'xdto-decompile', 'xdto-edit',
-          'xdto-info', 'xdto-validate'] },
+          'xdto-info', 'xdto-validate', 'v8-xsd-fetch'] },
     ],
   },
 
