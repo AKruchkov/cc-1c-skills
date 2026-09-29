@@ -1,4 +1,4 @@
-﻿# skd-validate v1.5 — Validate 1C DCS structure
+﻿# skd-validate v1.6 — Validate 1C DCS structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1044,6 +1044,151 @@ function Test-XsdPlatformNoise($info) {
 	return $false
 }
 
+# --- Подсказка по схеме: что именно исправить ---
+# Текст валидатора про порядок («недопустимый дочерний X, ожидается A, B») читается как «добавь A»,
+# а означает «X стоит слишком поздно». Поэтому для нарушений порядка строим свою подсказку: тип
+# родителя и порядок его детей берём из XSD, сравниваем с соседями нарушителя в документе. Обход
+# схемы — свой, по XSD-документам (не PSVI .NET): так подсказки портов совпадают.
+
+function Get-XsdModel([string]$dir) {
+	$m = @{
+		types = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::Ordinal)
+		elems = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::Ordinal)
+		orders = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::Ordinal)
+	}
+	foreach ($f in Get-ChildItem -LiteralPath $dir -Filter *.xsd -File) {
+		$doc = New-Object System.Xml.XmlDocument
+		$doc.Load($f.FullName)
+		$tns = $doc.DocumentElement.GetAttribute("targetNamespace")
+		foreach ($n in $doc.DocumentElement.ChildNodes) {
+			if ($n.NodeType -ne 'Element' -or $n.NamespaceURI -cne 'http://www.w3.org/2001/XMLSchema') { continue }
+			$name = $n.GetAttribute("name")
+			if (-not $name) { continue }
+			if ($n.get_LocalName() -ceq 'complexType' -and -not $m.types.ContainsKey("$tns|$name")) { $m.types["$tns|$name"] = $n }
+			elseif ($n.get_LocalName() -ceq 'element' -and -not $m.elems.ContainsKey("$tns|$name")) { $m.elems["$tns|$name"] = $n }
+		}
+	}
+	return $m
+}
+
+# QName из атрибута схемы → "ns|имя" по пространствам имён узла XSD
+function Resolve-XsdQName($node, [string]$qn) {
+	if (-not $qn) { return $null }
+	$pp = $qn.Split(':')
+	$prefix = if ($pp.Count -gt 1) { $pp[0] } else { '' }
+	return "$($node.GetNamespaceOfPrefix($prefix))|$($pp[-1])"
+}
+
+# Дети типа по порядку: @{ name; type; maxOne }. База расширения — первой. Порядок не определён
+# (choice, all, any, group) или тип неизвестен — $null.
+function Get-XsdChildOrder($model, [string]$typeKey) {
+	if (-not $typeKey) { return $null }
+	# Список отдаём через «,»: иначе PS развернёт его — пустой станет $null, одиночный — самим элементом
+	if ($model.orders.ContainsKey($typeKey)) { $v = $model.orders[$typeKey]; if ($null -eq $v) { return $null }; return ,$v }
+	$model.orders[$typeKey] = $null   # защита от циклов
+	$ct = if ($model.types.ContainsKey($typeKey)) { $model.types[$typeKey] } else { $null }
+	if (-not $ct) { return $null }
+	$list = New-Object System.Collections.ArrayList
+	$holder = $ct
+	foreach ($c in $ct.ChildNodes) {
+		if ($c.NodeType -ne 'Element') { continue }
+		if ($c.get_LocalName() -ceq 'simpleContent') { $model.orders[$typeKey] = $list; return ,$list }
+		if ($c.get_LocalName() -ceq 'complexContent') {
+			$ext = $null
+			foreach ($x in $c.ChildNodes) { if ($x.NodeType -eq 'Element' -and $x.get_LocalName() -ceq 'extension') { $ext = $x } }
+			if (-not $ext) { return $null }
+			$baseKey = Resolve-XsdQName $ext $ext.GetAttribute("base")
+			$base = Get-XsdChildOrder $model $baseKey
+			# База известна, но порядок у неё не определён — не определён и здесь
+			if ($null -eq $base -and $model.types.ContainsKey($baseKey)) { return $null }
+			if ($base) { foreach ($b in $base) { [void]$list.Add($b) } }
+			$holder = $ext
+		}
+	}
+	foreach ($c in $holder.ChildNodes) {
+		if ($c.NodeType -ne 'Element') { continue }
+		$ln = $c.get_LocalName()
+		if ($ln -ceq 'sequence') { if (-not (Add-XsdSequence $model $c $list)) { return $null } }
+		elseif ($ln -ceq 'choice' -or $ln -ceq 'all' -or $ln -ceq 'group' -or $ln -ceq 'any') { return $null }
+	}
+	$model.orders[$typeKey] = $list
+	return ,$list
+}
+
+function Add-XsdSequence($model, $seq, $list) {
+	foreach ($c in $seq.ChildNodes) {
+		if ($c.NodeType -ne 'Element') { continue }
+		$ln = $c.get_LocalName()
+		if ($ln -ceq 'element') {
+			$ref = $c.GetAttribute("ref")
+			if ($ref) {
+				$rk = Resolve-XsdQName $c $ref
+				$ge = if ($model.elems.ContainsKey($rk)) { $model.elems[$rk] } else { $null }
+				$name = $rk.Split('|')[-1]
+				$type = if ($ge -and $ge.GetAttribute("type")) { Resolve-XsdQName $ge $ge.GetAttribute("type") } else { $null }
+			} else {
+				$name = $c.GetAttribute("name")
+				$type = if ($c.GetAttribute("type")) { Resolve-XsdQName $c $c.GetAttribute("type") } else { $null }
+			}
+			$mx = $c.GetAttribute("maxOccurs")
+			[void]$list.Add(@{ name = $name; type = $type; maxOne = (-not $mx -or $mx -ceq '1') })
+		} elseif ($ln -ceq 'sequence') {
+			if (-not (Add-XsdSequence $model $c $list)) { return $false }
+		} elseif ($ln -ceq 'annotation') {
+			continue
+		} else {
+			return $false
+		}
+	}
+	return $true
+}
+
+# Тип родителя нарушителя: спуск от корня по цепочке предков (@{ name; ns; xsiKey })
+function Resolve-XsdParentType($model, $ancestors) {
+	if ($ancestors.Count -eq 0) { return $null }
+	$root = $ancestors[0]
+	$rk = "$($root.ns)|$($root.name)"
+	if ($root.xsiKey) { $type = $root.xsiKey }
+	elseif ($model.elems.ContainsKey($rk) -and $model.elems[$rk].GetAttribute("type")) { $type = Resolve-XsdQName $model.elems[$rk] $model.elems[$rk].GetAttribute("type") }
+	elseif ($model.types.ContainsKey($rk)) { $type = $rk }
+	else { return $null }
+	for ($i = 1; $i -lt $ancestors.Count; $i++) {
+		$a = $ancestors[$i]
+		if ($a.xsiKey) { $type = $a.xsiKey; continue }
+		$order = Get-XsdChildOrder $model $type
+		if ($null -eq $order) { return $null }
+		$hit = $null
+		foreach ($o in $order) { if ($o.name -ceq $a.name) { $hit = $o; break } }
+		if (-not $hit -or -not $hit.type) { return $null }
+		$type = $hit.type
+	}
+	return $type
+}
+
+function Get-XsdOrderHint($model, $ancestors, [string]$name, $preceding) {
+	$pt = Resolve-XsdParentType $model $ancestors
+	$order = Get-XsdChildOrder $model $pt
+	if ($null -eq $order) { return $null }
+	$names = [string[]]@($order | ForEach-Object { $_.name })
+	$idx = [array]::IndexOf($names, $name)
+	if ($idx -lt 0) { return "not allowed in <$($ancestors[$ancestors.Count - 1].name)>" }
+	if ($order[$idx].maxOne -and ([string[]]@($preceding) -ccontains $name)) { return "duplicate — only one <$name> allowed" }
+	foreach ($sib in $preceding) {
+		if ([array]::IndexOf($names, [string]$sib) -gt $idx) { return "must come before <$sib>" }
+	}
+	return $null
+}
+
+# Текст валидатора без пространств имён: остаются имена и значения
+function Compress-XsdMessage([string]$m) {
+	$m = $m -replace '[\r\n]+', ' '
+	$m = $m -replace '\s(в пространстве имен|in namespace)\s"[^"]*"', ''
+	$m = $m -replace "\s(в пространстве имен|in namespace)\s'[^']*'", ''
+	$m = $m -replace '\{[^}]*\}', ''
+	$m = $m -replace '(["''])https?://[^"'']*:', '$1'
+	return $m.Trim()
+}
+
 function Invoke-XsdCheck {
 	$xsdRoot = Resolve-XsdRoot ([System.IO.Path]::GetDirectoryName($resolvedPath))
 	if (-not $xsdRoot) { Report-OK "XSD: no schemas in project — not checked"; return }
@@ -1085,16 +1230,24 @@ function Invoke-XsdCheck {
 	$set.XmlResolver = $null
 	foreach ($sc in $schemas) { [void]$set.Add($sc) }
 	try { $set.Compile() } catch { Report-Warn "XSD: schemas in '$useDir' do not compile — not checked: $($_.Exception.Message)"; return }
+	$script:xsdModel = Get-XsdModel $useDir
 
 	# Своя цепочка открытых элементов: в обработчике нужен родитель нарушителя
 	$script:xsdStack = New-Object System.Collections.ArrayList
 	$script:xsdFound = 0
+	# Ошибку атрибута .NET сообщает, стоя на атрибуте: имени элемента-владельца в этот момент нет.
+	# Откладываем и выводим после Read(), когда читатель уже на элементе.
+	$script:xsdPending = New-Object System.Collections.ArrayList
 	$script:xsdTag = if ($exact) { "XSD $useVer" } else { "XSD $useVer (no schemas for $ver)" }
 	$script:xsdExact = $exact
 	$handler = {
 		param($sender, $e)
 		if ($script:stopped) { return }
 		$st = $script:xsdStack
+		if ($sender.NodeType -eq 'Attribute') {
+			[void]$script:xsdPending.Add(@{ line = $e.Exception.LineNumber; text = (Compress-XsdMessage $e.Message) })
+			return
+		}
 		if ($sender.NodeType -eq 'Element') {
 			$xt = $sender.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
 			$info = @{ elem = $sender.LocalName; parent = $(if ($st.Count -gt 0) { $st[$st.Count - 1].name } else { '' }); xsiNs = ''; xsiLocal = '' }
@@ -1109,7 +1262,13 @@ function Invoke-XsdCheck {
 		}
 		if (Test-XsdPlatformNoise $info) { return }
 		$script:xsdFound++
-		$msg = "$($script:xsdTag), line $($e.Exception.LineNumber): $($info.parent)/$($info.elem): $($e.Message -replace '[\r\n]+', ' ')"
+		$hint = $null
+		if ($sender.NodeType -eq 'Element') {
+			$prec = if ($st.Count -gt 0) { $st[$st.Count - 1].children } else { @() }
+			$hint = Get-XsdOrderHint $script:xsdModel $st $sender.LocalName $prec
+		}
+		$text = if ($hint) { $hint } else { Compress-XsdMessage $e.Message }
+		$msg = "$($script:xsdTag), line $($e.Exception.LineNumber): $($info.parent)/$($info.elem): $text"
 		if ($script:xsdExact) { Report-Error $msg } else { Report-Warn $msg }
 	}
 	$rs = New-Object System.Xml.XmlReaderSettings
@@ -1120,13 +1279,32 @@ function Invoke-XsdCheck {
 	$r = [System.Xml.XmlReader]::Create($resolvedPath, $rs)
 	try {
 		while ($r.Read()) {
-			if ($r.NodeType -eq 'Element' -and -not $r.IsEmptyElement) {
+			if ($r.NodeType -eq 'Element') {
+				# Имя — в дети родителя (и у пустого элемента: он тоже сосед для подсказки)
+				if ($script:xsdStack.Count -gt 0) { [void]$script:xsdStack[$script:xsdStack.Count - 1].children.Add($r.LocalName) }
+				foreach ($pa in $script:xsdPending) {
+					$xt = $r.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
+					$info = @{ elem = $r.LocalName; parent = $(if ($script:xsdStack.Count -gt 0) { $script:xsdStack[$script:xsdStack.Count - 1].name } else { '' }); xsiNs = ''; xsiLocal = '' }
+					if ($xt) {
+						$pp = $xt.Split(':')
+						$info.xsiLocal = $pp[-1]
+						if ($pp.Count -gt 1) { $info.xsiNs = "$($r.LookupNamespace($pp[0]))" }
+					}
+					if (Test-XsdPlatformNoise $info) { continue }
+					$script:xsdFound++
+					$msg = "$($script:xsdTag), line $($pa.line): $($info.parent)/$($info.elem): $($pa.text)"
+					if ($script:xsdExact) { Report-Error $msg } else { Report-Warn $msg }
+				}
+				$script:xsdPending.Clear()
+				if ($script:stopped) { break }
+				if ($r.IsEmptyElement) { continue }
 				$xt = $r.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
-				$entry = @{ name = $r.LocalName; xsiNs = ''; xsiLocal = '' }
+				$entry = @{ name = $r.LocalName; ns = $r.NamespaceURI; xsiNs = ''; xsiLocal = ''; xsiKey = $null; children = New-Object System.Collections.ArrayList }
 				if ($xt) {
 					$pp = $xt.Split(':')
 					$entry.xsiLocal = $pp[-1]
-					if ($pp.Count -gt 1) { $entry.xsiNs = "$($r.LookupNamespace($pp[0]))" }
+					$entry.xsiNs = if ($pp.Count -gt 1) { "$($r.LookupNamespace($pp[0]))" } else { "$($r.LookupNamespace(''))" }
+					$entry.xsiKey = "$($entry.xsiNs)|$($entry.xsiLocal)"
 				}
 				[void]$script:xsdStack.Add($entry)
 			} elseif ($r.NodeType -eq 'EndElement' -and $script:xsdStack.Count -gt 0) {

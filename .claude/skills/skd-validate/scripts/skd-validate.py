@@ -1,4 +1,4 @@
-# skd-validate v1.5 — Validate 1C DCS structure (Python port)
+# skd-validate v1.6 — Validate 1C DCS structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -1111,6 +1111,182 @@ def _xsd_error_element(err):
     return None
 
 
+# ── Подсказка по схеме: что именно исправить ──
+# Текст валидатора про порядок («недопустимый дочерний X, ожидается A, B») читается как «добавь A»,
+# а означает «X стоит слишком поздно». Поэтому для нарушений порядка строим свою подсказку: тип
+# родителя и порядок его детей берём из XSD, сравниваем с соседями нарушителя в документе. Обход
+# схемы — свой, по XSD-документам, как в PS-мастере: так подсказки портов совпадают.
+
+def xsd_model(vdir):
+    m = {"types": {}, "elems": {}, "orders": {}}
+    for name in sorted(os.listdir(vdir)):
+        fp = os.path.join(vdir, name)
+        if not (name.lower().endswith(".xsd") and os.path.isfile(fp)):
+            continue
+        root_el = etree.parse(fp).getroot()
+        tns = root_el.get("targetNamespace") or ""
+        for n in root_el:
+            if not isinstance(n.tag, str) or etree.QName(n).namespace != XS_NS or not n.get("name"):
+                continue
+            key = f"{tns}|{n.get('name')}"
+            ln = etree.QName(n).localname
+            if ln == "complexType":
+                m["types"].setdefault(key, n)
+            elif ln == "element":
+                m["elems"].setdefault(key, n)
+    return m
+
+
+def xsd_resolve_qname(node, qn):
+    """QName из атрибута схемы → "ns|имя" по пространствам имён узла XSD."""
+    if not qn:
+        return None
+    pp = qn.split(":")
+    prefix = pp[0] if len(pp) > 1 else None
+    return f"{node.nsmap.get(prefix) or ''}|{pp[-1]}"
+
+
+def xsd_child_order(model, type_key):
+    """Дети типа по порядку: {name, type, maxOne}. База расширения — первой. Порядок не определён
+    (choice, all, any, group) или тип неизвестен — None."""
+    if not type_key:
+        return None
+    if type_key in model["orders"]:
+        return model["orders"][type_key]
+    model["orders"][type_key] = None   # защита от циклов
+    ct = model["types"].get(type_key)
+    if ct is None:
+        return None
+    lst = []
+    holder = ct
+    for c in ct:
+        if not isinstance(c.tag, str):
+            continue
+        ln = etree.QName(c).localname
+        if ln == "simpleContent":
+            model["orders"][type_key] = lst
+            return lst
+        if ln == "complexContent":
+            ext = None
+            for x in c:
+                if isinstance(x.tag, str) and etree.QName(x).localname == "extension":
+                    ext = x
+            if ext is None:
+                return None
+            base_key = xsd_resolve_qname(ext, ext.get("base"))
+            base = xsd_child_order(model, base_key)
+            # База известна, но порядок у неё не определён — не определён и здесь
+            if base is None and base_key in model["types"]:
+                return None
+            if base:
+                lst.extend(base)
+            holder = ext
+    for c in holder:
+        if not isinstance(c.tag, str):
+            continue
+        ln = etree.QName(c).localname
+        if ln == "sequence":
+            if not _xsd_add_sequence(model, c, lst):
+                return None
+        elif ln in ("choice", "all", "group", "any"):
+            return None
+    model["orders"][type_key] = lst
+    return lst
+
+
+def _xsd_add_sequence(model, seq, lst):
+    for c in seq:
+        if not isinstance(c.tag, str):
+            continue
+        ln = etree.QName(c).localname
+        if ln == "element":
+            ref = c.get("ref")
+            if ref:
+                rk = xsd_resolve_qname(c, ref)
+                ge = model["elems"].get(rk)
+                name = rk.split("|")[-1]
+                typ = xsd_resolve_qname(ge, ge.get("type")) if ge is not None and ge.get("type") else None
+            else:
+                name = c.get("name")
+                typ = xsd_resolve_qname(c, c.get("type")) if c.get("type") else None
+            mx = c.get("maxOccurs")
+            lst.append({"name": name, "type": typ, "maxOne": (not mx or mx == "1")})
+        elif ln == "sequence":
+            if not _xsd_add_sequence(model, c, lst):
+                return False
+        elif ln == "annotation":
+            continue
+        else:
+            return False
+    return True
+
+
+def _xsd_ancestor(el):
+    """Предок для спуска по схеме: {name, ns, xsiKey}."""
+    q = etree.QName(el)
+    e = {"name": q.localname, "ns": q.namespace or "", "xsiKey": None}
+    xt = el.get(XSI_TYPE)
+    if xt:
+        pp = xt.split(":")
+        prefix = pp[0] if len(pp) > 1 else None
+        e["xsiKey"] = f"{el.nsmap.get(prefix) or ''}|{pp[-1]}"
+    return e
+
+
+def xsd_parent_type(model, ancestors):
+    """Тип родителя нарушителя: спуск от корня по цепочке предков."""
+    if not ancestors:
+        return None
+    root = ancestors[0]
+    rk = f"{root['ns']}|{root['name']}"
+    if root["xsiKey"]:
+        typ = root["xsiKey"]
+    elif rk in model["elems"] and model["elems"][rk].get("type"):
+        typ = xsd_resolve_qname(model["elems"][rk], model["elems"][rk].get("type"))
+    elif rk in model["types"]:
+        typ = rk
+    else:
+        return None
+    for a in ancestors[1:]:
+        if a["xsiKey"]:
+            typ = a["xsiKey"]
+            continue
+        order = xsd_child_order(model, typ)
+        if order is None:
+            return None
+        hit = next((o for o in order if o["name"] == a["name"]), None)
+        if hit is None or not hit["type"]:
+            return None
+        typ = hit["type"]
+    return typ
+
+
+def xsd_order_hint(model, ancestors, name, preceding):
+    order = xsd_child_order(model, xsd_parent_type(model, ancestors))
+    if order is None:
+        return None
+    names = [o["name"] for o in order]
+    if name not in names:
+        return f"not allowed in <{ancestors[-1]['name']}>"
+    idx = names.index(name)
+    if order[idx]["maxOne"] and name in preceding:
+        return f"duplicate — only one <{name}> allowed"
+    for sib in preceding:
+        if sib in names and names.index(sib) > idx:
+            return f"must come before <{sib}>"
+    return None
+
+
+def compress_xsd_message(m):
+    """Текст валидатора без пространств имён: остаются имена и значения."""
+    m = re.sub(r'[\r\n]+', ' ', m)
+    m = re.sub(r'\s(в пространстве имен|in namespace)\s"[^"]*"', '', m)
+    m = re.sub(r"\s(в пространстве имен|in namespace)\s'[^']*'", '', m)
+    m = re.sub(r'\{[^}]*\}', '', m)
+    m = re.sub(r'(["\'])https?://[^"\']*:', r'\1', m)
+    return ' '.join(m.split())
+
+
 def xsd_check():
     xsd_root = resolve_xsd_root(os.path.dirname(resolved_path))
     if not xsd_root:
@@ -1133,6 +1309,7 @@ def xsd_check():
     use_ver = cands[0]
     exact = use_ver == ver
 
+    model = xsd_model(os.path.join(xsd_root, use_ver))
     tmp = tempfile.mkdtemp(prefix="skd-xsd-")
     try:
         try:
@@ -1154,7 +1331,15 @@ def xsd_check():
         if xsd_platform_noise(info):
             continue
         found += 1
-        msg = f"{tag}, line {err.line}: {info['parent']}/{info['elem']}: {' '.join(err.message.split())}"
+        hint = None
+        # «Лишний/не на месте» у libxml2 — «This element is not expected» (текст не локализуется)
+        if el is not None and "This element is not expected" in err.message:
+            ancestors = [_xsd_ancestor(a) for a in reversed(list(el.iterancestors()))]
+            preceding = [etree.QName(x).localname for x in reversed(list(el.itersiblings(preceding=True)))
+                         if isinstance(x.tag, str)]
+            hint = xsd_order_hint(model, ancestors, etree.QName(el).localname, preceding)
+        text = hint or compress_xsd_message(err.message)
+        msg = f"{tag}, line {err.line}: {info['parent']}/{info['elem']}: {text}"
         if exact:
             report_error(msg)
         else:

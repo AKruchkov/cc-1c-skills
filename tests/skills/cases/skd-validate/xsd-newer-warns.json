@@ -20,7 +20,7 @@
   },
   "expect": {
     "stdoutContains": [
-      "[WARN]  XSD 2.12 (no schemas for 2.11), line 20: field/presentationExpression"
+      "[WARN]  XSD 2.12 (no schemas for 2.11), line 20: field/presentationExpression: must come before <valueType>"
     ],
     "stdoutNotContains": "[ERROR]"
   },

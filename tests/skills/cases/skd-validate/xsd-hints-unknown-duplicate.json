@@ -1,0 +1,15 @@
+{
+  "name": "Подсказки XSD: повтор элемента и элемент, которого нет в модели родителя",
+  "setup": "fixture:xsd-hints-220",
+  "requires": ".v8-xsd/2.20",
+  "preRun": [{ "writeFile": { "path": ".v8-project.json", "content": { "xsdPath": "{repoRoot}/.v8-xsd" } } }],
+  "params": { "templatePath": "Reports/Отчет/Templates/Схема/Ext/Template.xml" },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "field/presentationExpression: duplicate — only one <presentationExpression> allowed",
+      "field/fooBar: not allowed in <field>"
+    ]
+  },
+  "noSnapshot": "результат — только вывод; схемы 1С не должны попасть в эталон"
+}
