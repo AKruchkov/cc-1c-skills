@@ -1,0 +1,27 @@
+{
+  "name": "Булевы значения из JSON и составной тип — true/false строчными, сначала типы, потом квалификаторы",
+  "params": { "outputPath": "Template.xml" },
+  "input": {
+    "dataSets": [{
+      "name": "Основной",
+      "query": "ВЫБРАТЬ 1 КАК Число",
+      "fields": [{ "dataPath": "Число", "field": "Число", "type": ["string(10)", "decimal(10,2)", "date", "CatalogRef.Организации", "DocumentRef"] }]
+    }],
+    "parameters": [
+      { "name": "Выключен", "type": "boolean", "value": false },
+      { "name": "Включен", "type": "boolean", "value": true },
+      { "name": "БезТипа", "value": false },
+      { "name": "Составной", "type": ["decimal(10,2)", "string(20)", "CatalogRef.Организации"] }
+    ],
+    "settingsVariants": [{
+      "name": "Основной",
+      "settings": {
+        "selection": ["Число"],
+        "dataParameters": ["Выключен = false", "Включен = true"],
+        "structure": "details"
+      }
+    }]
+  },
+  "validatePath": "Template.xml",
+  "expect": { "files": ["Template.xml"] }
+}

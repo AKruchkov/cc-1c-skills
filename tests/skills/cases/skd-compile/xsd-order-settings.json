@@ -1,0 +1,32 @@
+{
+  "name": "Настройки варианта со всеми блоками и группировкой с отбором — порядок по XSD",
+  "params": { "outputPath": "Template.xml" },
+  "input": {
+    "dataSets": [{
+      "name": "Основной",
+      "query": "ВЫБРАТЬ Т.Организация, Т.Сумма, Т.Активна ИЗ Регистр КАК Т",
+      "fields": ["Организация: CatalogRef.Организации", "Сумма: decimal(15,2)", "Активна: boolean"]
+    }],
+    "parameters": ["Период: StandardPeriod = LastMonth"],
+    "settingsVariants": [{
+      "name": "Основной",
+      "settings": {
+        "selection": ["Организация", "Сумма"],
+        "filter": ["Активна = true"],
+        "order": ["Сумма desc"],
+        "conditionalAppearance": [
+          { "filter": ["Сумма < 0"], "appearance": { "ЦветТекста": "web:Red", "Видимость": false } }
+        ],
+        "outputParameters": { "Заголовок": "Отчёт" },
+        "dataParameters": ["Период = LastMonth @user"],
+        "structure": [
+          { "type": "group", "groupBy": ["Организация"], "filter": ["Сумма > 0"], "order": ["Сумма desc"], "selection": ["Auto"] }
+        ],
+        "itemsViewMode": "Normal",
+        "additionalProperties": { "ВариантНаименование": "Основной" }
+      }
+    }]
+  },
+  "validatePath": "Template.xml",
+  "expect": { "files": ["Template.xml"] }
+}

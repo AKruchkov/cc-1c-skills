@@ -1,4 +1,4 @@
-﻿# skd-edit v1.41 — Atomic 1C DCS editor
+﻿# skd-edit v1.42 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # NB: парный .py собирает выражения автодат вне f-string ради совместимости с python 3.9 (PEP 701).
 [CmdletBinding(PositionalBinding=$false)]
@@ -1175,11 +1175,12 @@ function Build-RestrictionXml {
 		"noGroup" = "group"; "noOrder" = "order"
 	}
 
+	# Флаги — в порядке XSD FieldUseRestriction (field condition group order), не в порядке ввода
+	$given = @($restrict | ForEach-Object { $restrictMap["$_"] } | Where-Object { $_ })
 	$lines = @()
 	$lines += "$indent<useRestriction>"
-	foreach ($r in $restrict) {
-		$xmlName = $restrictMap["$r"]
-		if ($xmlName) {
+	foreach ($xmlName in @('field', 'condition', 'group', 'order')) {
+		if ($given -contains $xmlName) {
 			$lines += "$indent`t<$xmlName>true</$xmlName>"
 		}
 	}
@@ -1209,30 +1210,42 @@ function Build-FieldFragment {
 		$lines += (Build-MLTextXml -tag "title" -text $parsed.title -indent "$i`t")
 	}
 
+	# Остальные части собираем как (место по XSD, xml) и выводим по месту: сохранённые как есть
+	# узлы (attributeUseRestriction, presentationExpression, orderExpression, appearance, …)
+	# встают на своё место, а не в хвост после valueType. Незнакомые — в конец, как раньше.
+	$fieldOrder = [string[]]$script:XsdChildOrder['DataSetFieldField']
+	$parts = New-Object System.Collections.ArrayList
 	if ($parsed.restrict -and $parsed.restrict.Count -gt 0) {
-		$lines += (Build-RestrictionXml -restrict $parsed.restrict -indent "$i`t")
+		[void]$parts.Add(@([array]::IndexOf($fieldOrder, 'useRestriction'), (Build-RestrictionXml -restrict $parsed.restrict -indent "$i`t")))
 	}
 
 	$roleXml = Build-RoleXml -roles $parsed.roles -indent "$i`t"
-	if ($roleXml) { $lines += $roleXml }
+	if ($roleXml) { [void]$parts.Add(@([array]::IndexOf($fieldOrder, 'role'), $roleXml)) }
 
+	$vtRank = [array]::IndexOf($fieldOrder, 'valueType')
 	if ($parsed.rawValueType) {
 		# Preserve original <valueType> verbatim — keeps qualifiers (StringQualifiers,
 		# NumberQualifiers, DateQualifiers, …) that aren't expressible via shorthand.
-		$lines += "$i`t" + $parsed.rawValueType
+		[void]$parts.Add(@($vtRank, ("$i`t" + $parsed.rawValueType)))
 	} elseif ($parsed.type) {
-		$lines += "$i`t<valueType>"
-		$lines += (Build-ValueTypeXml -typeStr $parsed.type -indent "$i`t`t")
-		$lines += "$i`t</valueType>"
+		$vt = @("$i`t<valueType>") + @(Build-ValueTypeXml -typeStr $parsed.type -indent "$i`t`t") + @("$i`t</valueType>")
+		[void]$parts.Add(@($vtRank, ($vt -join "`n")))
 	}
 
 	# Defense in depth: re-emit OuterXml of unknown children (e.g. <editFormat>,
 	# <appearance>, custom extensions) that Read-FieldProperties captured.
 	if ($parsed._unknownChildren) {
 		foreach ($raw in $parsed._unknownChildren) {
-			$lines += "$i`t" + $raw
+			$m = [regex]::Match($raw, '^<(?:[\w.-]+:)?([\w.-]+)')
+			$r = if ($m.Success) { [array]::IndexOf($fieldOrder, $m.Groups[1].Value) } else { -1 }
+			if ($r -lt 0) { $r = $fieldOrder.Count }
+			[void]$parts.Add(@($r, ("$i`t" + $raw)))
 		}
 	}
+	# Устойчивая сортировка по месту: при равенстве — порядок добавления
+	$idx = 0
+	$sorted = $parts | ForEach-Object { [pscustomobject]@{ r = $_[0]; n = $idx++; x = $_[1] } } | Sort-Object r, n
+	foreach ($p in $sorted) { $lines += $p.x }
 
 	$lines += "$i</field>"
 	return $lines -join "`n"
@@ -2172,7 +2185,47 @@ function Resolve-VariantSettings {
 	exit 1
 }
 
-function Ensure-SettingsChild($settings, [string]$childName, [string[]]$afterSiblings) {
+# Порядок детей по XSD схемы компоновки: чтение по схеме (XDTO) отвергает нарушенный порядок,
+# поэтому новый узел встаёт перед первым соседом, который по схеме идёт позже. Ключ — вид
+# контейнера: settings, поле набора или xsi:type элемента структуры (без xsi:type — группа).
+$script:XsdChildOrder = @{
+	'settings' = @('userFields','selection','filter','dataParameters','order','conditionalAppearance','outputParameters',
+		'item','additionalProperties','itemsViewMode','itemsUserSettingID','itemsUserSettingPresentation')
+	'StructureItemGroup' = @('use','name','groupItems','filter','order','selection','conditionalAppearance','outputParameters',
+		'item','id','viewMode','userSettingID','userSettingPresentation','itemsViewMode','itemsUserSettingID','itemsUserSettingPresentation','groupState')
+	'StructureItemTable' = @('use','name','column','row','selection','conditionalAppearance','outputParameters',
+		'id','viewMode','userSettingID','userSettingPresentation','columnsViewMode','columnsUserSettingID','columnsUserSettingPresentation',
+		'rowsViewMode','rowsUserSettingID','rowsUserSettingPresentation')
+	'StructureItemChart' = @('use','name','point','series','selection','conditionalAppearance','outputParameters',
+		'id','viewMode','userSettingID','userSettingPresentation','pointsViewMode','pointsUserSettingID','pointsUserSettingPresentation',
+		'seriesViewMode','seriesUserSettingID','seriesUserSettingPresentation')
+	'DataSetFieldField' = @('dataPath','field','title','useRestriction','attributeUseRestriction','role','presentationExpression',
+		'orderExpression','inHierarchyDataSet','inHierarchyDataSetParameter','valueType','appearance','availableValue','inputParameters')
+}
+
+function Get-XsdChildOrder($container) {
+	if ($container.LocalName -eq 'settings') { return $script:XsdChildOrder['settings'] }
+	if ($container.LocalName -eq 'field') { return $script:XsdChildOrder['DataSetFieldField'] }
+	$xt = $container.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
+	$xt = ($xt -split ':')[-1]
+	if ($xt -and $script:XsdChildOrder.ContainsKey($xt)) { return $script:XsdChildOrder[$xt] }
+	return $script:XsdChildOrder['StructureItemGroup']
+}
+
+# Первый сосед, который по XSD идёт после $childName; $null — вставлять в конец
+function Find-OrderedInsertRef($container, [string]$childName) {
+	$order = [string[]](Get-XsdChildOrder $container)
+	$rank = [array]::IndexOf($order, $childName)
+	if ($rank -lt 0) { return $null }
+	foreach ($ch in $container.ChildNodes) {
+		if ($ch.NodeType -ne 'Element') { continue }
+		$r = [array]::IndexOf($order, [string]$ch.LocalName)
+		if ($r -gt $rank) { return $ch }
+	}
+	return $null
+}
+
+function Ensure-SettingsChild($settings, [string]$childName) {
 	$el = Find-FirstElement $settings @($childName) $setNs
 	if ($el) { return $el }
 
@@ -2180,18 +2233,7 @@ function Ensure-SettingsChild($settings, [string]$childName, [string[]]$afterSib
 	$fragXml = "$indent<dcsset:$childName/>"
 	$nodes = Import-Fragment $xmlDoc $fragXml
 
-	$refNode = $null
-	foreach ($sibName in $afterSiblings) {
-		$sib = Find-FirstElement $settings @($sibName) $setNs
-		if ($sib) {
-			$refNode = $sib.NextSibling
-			while ($refNode -and ($refNode.NodeType -eq 'Whitespace' -or $refNode.NodeType -eq 'SignificantWhitespace')) {
-				$refNode = $refNode.NextSibling
-			}
-			break
-		}
-	}
-
+	$refNode = Find-OrderedInsertRef $settings $childName
 	foreach ($node in $nodes) {
 		Insert-BeforeElement $settings $node $refNode $indent
 	}
@@ -2309,7 +2351,7 @@ switch ($Operation) {
 			if (-not $NoSelection) {
 				$settings = Resolve-VariantSettings
 				$varName = Get-VariantName
-				$selection = Ensure-SettingsChild $settings "selection" @()
+				$selection = Ensure-SettingsChild $settings "selection"
 				$existingSel = Find-ElementByChildValue $selection "item" "field" $parsed.dataPath $setNs
 				if ($existingSel) {
 					Write-Host "[INFO] Field `"$($parsed.dataPath)`" already in selection — skipped"
@@ -2395,7 +2437,7 @@ switch ($Operation) {
 			if (-not $NoSelection) {
 				$settings = Resolve-VariantSettings
 				$varName = Get-VariantName
-				$selection = Ensure-SettingsChild $settings "selection" @()
+				$selection = Ensure-SettingsChild $settings "selection"
 				$existingSel = Find-ElementByChildValue $selection "item" "field" $parsed.dataPath $setNs
 				if ($existingSel) {
 					Write-Host "[INFO] Field `"$($parsed.dataPath)`" already in selection — skipped"
@@ -2956,7 +2998,7 @@ switch ($Operation) {
 		foreach ($val in $values) {
 			$parsed = Parse-FilterShorthand $val
 
-			$filterEl = Ensure-SettingsChild $settings "filter" @("selection")
+			$filterEl = Ensure-SettingsChild $settings "filter"
 			$filterIndent = Get-ContainerChildIndent $filterEl
 
 			$fragXml = Build-FilterItemFragment -parsed $parsed -indent $filterIndent
@@ -2976,7 +3018,7 @@ switch ($Operation) {
 		foreach ($val in $values) {
 			$parsed = Parse-DataParamShorthand $val
 
-			$dpEl = Ensure-SettingsChild $settings "dataParameters" @("outputParameters","conditionalAppearance","order","filter","selection")
+			$dpEl = Ensure-SettingsChild $settings "dataParameters"
 			$dpIndent = Get-ContainerChildIndent $dpEl
 
 			$fragXml = Build-DataParamFragment -parsed $parsed -indent $dpIndent
@@ -2996,7 +3038,7 @@ switch ($Operation) {
 		foreach ($val in $values) {
 			$parsed = Parse-OrderShorthand $val
 
-			$orderEl = Ensure-SettingsChild $settings "order" @("filter","selection")
+			$orderEl = Ensure-SettingsChild $settings "order"
 			$orderIndent = Get-ContainerChildIndent $orderEl
 
 			# Duplicate check
@@ -3063,7 +3105,7 @@ switch ($Operation) {
 				$targetEl = $settings
 			}
 
-			$selection = Ensure-SettingsChild $targetEl "selection" @()
+			$selection = Ensure-SettingsChild $targetEl "selection"
 
 			# Dedup: skip if SelectedItemAuto already exists
 			if ($fieldName -eq "Auto") {
@@ -3160,7 +3202,7 @@ switch ($Operation) {
 		foreach ($val in $values) {
 			$parsed = Parse-OutputParamShorthand $val
 
-			$outputEl = Ensure-SettingsChild $settings "outputParameters" @("conditionalAppearance","order","filter","selection")
+			$outputEl = Ensure-SettingsChild $settings "outputParameters"
 			$outputIndent = Get-ContainerChildIndent $outputEl
 
 			# Remove existing parameter with same key if present
@@ -3199,9 +3241,8 @@ switch ($Operation) {
 		$structItems = Parse-StructureShorthand $Value
 		$settingsIndent = Get-ChildIndent $settings
 
-		# Find insertion point — before outputParameters/dataParameters/conditionalAppearance/order/filter/selection or at end
-		$refNode = Find-FirstElement $settings @("outputParameters","dataParameters","conditionalAppearance","order","filter","selection","item") $setNs
-		if (-not $refNode) { $refNode = $null }
+		# Место по XSD: после outputParameters и прочих блоков, до additionalProperties/itemsViewMode
+		$refNode = Find-OrderedInsertRef $settings "item"
 
 		foreach ($structItem in $structItems) {
 			$fragXml = Build-StructureItemFragment -item $structItem -indent $settingsIndent
@@ -3445,7 +3486,7 @@ switch ($Operation) {
 		foreach ($val in $values) {
 			$parsed = Parse-ConditionalAppearanceShorthand $val
 
-			$caEl = Ensure-SettingsChild $settings "conditionalAppearance" @("outputParameters","order","filter","selection")
+			$caEl = Ensure-SettingsChild $settings "conditionalAppearance"
 			$caIndent = Get-ContainerChildIndent $caEl
 
 			$fragXml = Build-ConditionalAppearanceItemFragment -parsed $parsed -indent $caIndent
@@ -3801,11 +3842,8 @@ switch ($Operation) {
 			$lines += "$fieldIndent</role>"
 			$fragXml = $lines -join "`n"
 
-			# Insert before <valueType>, else before <inputParameters>, else at end
-			$refNode = $null
-			foreach ($ch in $fieldEl.ChildNodes) {
-				if ($ch.NodeType -eq 'Element' -and $ch.LocalName -in @('valueType','inputParameters') -and $ch.NamespaceURI -eq $schNs) { $refNode = $ch; break }
-			}
+			# Место по XSD: после attributeUseRestriction, до presentationExpression/orderExpression/valueType
+			$refNode = Find-OrderedInsertRef $fieldEl "role"
 			$nodes = Import-Fragment $xmlDoc $fragXml
 			foreach ($node in $nodes) {
 				Insert-BeforeElement $fieldEl $node $refNode $fieldIndent

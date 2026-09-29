@@ -1,0 +1,23 @@
+{
+  "name": "Группировка с отбором, порядком и полями — filter до order и selection",
+  "params": { "outputPath": "Template.xml" },
+  "input": {
+    "dataSets": [{
+      "name": "Основной",
+      "query": "ВЫБРАТЬ Т.Организация, Т.Сумма ИЗ Регистр КАК Т",
+      "fields": ["Организация: CatalogRef.Организации", "Сумма: decimal(15,2)"]
+    }],
+    "settingsVariants": [{
+      "name": "Основной",
+      "settings": {
+        "selection": ["Сумма"],
+        "structure": [
+          { "type": "group", "groupBy": ["Организация"], "filter": ["Сумма > 0"],
+            "children": [{ "type": "group", "filter": ["Сумма < 1000"] }] }
+        ]
+      }
+    }]
+  },
+  "validatePath": "Template.xml",
+  "expect": { "files": ["Template.xml"] }
+}

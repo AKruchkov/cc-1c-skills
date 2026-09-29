@@ -140,10 +140,10 @@
 		<field xsi:type="DataSetFieldField">
 			<dataPath>СВыражениемПредставления</dataPath>
 			<field>СВыражениемПредставления</field>
+			<presentationExpression>Представление(СВыражениемПредставления)</presentationExpression>
 			<valueType>
 				<v8:Type xmlns:d5p1="http://v8.1c.ru/8.1/data/enterprise/current-config">d5p1:CatalogRef.Номенклатура</v8:Type>
 			</valueType>
-			<presentationExpression>Представление(СВыражениемПредставления)</presentationExpression>
 		</field>
 		<dataSource>ИсточникДанных1</dataSource>
 		<query>ВЫБРАТЬ * ИЗ Справочник.Номенклатура</query>

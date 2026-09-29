@@ -1,0 +1,31 @@
+{
+  "name": "Поле набора со всеми частями — порядок по XSD, флаги ограничений не в порядке ввода",
+  "params": { "outputPath": "Template.xml" },
+  "input": {
+    "dataSets": [{
+      "name": "Основной",
+      "query": "ВЫБРАТЬ Т.Вид, Т.Сумма ИЗ Регистр КАК Т",
+      "fields": [
+        {
+          "dataPath": "Вид",
+          "field": "Вид",
+          "title": "Вид операции",
+          "type": "decimal(1)",
+          "role": { "dimension": true },
+          "restrict": ["noOrder", "noGroup", "noFilter", "noField"],
+          "attrRestrict": ["noGroup", "noField"],
+          "appearance": { "Формат": "ЧН=-" },
+          "presentationExpression": "ВЫБОР КОГДА Вид = 1 ТОГДА \"Доход\" ИНАЧЕ \"Расход\" КОНЕЦ",
+          "orderExpression": { "expression": "Вид", "orderType": "Desc", "autoOrder": false },
+          "availableValues": [
+            { "value": 1, "presentation": "Доход" },
+            { "value": 2, "presentation": "Расход" }
+          ]
+        },
+        "Сумма: decimal(15,2)"
+      ]
+    }]
+  },
+  "validatePath": "Template.xml",
+  "expect": { "files": ["Template.xml"] }
+}

@@ -165,11 +165,11 @@
 		<name>СоставнойТип</name>
 		<valueType>
 			<v8:Type>xs:string</v8:Type>
+			<v8:Type xmlns:d5p1="http://v8.1c.ru/8.1/data/enterprise/current-config">d5p1:CatalogRef.ПлоскийПростой</v8:Type>
 			<v8:StringQualifiers>
 				<v8:Length>10</v8:Length>
 				<v8:AllowedLength>Fixed</v8:AllowedLength>
 			</v8:StringQualifiers>
-			<v8:Type xmlns:d5p1="http://v8.1c.ru/8.1/data/enterprise/current-config">d5p1:CatalogRef.ПлоскийПростой</v8:Type>
 		</valueType>
 		<value xsi:nil="true"/>
 		<useRestriction>false</useRestriction>

@@ -1,0 +1,56 @@
+{
+  "name": "set-field-role на поле с presentationExpression и orderExpression — role перед ними",
+  "preRun": [
+    {
+      "script": "skd-compile/scripts/skd-compile",
+      "input": {
+        "dataSets": [
+          {
+            "name": "Основной",
+            "query": "ВЫБРАТЬ Т.Вид, Т.Сумма ИЗ Регистр КАК Т",
+            "fields": [
+              {
+                "dataPath": "Вид",
+                "field": "Вид",
+                "title": "Вид",
+                "type": "decimal(1)",
+                "attrRestrict": [
+                  "noGroup"
+                ],
+                "presentationExpression": "ВЫБОР КОГДА Вид = 1 ТОГДА \"Доход\" ИНАЧЕ \"Расход\" КОНЕЦ",
+                "orderExpression": {
+                  "expression": "Вид",
+                  "orderType": "Desc",
+                  "autoOrder": false
+                },
+                "appearance": {
+                  "Формат": "ЧН=-"
+                },
+                "availableValues": [
+                  {
+                    "value": 1,
+                    "presentation": "Доход"
+                  },
+                  {
+                    "value": 2,
+                    "presentation": "Расход"
+                  }
+                ]
+              },
+              "Сумма: decimal(15,2)"
+            ]
+          }
+        ]
+      },
+      "args": {
+        "-DefinitionFile": "{inputFile}",
+        "-OutputPath": "{workDir}/Template.xml"
+      }
+    }
+  ],
+  "params": {
+    "templatePath": "Template.xml",
+    "operation": "set-field-role",
+    "value": "Вид @dimension"
+  }
+}

@@ -38,8 +38,8 @@
 		<expression>""</expression>
 		<useRestriction>
 			<condition>true</condition>
-			<order>true</order>
 			<group>true</group>
+			<order>true</order>
 		</useRestriction>
 		<valueType>
 			<v8:Type>xs:string</v8:Type>

@@ -1,0 +1,40 @@
+{
+  "name": "Таблица и диаграмма с режимами доступности — viewMode до columns/pointsViewMode",
+  "params": { "outputPath": "Template.xml" },
+  "input": {
+    "dataSets": [{
+      "name": "Основной",
+      "query": "ВЫБРАТЬ Т.Организация, Т.Период, Т.Сумма ИЗ Регистр КАК Т",
+      "fields": ["Организация: CatalogRef.Организации", "Период: date", "Сумма: decimal(15,2)"]
+    }],
+    "settingsVariants": [{
+      "name": "Основной",
+      "settings": {
+        "selection": ["Сумма"],
+        "structure": [
+          {
+            "type": "table",
+            "name": "Таблица",
+            "rows": [{ "groupBy": ["Организация"] }],
+            "columns": [{ "groupBy": ["Период"] }],
+            "viewMode": "Normal",
+            "userSettingPresentation": "Таблица",
+            "columnsViewMode": "Normal",
+            "rowsViewMode": "QuickAccess"
+          },
+          {
+            "type": "chart",
+            "points": { "groupBy": ["Организация"] },
+            "series": { "groupBy": ["Период"] },
+            "selection": ["Сумма"],
+            "viewMode": "Normal",
+            "pointsViewMode": "Normal",
+            "seriesViewMode": "Inaccessible"
+          }
+        ]
+      }
+    }]
+  },
+  "validatePath": "Template.xml",
+  "expect": { "files": ["Template.xml"] }
+}

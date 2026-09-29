@@ -1,0 +1,24 @@
+{
+  "name": "Вычисляемое поле с типом, ограничениями и оформлением — valueType последним",
+  "params": { "outputPath": "Template.xml" },
+  "input": {
+    "dataSets": [{
+      "name": "Основной",
+      "query": "ВЫБРАТЬ Т.Количество, Т.Цена ИЗ Регистр КАК Т",
+      "fields": ["Количество: decimal(15,3)", "Цена: decimal(15,2)"]
+    }],
+    "calculatedFields": [
+      {
+        "dataPath": "Итого",
+        "expression": "Количество * Цена",
+        "title": "Итого",
+        "type": "decimal(15,2)",
+        "restrict": ["noOrder", "noGroup"],
+        "appearance": { "Формат": "ЧДЦ=2" }
+      },
+      "Удвоенное: decimal(10) = Количество * 2 #noGroup #noField"
+    ]
+  },
+  "validatePath": "Template.xml",
+  "expect": { "files": ["Template.xml"] }
+}

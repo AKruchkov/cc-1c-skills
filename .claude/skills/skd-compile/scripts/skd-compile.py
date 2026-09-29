@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.123 — Compile 1C DCS from JSON
+# skd-compile v1.124 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -457,10 +457,39 @@ def emit_value_type(lines, type_spec, indent):
     if not type_spec:
         return
 
-    # Multi-type: iterate and emit each type with its qualifiers
+    # Составной тип: по XSD TypeDescription сначала все Type, затем TypeSet, затем квалификаторы
+    # (Number, String, Date, BinaryData) — а не «тип со своими квалификаторами» подряд. Каждый тип
+    # пишем во временный список и раскладываем строки по разделам; квалификатор вида — один.
     if isinstance(type_spec, list):
+        types, type_sets = [], []
+        quals = {'NumberQualifiers': None, 'StringQualifiers': None, 'DateQualifiers': None, 'BinaryDataQualifiers': None}
         for t in type_spec:
-            emit_single_value_type(lines, str(t), indent)
+            buf = []
+            emit_single_value_type(buf, str(t), indent)
+            cur = None
+            cur_kind = None
+            for ln in buf:
+                if cur is not None:
+                    cur.append(ln)
+                    if ln == f'{indent}</v8:{cur_kind}>':
+                        cur = None
+                    continue
+                if ln.startswith(f'{indent}<v8:TypeSet'):
+                    type_sets.append(ln)
+                    continue
+                qm = re.match(r'^\s*<v8:(\w+Qualifiers)>$', ln)
+                if qm and qm.group(1) in quals:
+                    cur_kind = qm.group(1)
+                    cur = [ln]
+                    if quals[cur_kind] is None:
+                        quals[cur_kind] = cur
+                    continue
+                types.append(ln)
+        lines.extend(types)
+        lines.extend(type_sets)
+        for k in quals:
+            if quals[k]:
+                lines.extend(quals[k])
         return
 
     emit_single_value_type(lines, str(type_spec), indent)
@@ -999,6 +1028,16 @@ def emit_input_parameters(lines, ip, indent):
     lines.append(f'{indent}</inputParameters>')
 
 
+# Флаги ограничения использования — в порядке XSD FieldUseRestriction (field condition group order),
+# а не в порядке ввода: чтение по схеме (XDTO) отвергает нарушенный порядок. Имена — XML-имена
+# флагов; дубли (noFilter и noCondition дают один condition) схлопываются.
+def emit_restriction_flags(lines, names, indent):
+    given = [str(n).lower() for n in names if n]
+    for n in ('field', 'condition', 'group', 'order'):
+        if n in given:
+            lines.append(f'{indent}<{n}>true</{n}>')
+
+
 def emit_field(lines, field_def, indent):
     if isinstance(field_def, str):
         f = parse_field_shorthand(field_def)
@@ -1071,19 +1110,13 @@ def emit_field(lines, field_def, indent):
     }
     if f.get('restrict') and len(f['restrict']) > 0:
         lines.append(f'{indent}\t<useRestriction>')
-        for r in f['restrict']:
-            xml_name = restrict_map.get(str(r))
-            if xml_name:
-                lines.append(f'{indent}\t\t<{xml_name}>true</{xml_name}>')
+        emit_restriction_flags(lines, [restrict_map.get(str(r)) for r in f['restrict']], f'{indent}\t\t')
         lines.append(f'{indent}\t</useRestriction>')
 
     # AttributeUseRestriction
     if f.get('attrRestrict') and len(f['attrRestrict']) > 0:
         lines.append(f'{indent}\t<attributeUseRestriction>')
-        for r in f['attrRestrict']:
-            xml_name = restrict_map.get(str(r))
-            if xml_name:
-                lines.append(f'{indent}\t\t<{xml_name}>true</{xml_name}>')
+        emit_restriction_flags(lines, [restrict_map.get(str(r)) for r in f['attrRestrict']], f'{indent}\t\t')
         lines.append(f'{indent}\t</attributeUseRestriction>')
 
     # Role
@@ -1104,7 +1137,11 @@ def emit_field(lines, field_def, indent):
             lines.append(f'{indent}\t\t<dcscom:{k}>{esc_xml_text(str(v))}</dcscom:{k}>')
         lines.append(f'{indent}\t</role>')
 
-    # OrderExpression — после role, до valueType
+    # PresentationExpression — сразу после role, до orderExpression (порядок XSD DataSetFieldField)
+    if f.get('presentationExpression'):
+        lines.append(f'{indent}\t<presentationExpression>{esc_xml_text(f["presentationExpression"])}</presentationExpression>')
+
+    # OrderExpression — после presentationExpression, до valueType. Допустим массив (multi-sort).
     if f.get('orderExpression'):
         oe_raw = f['orderExpression']
         oe_list = oe_raw if isinstance(oe_raw, list) else [oe_raw]
@@ -1125,7 +1162,21 @@ def emit_field(lines, field_def, indent):
         emit_value_type(lines, f['type'], f'{indent}\t\t')
         lines.append(f'{indent}\t</valueType>')
 
-    # AvailableValues — list of allowed values with optional multilang presentation
+    # Appearance
+    if f.get('appearance') and len(f['appearance']) > 0:
+        lines.append(f'{indent}\t<appearance>')
+        for key, val in f['appearance'].items():
+            # \u0413\u043e\u0440\u0438\u0437\u043e\u043d\u0442\u0430\u043b\u044c\u043d\u043e\u0435\u041f\u043e\u043b\u043e\u0436\u0435\u043d\u0438\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0441\u043f\u0435\u0446\u0438\u0430\u043b\u044c\u043d\u043e\u0433\u043e xsi:type, \u043d\u0435 \u0441\u0442\u0440\u043e\u043a\u0430
+            if key == '\u0413\u043e\u0440\u0438\u0437\u043e\u043d\u0442\u0430\u043b\u044c\u043d\u043e\u0435\u041f\u043e\u043b\u043e\u0436\u0435\u043d\u0438\u0435' and not isinstance(val, dict):
+                lines.append(f'{indent}\t\t<dcscor:item xsi:type="dcsset:SettingsParameterValue">')
+                lines.append(f'{indent}\t\t\t<dcscor:parameter>{esc_xml_text(key)}</dcscor:parameter>')
+                lines.append(f'{indent}\t\t\t<dcscor:value xsi:type="v8ui:HorizontalAlign">{esc_xml_text(str(val))}</dcscor:value>')
+                lines.append(f'{indent}\t\t</dcscor:item>')
+            else:
+                emit_appearance_value(lines, key, val, f'{indent}\t\t')
+        lines.append(f'{indent}\t</appearance>')
+
+    # AvailableValues — после appearance (порядок XSD); список значений с необязательным представлением
     if f.get('availableValues'):
         for av in f['availableValues']:
             lines.append(f'{indent}\t<availableValue>')
@@ -1145,24 +1196,6 @@ def emit_field(lines, field_def, indent):
             if av.get('presentation'):
                 emit_mltext(lines, f'{indent}\t\t', 'presentation', av['presentation'])
             lines.append(f'{indent}\t</availableValue>')
-
-    # Appearance
-    if f.get('appearance') and len(f['appearance']) > 0:
-        lines.append(f'{indent}\t<appearance>')
-        for key, val in f['appearance'].items():
-            # \u0413\u043e\u0440\u0438\u0437\u043e\u043d\u0442\u0430\u043b\u044c\u043d\u043e\u0435\u041f\u043e\u043b\u043e\u0436\u0435\u043d\u0438\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0441\u043f\u0435\u0446\u0438\u0430\u043b\u044c\u043d\u043e\u0433\u043e xsi:type, \u043d\u0435 \u0441\u0442\u0440\u043e\u043a\u0430
-            if key == '\u0413\u043e\u0440\u0438\u0437\u043e\u043d\u0442\u0430\u043b\u044c\u043d\u043e\u0435\u041f\u043e\u043b\u043e\u0436\u0435\u043d\u0438\u0435' and not isinstance(val, dict):
-                lines.append(f'{indent}\t\t<dcscor:item xsi:type="dcsset:SettingsParameterValue">')
-                lines.append(f'{indent}\t\t\t<dcscor:parameter>{esc_xml_text(key)}</dcscor:parameter>')
-                lines.append(f'{indent}\t\t\t<dcscor:value xsi:type="v8ui:HorizontalAlign">{esc_xml_text(str(val))}</dcscor:value>')
-                lines.append(f'{indent}\t\t</dcscor:item>')
-            else:
-                emit_appearance_value(lines, key, val, f'{indent}\t\t')
-        lines.append(f'{indent}\t</appearance>')
-
-    # PresentationExpression
-    if f.get('presentationExpression'):
-        lines.append(f'{indent}\t<presentationExpression>{esc_xml_text(f["presentationExpression"])}</presentationExpression>')
 
     # InputParameters — в конце field
     if f.get('inputParameters'):
@@ -1298,21 +1331,13 @@ def emit_calc_fields(lines, defn):
 
         if title:
             emit_mltext(lines, '\t\t', 'title', title)
-        if type_str:
-            lines.append('\t\t<valueType>')
-            emit_value_type(lines, type_str, '\t\t\t')
-            lines.append('\t\t</valueType>')
         if restrict_obj or restrict_tokens:
             lines.append('\t\t<useRestriction>')
             if restrict_obj:
-                for xml_name, flag in restrict_obj.items():
-                    if flag:
-                        lines.append(f'\t\t\t<{esc_xml_text(str(xml_name))}>true</{esc_xml_text(str(xml_name))}>')
+                flag_names = [xml_name for xml_name, flag in restrict_obj.items() if flag is True]
             else:
-                for r in restrict_tokens:
-                    xml_name = restrict_map.get(str(r))
-                    if xml_name:
-                        lines.append(f'\t\t\t<{xml_name}>true</{xml_name}>')
+                flag_names = [restrict_map.get(str(r)) for r in restrict_tokens]
+            emit_restriction_flags(lines, flag_names, '\t\t\t')
             lines.append('\t\t</useRestriction>')
         if appearance:
             lines.append('\t\t<appearance>')
@@ -1325,6 +1350,11 @@ def emit_calc_fields(lines, defn):
                 else:
                     emit_appearance_value(lines, k, v, '\t\t\t')
             lines.append('\t\t</appearance>')
+        # valueType — последним: после useRestriction и appearance (порядок XSD CalculatedField)
+        if type_str:
+            lines.append('\t\t<valueType>')
+            emit_value_type(lines, type_str, '\t\t\t')
+            lines.append('\t\t</valueType>')
 
         lines.append('\t</calculatedField>')
 
@@ -1414,7 +1444,8 @@ def emit_param_value(lines, type_str, val, indent, value_list_allowed=False):
         variant_str = str(val.get('variant')) if val.get('variant') is not None else None
         sd_str = str(val['startDate']) if 'startDate' in val else None
         ed_str = str(val['endDate']) if 'endDate' in val else None
-    val_str = variant_str if variant_str else str(val)
+    # JSON-булево: str(False) даёт "False", а xs:boolean — только true/false/1/0
+    val_str = variant_str if variant_str else (str(val).lower() if isinstance(val, bool) else str(val))
 
     if type_str == 'StandardPeriod':
         # Platform-pattern: startDate/endDate ТОЛЬКО для variant=Custom.
@@ -1429,7 +1460,7 @@ def emit_param_value(lines, type_str, val, indent, value_list_allowed=False):
     elif type_str and re.match(r'^date', type_str):
         lines.append(f'{indent}<value xsi:type="xs:dateTime">{esc_xml_text(val_str)}</value>')
     elif type_str == 'boolean':
-        lines.append(f'{indent}<value xsi:type="xs:boolean">{esc_xml_text(val_str)}</value>')
+        lines.append(f'{indent}<value xsi:type="xs:boolean">{esc_xml_text(val_str.lower())}</value>')
     elif type_str and re.match(r'^decimal', type_str):
         lines.append(f'{indent}<value xsi:type="xs:decimal">{esc_xml_text(val_str)}</value>')
     elif type_str and re.match(r'^string', type_str):
@@ -1440,8 +1471,8 @@ def emit_param_value(lines, type_str, val, indent, value_list_allowed=False):
         # Guess from value
         if re.match(r'^\d{4}-\d{2}-\d{2}T', val_str):
             lines.append(f'{indent}<value xsi:type="xs:dateTime">{esc_xml_text(val_str)}</value>')
-        elif val_str == 'true' or val_str == 'false':
-            lines.append(f'{indent}<value xsi:type="xs:boolean">{esc_xml_text(val_str)}</value>')
+        elif val_str.lower() in ('true', 'false'):
+            lines.append(f'{indent}<value xsi:type="xs:boolean">{esc_xml_text(val_str.lower())}</value>')
         elif re.match(r'^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена|ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.', val_str):
             lines.append(f'{indent}<value xsi:type="dcscor:DesignTimeValue">{esc_xml_text(val_str)}</value>')
         else:
@@ -2340,12 +2371,15 @@ def emit_appearance_value(lines, key, val, indent):
         attr_parts = []
         for attr_name in ('ref', 'faceName', 'height', 'bold', 'italic', 'underline', 'strikeout', 'kind', 'scale'):
             if attr_name in inner_val:
-                attr_parts.append(f'{attr_name}="{esc_xml(str(inner_val[attr_name]))}"')
+                av = inner_val[attr_name]
+                av = str(av).lower() if isinstance(av, bool) else str(av)
+                attr_parts.append(f'{attr_name}="{esc_xml(av)}"')
         lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Font" {" ".join(attr_parts)}/>')
     elif isinstance(inner_val, dict):
         emit_mltext(lines, f'{indent}\t', 'dcscor:value', inner_val)
     else:
-        actual_val = str(inner_val) if inner_val is not None else ''
+        # JSON-булево: str(True) даёт "True", а xs:boolean — только true/false
+        actual_val = (str(inner_val).lower() if isinstance(inner_val, bool) else str(inner_val)) if inner_val is not None else ''
         # \u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440-\u0441\u043f\u0435\u0446\u0438\u0444\u0438\u0447\u043d\u044b\u0439 \u0442\u0438\u043f \u0434\u043b\u044f \u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0445 appearance keys
         key_type_map = {
             '\u0420\u0430\u0437\u043c\u0435\u0449\u0435\u043d\u0438\u0435':              'dcscor:DataCompositionTextPlacementType',
@@ -2362,8 +2396,8 @@ def emit_appearance_value(lines, key, val, indent):
             # Внутри <dcsset:settings> префиксы style:/web:/win:/sys: уже объявлены на корне,
             # локальный xmlns не нужен — эмитим short form.
             lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Color">{esc_xml_text(actual_val)}</dcscor:value>')
-        elif actual_val == 'true' or actual_val == 'false':
-            lines.append(f'{indent}\t<dcscor:value xsi:type="xs:boolean">{actual_val}</dcscor:value>')
+        elif actual_val.lower() in ('true', 'false'):
+            lines.append(f'{indent}\t<dcscor:value xsi:type="xs:boolean">{actual_val.lower()}</dcscor:value>')
         elif key in ('\u0422\u0435\u043a\u0441\u0442', '\u0417\u0430\u0433\u043e\u043b\u043e\u0432\u043e\u043a', '\u0424\u043e\u0440\u043c\u0430\u0442'):
             emit_mltext(lines, f'{indent}\t', 'dcscor:value', actual_val)
         elif re.match(r'^-?\d+(\.\d+)?$', actual_val):
@@ -2494,12 +2528,16 @@ def emit_output_parameters(lines, params, indent):
             attr_parts = []
             for attr_name in ('ref', 'faceName', 'height', 'bold', 'italic', 'underline', 'strikeout', 'kind', 'scale'):
                 if attr_name in val:
-                    attr_parts.append(f'{attr_name}="{esc_xml(str(val[attr_name]))}"')
+                    av = val[attr_name]
+                    av = str(av).lower() if isinstance(av, bool) else str(av)
+                    attr_parts.append(f'{attr_name}="{esc_xml(av)}"')
             lines.append(f'{indent}\t\t<dcscor:value xsi:type="v8ui:Font" {" ".join(attr_parts)}/>')
         elif ptype == 'mltext':
             emit_mltext(lines, f'{indent}\t\t', 'dcscor:value', val)
         else:
-            lines.append(f'{indent}\t\t<dcscor:value xsi:type="{ptype}">{esc_xml_text(str(val))}</dcscor:value>')
+            # JSON-булево: str(True) даёт "True", а xs:boolean — только true/false
+            raw_str = str(val).lower() if isinstance(val, bool) else str(val)
+            lines.append(f'{indent}\t\t<dcscor:value xsi:type="{ptype}">{esc_xml_text(raw_str)}</dcscor:value>')
         # Nested sub-параметры (ТипДиаграммы.ВидПодписей и т.п.).
         # valueType: строка → xsi:type=string, объект {uri, name} → локальный xmlns:dN.
         if wrap_items and isinstance(wrap_items, dict):
@@ -2525,10 +2563,11 @@ def emit_output_parameters(lines, params, indent):
                 if sub_use_false:
                     lines.append(f'{indent}\t\t\t<dcscor:use>false</dcscor:use>')
                 lines.append(f'{indent}\t\t\t<dcscor:parameter>{esc_xml_text(sub_name)}</dcscor:parameter>')
+                sub_str = str(sub_val).lower() if isinstance(sub_val, bool) else str(sub_val)
                 if sub_uri:
-                    lines.append(f'{indent}\t\t\t<dcscor:value xmlns:dN="{sub_uri}" xsi:type="dN:{sub_local_name}">{esc_xml_text(str(sub_val))}</dcscor:value>')
+                    lines.append(f'{indent}\t\t\t<dcscor:value xmlns:dN="{sub_uri}" xsi:type="dN:{sub_local_name}">{esc_xml_text(sub_str)}</dcscor:value>')
                 else:
-                    lines.append(f'{indent}\t\t\t<dcscor:value xsi:type="{sub_vt}">{esc_xml_text(str(sub_val))}</dcscor:value>')
+                    lines.append(f'{indent}\t\t\t<dcscor:value xsi:type="{sub_vt}">{esc_xml_text(sub_str)}</dcscor:value>')
                 lines.append(f'{indent}\t\t</dcscor:item>')
         if wrap_vm:
             lines.append(f'{indent}\t\t<dcsset:viewMode>{esc_xml_text(str(wrap_vm))}</dcsset:viewMode>')
@@ -2820,12 +2859,13 @@ def emit_structure_item(lines, item, indent, short_group=False):
         # Платформа на группировке (плоской и вложенной в ось, short/explicit) всегда пишет
         # order+selection; при отсутствии ключа кладёт Auto. Ключ присутствует (в т.ч. пустой [])
         # — уважаем как задано (blockViewMode/userSettingID имеют смысл только при явном order).
+        # filter — до order/selection (порядок XSD StructureItemGroup: groupItems filter order selection)
+        emit_filter(lines, item.get('filter'), f'{indent}\t')
+
         grp_order_items = item['order'] if 'order' in item else ['Auto']
         emit_order(lines, grp_order_items, f'{indent}\t', block_view_mode=item.get('orderViewMode'), block_user_setting_id=item.get('orderUserSettingID'))
         grp_sel_items = item['selection'] if 'selection' in item else ['Auto']
         emit_selection(lines, grp_sel_items, f'{indent}\t')
-
-        emit_filter(lines, item.get('filter'), f'{indent}\t')
 
         if item.get('conditionalAppearance'):
             emit_conditional_appearance(lines, item['conditionalAppearance'], f'{indent}\t')
@@ -2882,11 +2922,6 @@ def emit_structure_item(lines, item, indent, short_group=False):
             emit_conditional_appearance(lines, item['conditionalAppearance'], f'{indent}\t')
         if item.get('outputParameters'):
             emit_output_parameters(lines, item['outputParameters'], f'{indent}\t')
-        # columnsViewMode / rowsViewMode — axis-level режим доступности
-        if item.get('columnsViewMode'):
-            lines.append(f'{indent}\t<dcsset:columnsViewMode>{esc_xml_text(str(item["columnsViewMode"]))}</dcsset:columnsViewMode>')
-        if item.get('rowsViewMode'):
-            lines.append(f'{indent}\t<dcsset:rowsViewMode>{esc_xml_text(str(item["rowsViewMode"]))}</dcsset:rowsViewMode>')
         # viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой таблице
         if item.get('viewMode'):
             lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(item["viewMode"]))}</dcsset:viewMode>')
@@ -2895,6 +2930,11 @@ def emit_structure_item(lines, item, indent, short_group=False):
             lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(gid)}</dcsset:userSettingID>')
         if item.get('userSettingPresentation'):
             emit_mltext(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item['userSettingPresentation'])
+        # columnsViewMode / rowsViewMode — axis-level режим доступности: после viewMode/userSettingID (порядок XSD и платформы)
+        if item.get('columnsViewMode'):
+            lines.append(f'{indent}\t<dcsset:columnsViewMode>{esc_xml_text(str(item["columnsViewMode"]))}</dcsset:columnsViewMode>')
+        if item.get('rowsViewMode'):
+            lines.append(f'{indent}\t<dcsset:rowsViewMode>{esc_xml_text(str(item["rowsViewMode"]))}</dcsset:rowsViewMode>')
         if item.get('itemsViewMode'):
             lines.append(f'{indent}\t<dcsset:itemsViewMode>{esc_xml_text(str(item["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
@@ -2936,11 +2976,6 @@ def emit_structure_item(lines, item, indent, short_group=False):
         if item.get('outputParameters'):
             emit_output_parameters(lines, item['outputParameters'], f'{indent}\t')
 
-        # pointsViewMode / seriesViewMode — axis-level режим доступности
-        if item.get('pointsViewMode'):
-            lines.append(f'{indent}\t<dcsset:pointsViewMode>{esc_xml_text(str(item["pointsViewMode"]))}</dcsset:pointsViewMode>')
-        if item.get('seriesViewMode'):
-            lines.append(f'{indent}\t<dcsset:seriesViewMode>{esc_xml_text(str(item["seriesViewMode"]))}</dcsset:seriesViewMode>')
         # viewMode / userSettingID / userSettingPresentation / itemsViewMode на самой диаграмме
         if item.get('viewMode'):
             lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(item["viewMode"]))}</dcsset:viewMode>')
@@ -2949,6 +2984,11 @@ def emit_structure_item(lines, item, indent, short_group=False):
             lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(gid)}</dcsset:userSettingID>')
         if item.get('userSettingPresentation'):
             emit_mltext(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item['userSettingPresentation'])
+        # pointsViewMode / seriesViewMode — axis-level режим доступности: после viewMode/userSettingID (порядок XSD и платформы)
+        if item.get('pointsViewMode'):
+            lines.append(f'{indent}\t<dcsset:pointsViewMode>{esc_xml_text(str(item["pointsViewMode"]))}</dcsset:pointsViewMode>')
+        if item.get('seriesViewMode'):
+            lines.append(f'{indent}\t<dcsset:seriesViewMode>{esc_xml_text(str(item["seriesViewMode"]))}</dcsset:seriesViewMode>')
         if item.get('itemsViewMode'):
             lines.append(f'{indent}\t<dcsset:itemsViewMode>{esc_xml_text(str(item["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
@@ -3023,19 +3063,7 @@ def emit_settings_variants(lines, defn):
         if s.get('filter') or fvm is not None or fusid is not None:
             emit_filter(lines, s.get('filter'), '\t\t\t', block_view_mode=fvm, block_user_setting_id=fusid)
 
-        ovm, ousid = _block_vm('order'), _block_usid('order')
-        if s.get('order') or ovm is not None or ousid is not None:
-            emit_order(lines, s.get('order'), '\t\t\t', block_view_mode=ovm, block_user_setting_id=ousid)
-
-        cavm, causid = _block_vm('conditionalAppearance'), _block_usid('conditionalAppearance')
-        if s.get('conditionalAppearance') or cavm is not None or causid is not None:
-            emit_conditional_appearance(lines, s.get('conditionalAppearance'), '\t\t\t', block_view_mode=cavm, block_user_setting_id=causid)
-
-        # OutputParameters (platform does NOT emit <viewMode> on this block)
-        if s.get('outputParameters'):
-            emit_output_parameters(lines, s['outputParameters'], '\t\t\t')
-
-        # DataParameters
+        # DataParameters — сразу после filter, до order (порядок XSD Settings; иначе XDTO: «нарушен порядок»)
         if s.get('dataParameters') == 'auto':
             # Auto-generate dataParameters for all non-hidden params.
             # Pattern follows 1C Designer / ERP persistence:
@@ -3078,6 +3106,18 @@ def emit_settings_variants(lines, defn):
         elif s.get('dataParameters'):
             emit_data_parameters(lines, s['dataParameters'], '\t\t\t')
 
+        ovm, ousid = _block_vm('order'), _block_usid('order')
+        if s.get('order') or ovm is not None or ousid is not None:
+            emit_order(lines, s.get('order'), '\t\t\t', block_view_mode=ovm, block_user_setting_id=ousid)
+
+        cavm, causid = _block_vm('conditionalAppearance'), _block_usid('conditionalAppearance')
+        if s.get('conditionalAppearance') or cavm is not None or causid is not None:
+            emit_conditional_appearance(lines, s.get('conditionalAppearance'), '\t\t\t', block_view_mode=cavm, block_user_setting_id=causid)
+
+        # OutputParameters (platform does NOT emit <viewMode> on this block)
+        if s.get('outputParameters'):
+            emit_output_parameters(lines, s['outputParameters'], '\t\t\t')
+
         # Structure (supports string shorthand)
         if s.get('structure'):
             struct_items = s['structure']
@@ -3088,11 +3128,7 @@ def emit_settings_variants(lines, defn):
             for item in struct_items:
                 emit_structure_item(lines, item, '\t\t\t')
 
-        # <dcsset:itemsViewMode> on settings — emit only if explicitly set
-        if s.get('itemsViewMode'):
-            lines.append(f'\t\t\t<dcsset:itemsViewMode>{esc_xml_text(str(s["itemsViewMode"]))}</dcsset:itemsViewMode>')
-
-        # <dcsset:additionalProperties> — key/value свойства варианта
+        # <dcsset:additionalProperties> — key/value свойства варианта; до itemsViewMode (порядок XSD)
         if s.get('additionalProperties'):
             lines.append('\t\t\t<dcsset:additionalProperties>')
             for k, v in s['additionalProperties'].items():
@@ -3100,6 +3136,10 @@ def emit_settings_variants(lines, defn):
                 lines.append(f'\t\t\t\t\t<v8:Value xsi:type="xs:string">{esc_xml_text(str(v))}</v8:Value>')
                 lines.append('\t\t\t\t</v8:Property>')
             lines.append('\t\t\t</dcsset:additionalProperties>')
+
+        # <dcsset:itemsViewMode> on settings — emit only if explicitly set
+        if s.get('itemsViewMode'):
+            lines.append(f'\t\t\t<dcsset:itemsViewMode>{esc_xml_text(str(s["itemsViewMode"]))}</dcsset:itemsViewMode>')
 
         lines.append('\t\t</dcsset:settings>')
         lines.append('\t</settingsVariant>')

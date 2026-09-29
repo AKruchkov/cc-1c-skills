@@ -1,4 +1,4 @@
-# skd-edit v1.41 — Atomic 1C DCS editor (Python port)
+# skd-edit v1.42 — Atomic 1C DCS editor (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1163,10 +1163,11 @@ def build_restriction_xml(restrict, indent):
     if not restrict:
         return ""
     restrict_map = {"noField": "field", "noFilter": "condition", "noCondition": "condition", "noGroup": "group", "noOrder": "order"}
+    # Флаги — в порядке XSD FieldUseRestriction (field condition group order), не в порядке ввода
+    given = [restrict_map.get(r) for r in restrict]
     lines = [f"{indent}<useRestriction>"]
-    for r in restrict:
-        xml_name = restrict_map.get(r)
-        if xml_name:
+    for xml_name in ("field", "condition", "group", "order"):
+        if xml_name in given:
             lines.append(f"{indent}\t<{xml_name}>true</{xml_name}>")
     lines.append(f"{indent}</useRestriction>")
     return "\n".join(lines)
@@ -1189,25 +1190,35 @@ def build_field_fragment(parsed, indent):
     elif parsed.get("title"):
         lines.append(build_mltext_xml("title", parsed["title"], f"{i}\t"))
 
+    # Остальные части собираем как (место по XSD, xml) и выводим по месту: сохранённые как есть
+    # узлы (attributeUseRestriction, presentationExpression, orderExpression, appearance, …)
+    # встают на своё место, а не в хвост после valueType. Незнакомые — в конец, как раньше.
+    field_order = XSD_CHILD_ORDER['DataSetFieldField']
+    parts = []
     if parsed.get("restrict"):
-        lines.append(build_restriction_xml(parsed["restrict"], f"{i}\t"))
+        parts.append((field_order.index('useRestriction'), build_restriction_xml(parsed["restrict"], f"{i}\t")))
 
     role_xml = build_role_xml(parsed.get("roles"), f"{i}\t")
     if role_xml:
-        lines.append(role_xml)
+        parts.append((field_order.index('role'), role_xml))
 
+    vt_rank = field_order.index('valueType')
     if parsed.get("rawValueType"):
         # Preserve original <valueType> verbatim — keeps qualifiers (StringQualifiers,
         # NumberQualifiers, DateQualifiers, …) that aren't expressible via shorthand.
-        lines.append(f"{i}\t" + parsed["rawValueType"])
+        parts.append((vt_rank, f"{i}\t" + parsed["rawValueType"]))
     elif parsed.get("type"):
-        lines.append(f"{i}\t<valueType>")
-        lines.append(build_value_type_xml(parsed["type"], f"{i}\t\t"))
-        lines.append(f"{i}\t</valueType>")
+        vt = [f"{i}\t<valueType>", build_value_type_xml(parsed["type"], f"{i}\t\t"), f"{i}\t</valueType>"]
+        parts.append((vt_rank, "\n".join(vt)))
 
     # Defense in depth: re-emit OuterXml of unknown children captured by Read.
     for raw in (parsed.get("_unknownChildren") or []):
-        lines.append(f"{i}\t" + raw)
+        m = re.match(r'^<(?:[\w.-]+:)?([\w.-]+)', raw)
+        r = field_order.index(m.group(1)) if m and m.group(1) in field_order else len(field_order)
+        parts.append((r, f"{i}\t" + raw))
+    # Устойчивая сортировка по месту: при равенстве — порядок добавления
+    for _, x in sorted(parts, key=lambda t: t[0]):
+        lines.append(x)
 
     lines.append(f"{i}</field>")
     return "\n".join(lines)
@@ -1986,7 +1997,54 @@ def resolve_variant_settings():
     sys.exit(1)
 
 
-def ensure_settings_child(settings, child_name, after_siblings):
+# Порядок детей по XSD схемы компоновки: чтение по схеме (XDTO) отвергает нарушенный порядок,
+# поэтому новый узел встаёт перед первым соседом, который по схеме идёт позже. Ключ — вид
+# контейнера: settings, поле набора или xsi:type элемента структуры (без xsi:type — группа).
+XSD_CHILD_ORDER = {
+    'settings': ['userFields', 'selection', 'filter', 'dataParameters', 'order', 'conditionalAppearance', 'outputParameters',
+                 'item', 'additionalProperties', 'itemsViewMode', 'itemsUserSettingID', 'itemsUserSettingPresentation'],
+    'StructureItemGroup': ['use', 'name', 'groupItems', 'filter', 'order', 'selection', 'conditionalAppearance', 'outputParameters',
+                           'item', 'id', 'viewMode', 'userSettingID', 'userSettingPresentation', 'itemsViewMode', 'itemsUserSettingID',
+                           'itemsUserSettingPresentation', 'groupState'],
+    'StructureItemTable': ['use', 'name', 'column', 'row', 'selection', 'conditionalAppearance', 'outputParameters',
+                           'id', 'viewMode', 'userSettingID', 'userSettingPresentation', 'columnsViewMode', 'columnsUserSettingID',
+                           'columnsUserSettingPresentation', 'rowsViewMode', 'rowsUserSettingID', 'rowsUserSettingPresentation'],
+    'StructureItemChart': ['use', 'name', 'point', 'series', 'selection', 'conditionalAppearance', 'outputParameters',
+                           'id', 'viewMode', 'userSettingID', 'userSettingPresentation', 'pointsViewMode', 'pointsUserSettingID',
+                           'pointsUserSettingPresentation', 'seriesViewMode', 'seriesUserSettingID', 'seriesUserSettingPresentation'],
+    'DataSetFieldField': ['dataPath', 'field', 'title', 'useRestriction', 'attributeUseRestriction', 'role', 'presentationExpression',
+                          'orderExpression', 'inHierarchyDataSet', 'inHierarchyDataSetParameter', 'valueType', 'appearance',
+                          'availableValue', 'inputParameters'],
+}
+
+
+def get_xsd_child_order(container):
+    if local_name(container) == 'settings':
+        return XSD_CHILD_ORDER['settings']
+    if local_name(container) == 'field':
+        return XSD_CHILD_ORDER['DataSetFieldField']
+    xt = (container.get('{http://www.w3.org/2001/XMLSchema-instance}type') or '').split(':')[-1]
+    if xt in XSD_CHILD_ORDER:
+        return XSD_CHILD_ORDER[xt]
+    return XSD_CHILD_ORDER['StructureItemGroup']
+
+
+def find_ordered_insert_ref(container, child_name):
+    """Первый сосед, который по XSD идёт после child_name; None — вставлять в конец."""
+    order = get_xsd_child_order(container)
+    if child_name not in order:
+        return None
+    rank = order.index(child_name)
+    for ch in container:
+        if not isinstance(ch.tag, str):
+            continue
+        ln = local_name(ch)
+        if ln in order and order.index(ln) > rank:
+            return ch
+    return None
+
+
+def ensure_settings_child(settings, child_name):
     el = find_first_element(settings, [child_name], SET_NS)
     if el is not None:
         return el
@@ -1995,19 +2053,7 @@ def ensure_settings_child(settings, child_name, after_siblings):
     frag_xml = f"{indent}<dcsset:{child_name}/>"
     nodes = import_fragment(xml_doc, frag_xml)
 
-    ref_node = None
-    for sib_name in after_siblings:
-        sib = find_first_element(settings, [sib_name], SET_NS)
-        if sib is not None:
-            # Get next element sibling
-            found = False
-            for ch in settings:
-                if found and isinstance(ch.tag, str):
-                    ref_node = ch
-                    break
-                if ch is sib:
-                    found = True
-            break
+    ref_node = find_ordered_insert_ref(settings, child_name)
 
     for node in nodes:
         insert_before_element(settings, node, ref_node, indent)
@@ -2108,7 +2154,7 @@ if operation == "add-field":
         if not no_selection:
             settings = resolve_variant_settings()
             var_name = get_variant_name()
-            selection = ensure_settings_child(settings, "selection", [])
+            selection = ensure_settings_child(settings, "selection")
             existing_sel = find_element_by_child_value(selection, "item", "field", parsed["dataPath"], SET_NS)
             if existing_sel is not None:
                 print(f'[INFO] Field "{parsed["dataPath"]}" already in selection -- skipped')
@@ -2186,7 +2232,7 @@ elif operation == "add-calculated-field":
         if not no_selection:
             settings = resolve_variant_settings()
             var_name = get_variant_name()
-            selection = ensure_settings_child(settings, "selection", [])
+            selection = ensure_settings_child(settings, "selection")
             existing_sel = find_element_by_child_value(selection, "item", "field", parsed["dataPath"], SET_NS)
             if existing_sel is not None:
                 print(f'[INFO] Field "{parsed["dataPath"]}" already in selection -- skipped')
@@ -2582,7 +2628,7 @@ elif operation == "add-filter":
     var_name = get_variant_name()
     for val in values:
         parsed = parse_filter_shorthand(val)
-        filter_el = ensure_settings_child(settings, "filter", ["selection"])
+        filter_el = ensure_settings_child(settings, "filter")
         filter_indent = get_container_child_indent(filter_el)
         frag_xml = build_filter_item_fragment(parsed, filter_indent)
         nodes = import_fragment(xml_doc, frag_xml)
@@ -2595,7 +2641,7 @@ elif operation == "add-dataParameter":
     var_name = get_variant_name()
     for val in values:
         parsed = parse_data_param_shorthand(val)
-        dp_el = ensure_settings_child(settings, "dataParameters", ["outputParameters", "conditionalAppearance", "order", "filter", "selection"])
+        dp_el = ensure_settings_child(settings, "dataParameters")
         dp_indent = get_container_child_indent(dp_el)
         frag_xml = build_data_param_fragment(parsed, dp_indent)
         nodes = import_fragment(xml_doc, frag_xml)
@@ -2608,7 +2654,7 @@ elif operation == "add-order":
     var_name = get_variant_name()
     for val in values:
         parsed = parse_order_shorthand(val)
-        order_el = ensure_settings_child(settings, "order", ["filter", "selection"])
+        order_el = ensure_settings_child(settings, "order")
         order_indent = get_container_child_indent(order_el)
 
         if parsed["field"] == "Auto":
@@ -2665,7 +2711,7 @@ elif operation == "add-selection":
         else:
             target_el = settings
 
-        selection = ensure_settings_child(target_el, "selection", [])
+        selection = ensure_settings_child(target_el, "selection")
 
         # Dedup: skip if SelectedItemAuto already exists
         if field_name == "Auto":
@@ -2737,7 +2783,7 @@ elif operation == "set-outputParameter":
     var_name = get_variant_name()
     for val in values:
         parsed = parse_output_param_shorthand(val)
-        output_el = ensure_settings_child(settings, "outputParameters", ["conditionalAppearance", "order", "filter", "selection"])
+        output_el = ensure_settings_child(settings, "outputParameters")
         output_indent = get_container_child_indent(output_el)
 
         existing_param = find_element_by_child_value(output_el, "item", "parameter", parsed["key"], COR_NS)
@@ -2763,7 +2809,8 @@ elif operation == "set-structure":
     struct_items = parse_structure_shorthand(value_arg)
     settings_indent = get_child_indent(settings)
 
-    ref_node = find_first_element(settings, ["outputParameters", "dataParameters", "conditionalAppearance", "order", "filter", "selection", "item"], SET_NS)
+    # Место по XSD: после outputParameters и прочих блоков, до additionalProperties/itemsViewMode
+    ref_node = find_ordered_insert_ref(settings, "item")
 
     for struct_item in struct_items:
         frag_xml = build_structure_item_fragment(struct_item, settings_indent)
@@ -2967,7 +3014,7 @@ elif operation == "add-conditionalAppearance":
     var_name = get_variant_name()
     for val in values:
         parsed = parse_conditional_appearance_shorthand(val)
-        ca_el = ensure_settings_child(settings, "conditionalAppearance", ["outputParameters", "order", "filter", "selection"])
+        ca_el = ensure_settings_child(settings, "conditionalAppearance")
         ca_indent = get_container_child_indent(ca_el)
         frag_xml = build_conditional_appearance_item_fragment(parsed, ca_indent)
         nodes = import_fragment(xml_doc, frag_xml)
@@ -3256,7 +3303,8 @@ elif operation == "set-field-role":
         lines.append(f"{field_indent}</role>")
         frag_xml = "\n".join(lines)
 
-        ref_node = next((ch for ch in field_el if isinstance(ch.tag, str) and local_name(ch) in ("valueType", "inputParameters") and etree.QName(ch.tag).namespace == SCH_NS), None)
+        # Место по XSD: после attributeUseRestriction, до presentationExpression/orderExpression/valueType
+        ref_node = find_ordered_insert_ref(field_el, "role")
         for node in import_fragment(xml_doc, frag_xml):
             insert_before_element(field_el, node, ref_node, field_indent)
 

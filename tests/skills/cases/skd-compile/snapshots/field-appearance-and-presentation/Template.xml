@@ -42,6 +42,7 @@
 					<v8:content>Описание</v8:content>
 				</v8:item>
 			</title>
+			<presentationExpression>ТекстСообщения</presentationExpression>
 			<valueType>
 				<v8:Type xmlns:d5p1="http://v8.1c.ru/8.1/data/enterprise/current-config">d5p1:CatalogRef.Организации</v8:Type>
 			</valueType>
@@ -51,7 +52,6 @@
 					<dcscor:value xsi:type="v8ui:HorizontalAlign">Right</dcscor:value>
 				</dcscor:item>
 			</appearance>
-			<presentationExpression>ТекстСообщения</presentationExpression>
 		</field>
 		<dataSource>ИсточникДанных1</dataSource>
 		<objectName>ЖурналОшибок</objectName>

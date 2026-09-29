@@ -58,6 +58,12 @@
 	<calculatedField>
 		<dataPath>Служебное</dataPath>
 		<expression>""</expression>
+		<useRestriction>
+			<field>true</field>
+			<condition>true</condition>
+			<group>true</group>
+			<order>true</order>
+		</useRestriction>
 		<valueType>
 			<v8:Type>xs:string</v8:Type>
 			<v8:StringQualifiers>
@@ -65,12 +71,6 @@
 				<v8:AllowedLength>Variable</v8:AllowedLength>
 			</v8:StringQualifiers>
 		</valueType>
-		<useRestriction>
-			<field>true</field>
-			<condition>true</condition>
-			<group>true</group>
-			<order>true</order>
-		</useRestriction>
 	</calculatedField>
 	<totalField>
 		<dataPath>Цена</dataPath>

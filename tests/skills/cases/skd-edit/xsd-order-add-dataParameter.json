@@ -1,0 +1,62 @@
+{
+  "name": "add-dataParameter в заполненные настройки — сразу после filter, до order",
+  "preRun": [
+    {
+      "script": "skd-compile/scripts/skd-compile",
+      "input": {
+        "dataSets": [
+          {
+            "name": "Основной",
+            "query": "ВЫБРАТЬ Т.Вид, Т.Сумма ИЗ Регистр КАК Т",
+            "fields": [
+              "Вид: decimal(1)",
+              "Сумма: decimal(15,2)"
+            ]
+          }
+        ],
+        "parameters": [
+          "Период: StandardPeriod = LastMonth"
+        ],
+        "settingsVariants": [
+          {
+            "name": "Основной",
+            "settings": {
+              "selection": [
+                "Сумма"
+              ],
+              "filter": [
+                "Сумма > 0"
+              ],
+              "order": [
+                "Сумма desc"
+              ],
+              "conditionalAppearance": [
+                {
+                  "filter": [
+                    "Сумма < 0"
+                  ],
+                  "appearance": {
+                    "ЦветТекста": "web:Red"
+                  }
+                }
+              ],
+              "outputParameters": {
+                "Заголовок": "Отчёт"
+              },
+              "structure": "details"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-DefinitionFile": "{inputFile}",
+        "-OutputPath": "{workDir}/Template.xml"
+      }
+    }
+  ],
+  "params": {
+    "templatePath": "Template.xml",
+    "operation": "add-dataParameter",
+    "value": "Период = LastMonth @user"
+  }
+}

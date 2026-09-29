@@ -59,9 +59,9 @@
 			<dataPath>Служебное</dataPath>
 			<field>Служебное</field>
 			<useRestriction>
+				<field>true</field>
 				<condition>true</condition>
 				<order>true</order>
-				<field>true</field>
 			</useRestriction>
 			<valueType>
 				<v8:Type>xs:string</v8:Type>
