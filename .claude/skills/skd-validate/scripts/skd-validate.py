@@ -1309,11 +1309,12 @@ def xsd_check():
     use_ver = cands[0]
     exact = use_ver == ver
 
-    model = xsd_model(os.path.join(xsd_root, use_ver))
     tmp = tempfile.mkdtemp(prefix="skd-xsd-")
     try:
         try:
             schema = _xsd_build_schema(os.path.join(xsd_root, use_ver), tmp)
+            # Модель — после компиляции, как в PS-мастере: битый .xsd даёт предупреждение, а не трейсбэк
+            model = xsd_model(os.path.join(xsd_root, use_ver))
         except Exception as ex:
             report_warn(f"XSD: schemas in '{os.path.join(xsd_root, use_ver)}' do not compile — not checked: {ex}")
             return

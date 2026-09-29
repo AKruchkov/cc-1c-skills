@@ -1211,10 +1211,13 @@ function Invoke-XsdCheck {
 	# дописываем элемент в саму схему СКД: вторую схему того же namespace без SourceUri
 	# XmlSchemaSet молча отбрасывает.
 	$schemas = @()
-	foreach ($f in Get-ChildItem -LiteralPath $useDir -Filter *.xsd -File) {
-		$fs = [System.IO.File]::OpenRead($f.FullName)
-		try { $schemas += [System.Xml.Schema.XmlSchema]::Read($fs, $null) } finally { $fs.Dispose() }
-	}
+	# Битый .xsd (например, недокачанный) — предупреждение, а не падение навыка
+	try {
+		foreach ($f in Get-ChildItem -LiteralPath $useDir -Filter *.xsd -File) {
+			$fs = [System.IO.File]::OpenRead($f.FullName)
+			try { $schemas += [System.Xml.Schema.XmlSchema]::Read($fs, $null) } finally { $fs.Dispose() }
+		}
+	} catch { Report-Warn "XSD: schemas in '$useDir' do not compile — not checked: $($_.Exception.Message)"; return }
 	$dcs = $schemas | Where-Object { $_.TargetNamespace -ceq $xsdDcsNs } | Select-Object -First 1
 	$hasRoot = $false
 	foreach ($it in $dcs.Items) {
@@ -1283,6 +1286,7 @@ function Invoke-XsdCheck {
 				# Имя — в дети родителя (и у пустого элемента: он тоже сосед для подсказки)
 				if ($script:xsdStack.Count -gt 0) { [void]$script:xsdStack[$script:xsdStack.Count - 1].children.Add($r.LocalName) }
 				foreach ($pa in $script:xsdPending) {
+					if ($script:stopped) { break }
 					$xt = $r.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
 					$info = @{ elem = $r.LocalName; parent = $(if ($script:xsdStack.Count -gt 0) { $script:xsdStack[$script:xsdStack.Count - 1].name } else { '' }); xsiNs = ''; xsiLocal = '' }
 					if ($xt) {
