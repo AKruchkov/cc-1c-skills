@@ -1,0 +1,38 @@
+{
+  "name": "Документ, бизнес-процесс и задача без номера (numberLength 0) — номер не попадает во ввод по строке",
+  "input": [
+    {
+      "type": "Document",
+      "name": "БезНомераД",
+      "numberLength": 0
+    },
+    {
+      "type": "BusinessProcess",
+      "name": "БезНомераБП",
+      "numberLength": 0,
+      "task": "Task.БезНомераЗ"
+    },
+    {
+      "type": "Task",
+      "name": "БезНомераЗ",
+      "numberLength": 0
+    }
+  ],
+  "validatePath": "Tasks/БезНомераЗ.xml",
+  "expect": {
+    "fileContains": [
+      {
+        "file": "Documents/БезНомераД.xml",
+        "text": "<InputByString/>"
+      },
+      {
+        "file": "BusinessProcesses/БезНомераБП.xml",
+        "text": "<InputByString/>"
+      },
+      {
+        "file": "Tasks/БезНомераЗ.xml",
+        "text": "<InputByString/>"
+      }
+    ]
+  }
+}

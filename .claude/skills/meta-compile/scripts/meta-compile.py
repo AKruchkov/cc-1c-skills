@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.115 — Compile 1C metadata object from JSON
+# meta-compile v1.116 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -2943,11 +2943,13 @@ def emit_document_properties(indent):
     emit_standard_attributes(i, 'Document')
     emit_characteristics(i, defn.get('characteristics'))
     emit_based_on(i, defn.get('basedOn'))
-    # InputByString: override `inputByString` ЛИБО дефолт [Номер].
+    # InputByString: override `inputByString` ЛИБО дефолт [Номер при N>0].
+    # Номер — в дефолт ввода по строке только при ненулевой длине номера, как код у справочника:
+    # «Указано неверное поле для ввода по строке: Номер» (8.3.24, 8.5.1).
     if 'inputByString' in defn:
         ib_fields = [expand_data_path(str(x)) for x in (defn.get('inputByString') or [])]
     else:
-        ib_fields = [f'Document.{obj_name}.StandardAttribute.Number']
+        ib_fields = [f'Document.{obj_name}.StandardAttribute.Number'] if (defn.get('numberLength') is None or int(defn['numberLength']) > 0) else []
     emit_field_block(i, 'InputByString', ib_fields)
     X(f'{i}<CreateOnInput>{get_enum_prop("CreateOnInput", "createOnInput", "Use")}</CreateOnInput>')
     X(f'{i}<SearchStringModeOnInputByString>{get_enum_prop("SearchStringModeOnInputByString", "searchStringModeOnInputByString", "Begin")}</SearchStringModeOnInputByString>')
@@ -4155,7 +4157,7 @@ def emit_business_process_properties(indent):
     if 'inputByString' in defn:
         ib_fields = [expand_data_path(str(x)) for x in (defn.get('inputByString') or [])]
     else:
-        ib_fields = [f'BusinessProcess.{obj_name}.StandardAttribute.Number']
+        ib_fields = [f'BusinessProcess.{obj_name}.StandardAttribute.Number'] if (defn.get('numberLength') is None or int(defn['numberLength']) > 0) else []   # Номер — при N>0
     emit_field_block(i, 'InputByString', ib_fields)
     X(f'{i}<CreateOnInput>{get_enum_prop("CreateOnInput", "createOnInput", "DontUse")}</CreateOnInput>')
     X(f'{i}<SearchStringModeOnInputByString>{get_enum_prop("SearchStringModeOnInputByString", "searchStringModeOnInputByString", "Begin")}</SearchStringModeOnInputByString>')
@@ -4235,7 +4237,7 @@ def emit_task_properties(indent):
     if 'inputByString' in defn:
         ib_fields = [expand_data_path(str(x)) for x in (defn.get('inputByString') or [])]
     else:
-        ib_fields = [f'Task.{obj_name}.StandardAttribute.Number']
+        ib_fields = [f'Task.{obj_name}.StandardAttribute.Number'] if (defn.get('numberLength') is None or int(defn['numberLength']) > 0) else []   # Номер — при N>0
     emit_field_block(i, 'InputByString', ib_fields)
     X(f'{i}<SearchStringModeOnInputByString>{get_enum_prop("SearchStringModeOnInputByString", "searchStringModeOnInputByString", "Begin")}</SearchStringModeOnInputByString>')
     X(f'{i}<FullTextSearchOnInputByString>{get_enum_prop("FullTextSearchOnInputByString", "fullTextSearchOnInputByString", "DontUse")}</FullTextSearchOnInputByString>')

@@ -1,4 +1,4 @@
-﻿# meta-compile v1.115 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.116 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2847,11 +2847,13 @@ function Emit-DocumentProperties {
 	Emit-Characteristics $i $def.characteristics
 	Emit-BasedOn $i $def.basedOn
 
-	# InputByString: override `inputByString` ЛИБО дефолт [Номер].
+	# InputByString: override `inputByString` ЛИБО дефолт [Номер при N>0].
+	# Номер — в дефолт ввода по строке только при ненулевой длине номера, как код у справочника:
+	# «Указано неверное поле для ввода по строке: Номер» (8.3.24, 8.5.1).
 	if (Test-DefKey 'inputByString') {
 		$ibFields = @($def.inputByString | ForEach-Object { Expand-DataPath "$_" })
 	} else {
-		$ibFields = @("Document.$objName.StandardAttribute.Number")
+		$ibFields = @(if ($null -eq $def.numberLength -or [int]"$($def.numberLength)" -gt 0) { "Document.$objName.StandardAttribute.Number" })
 	}
 	Emit-FieldBlock $i "InputByString" $ibFields
 	X "$i<CreateOnInput>$(Get-EnumProp 'CreateOnInput' 'createOnInput' 'Use')</CreateOnInput>"
@@ -4129,7 +4131,7 @@ function Emit-BusinessProcessProperties {
 	X "$i<EditType>$(Get-EnumProp 'EditType' 'editType' 'InDialog')</EditType>"
 
 	if (Test-DefKey 'inputByString') { $ibFields = @($def.inputByString | ForEach-Object { Expand-DataPath "$_" }) }
-	else { $ibFields = @("BusinessProcess.$objName.StandardAttribute.Number") }
+	else { $ibFields = @(if ($null -eq $def.numberLength -or [int]"$($def.numberLength)" -gt 0) { "BusinessProcess.$objName.StandardAttribute.Number" }) }   # Номер — при N>0
 	Emit-FieldBlock $i "InputByString" $ibFields
 	X "$i<CreateOnInput>$(Get-EnumProp 'CreateOnInput' 'createOnInput' 'DontUse')</CreateOnInput>"
 	X "$i<SearchStringModeOnInputByString>$(Get-EnumProp 'SearchStringModeOnInputByString' 'searchStringModeOnInputByString' 'Begin')</SearchStringModeOnInputByString>"
@@ -4214,7 +4216,7 @@ function Emit-TaskProperties {
 	X "$i<DefaultPresentation>$(Get-EnumProp 'DefaultPresentation' 'defaultPresentation' 'AsDescription')</DefaultPresentation>"
 	X "$i<EditType>$(Get-EnumProp 'EditType' 'editType' 'InDialog')</EditType>"
 	if (Test-DefKey 'inputByString') { $ibFields = @($def.inputByString | ForEach-Object { Expand-DataPath "$_" }) }
-	else { $ibFields = @("Task.$objName.StandardAttribute.Number") }
+	else { $ibFields = @(if ($null -eq $def.numberLength -or [int]"$($def.numberLength)" -gt 0) { "Task.$objName.StandardAttribute.Number" }) }   # Номер — при N>0
 	Emit-FieldBlock $i "InputByString" $ibFields
 	X "$i<SearchStringModeOnInputByString>$(Get-EnumProp 'SearchStringModeOnInputByString' 'searchStringModeOnInputByString' 'Begin')</SearchStringModeOnInputByString>"
 	X "$i<FullTextSearchOnInputByString>$(Get-EnumProp 'FullTextSearchOnInputByString' 'fullTextSearchOnInputByString' 'DontUse')</FullTextSearchOnInputByString>"
