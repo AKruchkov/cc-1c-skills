@@ -1,0 +1,14 @@
+{
+  "name": "Режим совместимости новее платформы своей версии формата — отказ до генерации",
+  "params": {
+    "name": "Конфа"
+  },
+  "args_extra": [
+    "-FormatVersion",
+    "2.17",
+    "-CompatibilityMode",
+    "Version8_3_27"
+  ],
+  "expectError": "needs platform 8.3.27 (format 2.20 or newer)",
+  "noSnapshot": "негативный кейс — навык отказывает до генерации"
+}

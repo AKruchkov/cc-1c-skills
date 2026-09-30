@@ -217,7 +217,7 @@ JSON DSL для описания объектов метаданных конф�
 |------|-----|-----------|----------|
 | `synonym` / `tooltip` | Synonym / ToolTip | авто / пусто | ML (§4.4) |
 | `comment` | Comment | пусто | строка |
-| `fillChecking` | FillChecking | DontCheck | DontCheck/ShowError/ShowWarning. Синоним `fillCheck` (из формы; `true`→ShowError). Флаг `req`→ShowError |
+| `fillChecking` | FillChecking | DontCheck | DontCheck/ShowError. Синоним `fillCheck` (из формы; `true`→ShowError). Флаг `req`→ShowError |
 | `fullTextSearch` | FullTextSearch | Use | Use/DontUse |
 | `fillFromFillingValue` | FillFromFillingValue | false | bool |
 | `fillValue` | FillValue | по типу (см. ниже) | значение заполнения — bool/число/строка/дата/DTR-путь; `null` → nil |
@@ -360,7 +360,7 @@ JSON-**строка** → `xsi:type="xs:string"` (напр. год `"2000"`, к�
 }
 ```
 
-Свойства объектной формы ТЧ: `synonym` (ML; нет ключа → авто из имени), `tooltip` (ML), `comment` (строка), `fillChecking` (`DontCheck`|`ShowError`|`ShowWarning`), `use` (`ForItem`|`ForFolder`|`ForFolderAndItem`, только Catalog/ПВХ; omit при дефолте `ForItem`), `attributes` (колонки; синоним `columns`), `lineNumber` (кастомизация стандартного реквизита НомерСтроки, см. ниже), `lineNumberLength` (разрядность номера строки, см. §5.2).
+Свойства объектной формы ТЧ: `synonym` (ML; нет ключа → авто из имени), `tooltip` (ML), `comment` (строка), `fillChecking` (`DontCheck`|`ShowError`), `use` (`ForItem`|`ForFolder`|`ForFolderAndItem`, только Catalog/ПВХ; omit при дефолте `ForItem`), `attributes` (колонки; синоним `columns`), `lineNumber` (кастомизация стандартного реквизита НомерСтроки, см. ниже), `lineNumberLength` (разрядность номера строки, см. §5.2).
 
 Для Catalog/ChartOfCharacteristicTypes в Properties ТЧ пишется `<Use>` (дефолт `ForItem`; ключ `use` объектной формы → `ForFolder`/`ForFolderAndItem`). Document `<Use>` не имеет.
 
@@ -497,7 +497,7 @@ LineNumber дефолтные. Ключ `lineNumber` на объектной ф�
 
 Формат: `standardAttributes` — объект `{ ИмяРеквизита: { переопределения } }`. Имена реквизитов — как в XML: `PredefinedDataName`, `Predefined`, `Ref`, `DeletionMark`, `IsFolder`, `Owner`, `Parent`, `Description`, `Code`.
 
-Переопределяемые поля реквизита: `synonym` (ML — строка/`{ru,en}`), `tooltip` (ML), `fillChecking` (`DontCheck`|`ShowError`|`ShowWarning`), `fillFromFillingValue` (bool), `fullTextSearch` (`Use`|`DontUse`), `dataHistory` (`Use`|`DontUse`), `fillValue` (значение — DTR-путь/строка/bool; см. §4.2), `choiceParameterLinks` / `choiceParameters` (как у реквизита, §4.2), `comment`, `mask`, `choiceForm`.
+Переопределяемые поля реквизита: `synonym` (ML — строка/`{ru,en}`), `tooltip` (ML), `fillChecking` (`DontCheck`|`ShowError`), `fillFromFillingValue` (bool), `fullTextSearch` (`Use`|`DontUse`), `dataHistory` (`Use`|`DontUse`), `fillValue` (значение — DTR-путь/строка/bool; см. §4.2), `choiceParameterLinks` / `choiceParameters` (как у реквизита, §4.2), `comment`, `mask`, `choiceForm`.
 
 > «Пустая ссылка» как значение заполнения (`<FillValue xsi:type="xr:DesignTimeRef"/>` без содержимого) — маркер
 > `fillValue: {emptyRef: true}` (декомпилятор проставляет его сам; тип из строки не выводится, т.к. `DefinedType.X`
@@ -862,7 +862,7 @@ Split-CamelCase имени.
 | `codeLength` | `5` | CodeLength |
 | `descriptionLength` | `100` | DescriptionLength |
 | `codeAllowedLength` | `Variable` | CodeAllowedLength |
-| `dependenceOnCalculationTypes` | `DontUse` | DependenceOnCalculationTypes (`DontUse`/`OnPeriod`/`OnActionPeriod`) |
+| `dependenceOnCalculationTypes` | `DontUse` | DependenceOnCalculationTypes (`DontUse`/`OnActionPeriod`/`OnRegistrationPeriod`) |
 | `baseCalculationTypes` | `[]` | BaseCalculationTypes (список ссылок на ПВР; `ПланВидовРасчета.X` → `ChartOfCalculationTypes.X`) |
 | `actionPeriodUse` | `false` | ActionPeriodUse (использовать период действия) |
 | `dataLockControlMode` | `Automatic` | DataLockControlMode |
@@ -1052,7 +1052,7 @@ true); `characteristics` (§7.1.4); `basedOn`/`inputByString`/`dataLockFields` (
 ### 7.6d Task (Задача)
 
 Ссылочный тип адресных задач. Поля: нумерация (как БП) + `taskNumberAutoPrefix`/`descriptionLength`; `addressing`
-(ссылка на регистр сведений исполнителей); `mainAddressingAttribute`/`currentPerformer` (ссылки); `defaultPresentation`;
+(ссылка на регистр сведений исполнителей); `mainAddressingAttribute`/`currentPerformer` (ссылки); `defaultPresentation` (`AsDescription`/`AsNumber`);
 `basedOn`/`characteristics`/`inputByString`/`dataLockFields`; формы/презентации; `dataLockControlMode` (дефолт **Managed**).
 Дети: `attributes`, `commands` и **`addressingAttributes`** — реквизиты адресации (полный object-слой реквизита +
 `addressingDimension`: ссылка на измерение регистра исполнителей).

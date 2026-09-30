@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cf-validate v1.11 — Validate 1C configuration XML structure
+# cf-validate v1.12 — Validate 1C configuration XML structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Validates Configuration.xml: root structure, InternalInfo, properties, ChildObjects, languages."""
 import sys, os, argparse, re
@@ -119,7 +119,8 @@ VALID_ENUM_VALUES = {
         'TaxiEnableVersion8_5', 'Version8_5EnableTaxi', 'Version8_5',
     ],
     'DatabaseTablespacesUseMode': ['DontUse', 'Use'],
-    'MainClientApplicationWindowMode': ['Normal', 'Fullscreen', 'Kiosk'],
+    # Проверено платформой 8.3.24 и 8.5.1: Fullscreen нет (ошибка XDTO), есть …Workplace и Kiosk
+    'MainClientApplicationWindowMode': ['Normal', 'Workplace', 'FullscreenWorkplace', 'Kiosk', 'EmbeddedWorkplace'],
     'CompatibilityMode': [
         'DontUse', 'Version8_1', 'Version8_2_13', 'Version8_2_16',
         'Version8_3_1', 'Version8_3_2', 'Version8_3_3', 'Version8_3_4', 'Version8_3_5',

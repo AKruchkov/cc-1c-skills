@@ -1,0 +1,13 @@
+{
+  "name": "Значение перечисления с другим регистром (writeSelected) — ошибка: платформа читает по точному имени",
+  "setup": "fixture:document-writeselected-lowercase",
+  "params": {
+    "objectPath": "Documents/Заказ.xml"
+  },
+  "expectError": true,
+  "noSnapshot": "фикстура статична, meta-validate только читает и печатает — эталон зафиксировал бы саму фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура — один объект без остальной конфигурации; полная загрузка такого дерева невозможна",
+  "expect": {
+    "stdoutContains": "Property 'RegisterRecordsWritingOnPost' has invalid value 'writeSelected'"
+  }
+}

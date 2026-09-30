@@ -1,0 +1,21 @@
+{
+  "name": "MainClientApplicationWindowMode=FullscreenWorkplace — допустимо",
+  "preRun": [
+    {
+      "script": "cf-edit/scripts/cf-edit",
+      "input": [
+        {
+          "operation": "modify-property",
+          "value": "MainClientApplicationWindowMode=FullscreenWorkplace"
+        }
+      ],
+      "args": {
+        "-ConfigPath": "{workDir}",
+        "-DefinitionFile": "{inputFile}"
+      }
+    }
+  ],
+  "expect": {
+    "stdoutNotContains": "MainClientApplicationWindowMode"
+  }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Анти-дрейф enum-allowlist-ов: сверяет продублированные списки допустимых значений перечислений
-// meta-compile (АВТОРИТЕТ) ↔ meta-validate ↔ meta-edit. Навыки автономны (allowlist-ы копируются
+// meta-compile (АВТОРИТЕТ) ↔ meta-validate ↔ meta-edit, а также cf-validate (АВТОРИТЕТ) ↔ cfe-validate. Навыки автономны (allowlist-ы копируются
 // намеренно), поэтому нужен гард от расхождений значений (напр. HierarchyItemsOnly vs HierarchyOfItems).
 // Парсит .ps1 (канонический порт). Выход 1 при дрейфе. Запуск: node tests/skills/check-enum-drift.mjs
 import { readFileSync } from 'node:fs';
@@ -23,7 +23,8 @@ function parsePs1EnumMap(file, varName) {
   }
   const block = text.slice(text.indexOf('@{', at) + 2, end);
   const map = {};
-  const re = /"([\wА-Яа-яЁё]+)"\s*=\s*@\(([^)]*)\)/g;
+  // Ключ — свойство или уточнение по виду объекта «Вид.Свойство» (Task.DefaultPresentation)
+  const re = /"([\wА-Яа-яЁё.]+)"\s*=\s*@\(([^)]*)\)/g;
   let m;
   while ((m = re.exec(block)) !== null) {
     map[m[1]] = [...m[2].matchAll(/"([^"]*)"/g)].map(v => v[1]);
@@ -52,5 +53,15 @@ for (const [name, map] of [['meta-validate', validate], ['meta-edit', edit]]) {
     if (!compile[prop]) console.log(`INFO   ${name}.${prop} нет в meta-compile.validEnumValues (проверьте ключ)`);
   }
 }
-console.log(drift === 0 ? 'OK — нет дрейфа значений enum-allowlist vs meta-compile' : `\n${drift} DRIFT(s) — свести к meta-compile.`);
+// Корень конфигурации и корень расширения: общие свойства (режимы совместимости, интерфейс)
+// cf-validate и cfe-validate обязаны принимать одинаково — это одни и те же перечисления платформы.
+const cfv  = parsePs1EnumMap('.claude/skills/cf-validate/scripts/cf-validate.ps1', '$validEnumValues');
+const cfev = parsePs1EnumMap('.claude/skills/cfe-validate/scripts/cfe-validate.ps1', '$validEnumValues');
+for (const prop of Object.keys(cfev)) {
+  if (cfv[prop] && !eq(cfev[prop], cfv[prop])) {
+    console.log(`DRIFT  cfe-validate.${prop}: [${cfev[prop].join(', ')}]  !=  cf-validate [${cfv[prop].join(', ')}]`);
+    drift++;
+  }
+}
+console.log(drift === 0 ? 'OK — нет дрейфа значений enum-allowlist (meta-* vs meta-compile, cfe-validate vs cf-validate)' : `\n${drift} DRIFT(s) — свести к эталону.`);
 process.exit(drift ? 1 : 0);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# cf-init v1.15 — Create empty 1C configuration scaffold (+write_xml_file/write_utf8_bom: общий эталон записи)
+# cf-init v1.16 — Create empty 1C configuration scaffold (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """Generates minimal XML source files for a 1C configuration."""
 import sys, os, argparse, re, uuid
@@ -96,6 +96,27 @@ def main():
     # расхождение портов началось бы прямо здесь.
     if (args.CompatibilityMode or "").lower() == "dontuse":
         print("WARNING: CompatibilityMode 'DontUse' is not \"no restrictions\" — the platform stores it as Version8_3_8. For no compatibility restrictions use the target platform version (e.g. Version8_3_27 for 8.3.27).", file=sys.stderr)
+
+    # Режим совместимости не новее платформы, которая пишет эту версию формата. Такой конфигурации
+    # не выпускает ни одна платформа, а загрузка платформой старше режима МОЛЧА понижает его до своей
+    # версии (замерено: Version8_3_25 и Version8_3_27 на 8.3.24 → Version8_3_24). Лестница «платформа →
+    # формат» — копия docs/1c-configuration-spec.md §7.1, сверяет tests/skills/check-format-versions.mjs.
+    # Режим, которого нет в лестнице (8.3.28), не проверяется: замера нет.
+    platform_format_ladder = {
+        "8.3.20": "2.13", "8.3.21": "2.14", "8.3.22": "2.15", "8.3.23": "2.16", "8.3.24": "2.17",
+        "8.3.25": "2.18", "8.3.26": "2.19", "8.3.27": "2.20", "8.5.1": "2.21",
+    }
+    # Регистронезависимо — как -match в PS-мастере
+    m = re.match(r'^Version(\d+)_(\d+)_(\d+)$', args.CompatibilityMode or "", re.IGNORECASE)
+    if m:
+        compat_platform = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+        need_format = platform_format_ladder.get(compat_platform)
+        if need_format and format_rank_value < format_rank(need_format):
+            print(f"CompatibilityMode '{args.CompatibilityMode}' needs platform {compat_platform} (format {need_format} or newer), "
+                  f"but -FormatVersion is {args.FormatVersion} — no platform writes such a configuration, and loading it into "
+                  f"an older platform silently lowers the mode. Use -FormatVersion {need_format} or an older -CompatibilityMode.",
+                  file=sys.stderr)
+            sys.exit(1)
 
     name = args.Name
     synonym = args.Synonym if args.Synonym else name

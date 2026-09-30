@@ -1,4 +1,4 @@
-﻿# cf-validate v1.11 — Validate 1C configuration root structure
+﻿# cf-validate v1.12 — Validate 1C configuration root structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -186,7 +186,8 @@ $validEnumValues = @{
 	"SynchronousPlatformExtensionAndAddInCallUseMode" = @("DontUse","Use","UseWithWarnings")
 	"InterfaceCompatibilityMode" = @("Version8_2","Version8_2EnableTaxi","Taxi","TaxiEnableVersion8_2","TaxiEnableVersion8_5","Version8_5EnableTaxi","Version8_5")
 	"DatabaseTablespacesUseMode" = @("DontUse","Use")
-	"MainClientApplicationWindowMode" = @("Normal","Fullscreen","Kiosk")
+	# Проверено платформой 8.3.24 и 8.5.1: Fullscreen нет (ошибка XDTO), есть …Workplace и Kiosk
+	"MainClientApplicationWindowMode" = @("Normal","Workplace","FullscreenWorkplace","Kiosk","EmbeddedWorkplace")
 	"CompatibilityMode" = @("DontUse","Version8_1","Version8_2_13","Version8_2_16","Version8_3_1","Version8_3_2","Version8_3_3","Version8_3_4","Version8_3_5","Version8_3_6","Version8_3_7","Version8_3_8","Version8_3_9","Version8_3_10","Version8_3_11","Version8_3_12","Version8_3_13","Version8_3_14","Version8_3_15","Version8_3_16","Version8_3_17","Version8_3_18","Version8_3_19","Version8_3_20","Version8_3_21","Version8_3_22","Version8_3_23","Version8_3_24","Version8_3_25","Version8_3_26","Version8_3_27","Version8_3_28","Version8_5_1")
 }
 

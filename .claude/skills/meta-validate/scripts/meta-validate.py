@@ -1,4 +1,4 @@
-# meta-validate v1.32 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.33 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -416,11 +416,14 @@ valid_property_values = {
     "Posting":                      ["Allow", "Deny"],
     "RealTimePosting":              ["Allow", "Deny"],
     "RegisterRecordsDeletion":      ["AutoDelete", "AutoDeleteOnUnpost", "AutoDeleteOff"],
-    "RegisterRecordsWritingOnPost": ["WriteModified", "WriteSelected", "WriteAll"],
+    "RegisterRecordsWritingOnPost": ["WriteModified", "WriteSelected"],
     # AutomaticAndManaged — только у внешнего источника данных и его таблиц.
     "DataLockControlMode":          ["Automatic", "Managed", "AutomaticAndManaged"],
     "FullTextSearch":               ["Use", "DontUse"],
     "DefaultPresentation":          ["AsDescription", "AsCode"],
+    # Уточнение по виду объекта («Вид.Свойство») — раньше общего списка. AsNumber («в виде номера»)
+    # есть только у задачи: у справочника и прочих платформа его отвергает (8.3.24 и 8.5.1).
+    "Task.DefaultPresentation":     ["AsDescription", "AsNumber"],
     "HierarchyType":                ["HierarchyFoldersAndItems", "HierarchyOfItems"],
     "EditType":                     ["InDialog", "InList", "BothWays"],
     "WriteMode":                    ["Independent", "RecorderSubordinate"],
@@ -428,10 +431,10 @@ valid_property_values = {
     "RegisterType":                 ["Balance", "Turnovers"],
     "ReturnValuesReuse":            ["DontUse", "DuringRequest", "DuringSession"],
     "ReuseSessions":                ["DontUse", "Use", "AutoUse"],
-    "FillChecking":                 ["DontCheck", "ShowError", "ShowWarning"],
+    "FillChecking":                 ["DontCheck", "ShowError"],
     "Indexing":                     ["DontIndex", "Index", "IndexWithAdditionalOrder"],
     "DataHistory":                  ["Use", "DontUse"],
-    "DependenceOnCalculationTypes": ["DontUse", "OnActionPeriod"],
+    "DependenceOnCalculationTypes": ["DontUse", "OnActionPeriod", "OnRegistrationPeriod"],
 }
 
 # Properties forbidden per type (would cause LoadConfigFromFiles error)
@@ -802,9 +805,12 @@ if props_node is not None:
     check4_ok = True
 
     for prop_name, allowed in valid_property_values.items():
+        if "." in prop_name:   # «Вид.Свойство» — уточнение, не отдельное свойство
+            continue
         prop_node = find(props_node, f"md:{prop_name}")
         if prop_node is not None and inner_text(prop_node):
             val = inner_text(prop_node)
+            allowed = valid_property_values.get(f"{md_type}.{prop_name}") or allowed
             if val not in allowed:
                 report_error(f"4. Property '{prop_name}' has invalid value '{val}' (allowed: {', '.join(allowed)})")
                 check4_ok = False

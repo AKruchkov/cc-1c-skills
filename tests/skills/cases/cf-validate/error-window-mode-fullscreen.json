@@ -1,0 +1,23 @@
+{
+  "name": "MainClientApplicationWindowMode=Fullscreen — ошибка: у платформы FullscreenWorkplace",
+  "preRun": [
+    {
+      "script": "cf-edit/scripts/cf-edit",
+      "input": [
+        {
+          "operation": "modify-property",
+          "value": "MainClientApplicationWindowMode=Fullscreen"
+        }
+      ],
+      "args": {
+        "-ConfigPath": "{workDir}",
+        "-DefinitionFile": "{inputFile}"
+      }
+    }
+  ],
+  "expectError": true,
+  "noSnapshot": "негативный кейс — конфигурация с недопустимым значением; проверяется stdout",
+  "expect": {
+    "stdoutContains": "Property 'MainClientApplicationWindowMode' has invalid value 'Fullscreen'"
+  }
+}

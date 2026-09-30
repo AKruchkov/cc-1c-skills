@@ -1,0 +1,12 @@
+{
+  "name": "DefaultPresentation=AsNumber у задачи — допустимо",
+  "setup": "fixture:task-presentation-asnumber",
+  "params": {
+    "objectPath": "Tasks/Задача.xml"
+  },
+  "noSnapshot": "фикстура статична, meta-validate только читает и печатает — эталон зафиксировал бы саму фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура — один объект без остальной конфигурации; полная загрузка такого дерева невозможна",
+  "expect": {
+    "stdoutNotContains": "DefaultPresentation"
+  }
+}

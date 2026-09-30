@@ -185,6 +185,27 @@ if (codeMin && ladder.length && !ladder.some((r) => r.version === codeMin)) {
   errors.push(`Нижняя граница в коде (${codeMin}) отсутствует в лестнице спецификации`);
 }
 
+// ─── Инвариант 4: копия лестницы в cf-init совпадает со спекой ──────────────
+// cf-init отвергает режим совместимости новее платформы своей -FormatVersion; для этого ему нужна
+// сама лестница «платформа → формат». Разъедется со спекой — отказ станет ложным или пропустит
+// противоречивый заказ, молча.
+for (const [port, ext, re] of [
+  ['ps1', '.ps1', /"(\d+\.\d+\.\d+)"\s*=\s*"(\d+\.\d+)"/g],
+  ['py', '.py', /"(\d+\.\d+\.\d+)":\s*"(\d+\.\d+)"/g],
+]) {
+  const text = read(join(SKILLS, 'cf-init', 'scripts', 'cf-init' + ext));
+  const block = text && (port === 'ps1'
+    ? /\$platformFormatLadder\s*=\s*\[ordered\]@\{([\s\S]*?)\}/.exec(text)
+    : /platform_format_ladder\s*=\s*\{([\s\S]*?)\}/.exec(text));
+  if (!block) {
+    errors.push(`cf-init (${port}): не найдена лестница «платформа → формат» (platformFormatLadder)`);
+    continue;
+  }
+  const copy = [...block[1].matchAll(re)].map((m) => `${m[1]}=${m[2]}`).join(', ');
+  const spec = ladder.map((r) => `${r.platform}=${r.version}`).join(', ');
+  if (copy !== spec) errors.push(`cf-init (${port}): лестница [${copy}] != спека §7.1 [${spec}]`);
+}
+
 // ─── Вывод ──────────────────────────────────────────────────────────────────
 if (listMode) {
   console.log('Лестница версий (docs/1c-configuration-spec.md §7.1):');

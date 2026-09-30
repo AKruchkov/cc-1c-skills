@@ -1,0 +1,13 @@
+{
+  "name": "DefaultPresentation=AsNumber у справочника — ошибка: «в виде номера» есть только у задачи",
+  "setup": "fixture:catalog-presentation-asnumber",
+  "params": {
+    "objectPath": "Catalogs/Товары.xml"
+  },
+  "expectError": true,
+  "noSnapshot": "фикстура статична, meta-validate только читает и печатает — эталон зафиксировал бы саму фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура — один объект без остальной конфигурации; полная загрузка такого дерева невозможна",
+  "expect": {
+    "stdoutContains": "Property 'DefaultPresentation' has invalid value 'AsNumber'"
+  }
+}

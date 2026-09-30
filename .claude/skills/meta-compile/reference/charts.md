@@ -87,7 +87,7 @@
 | `codeLength` | `5` | длина кода |
 | `descriptionLength` | `100` | длина наименования |
 | `codeAllowedLength` | `Variable` | `Variable` / `Fixed` |
-| `dependenceOnCalculationTypes` | `DontUse` | `DontUse` / `OnPeriod` / `OnActionPeriod` |
+| `dependenceOnCalculationTypes` | `DontUse` | `DontUse` / `OnActionPeriod` / `OnRegistrationPeriod` |
 | `baseCalculationTypes` | `[]` | базовые виды расчёта (список ссылок `ChartOfCalculationTypes.X`) |
 | `actionPeriodUse` | `false` | bool (использовать период действия) |
 | `createOnInput` | `DontUse` | `Auto` / `Use` / `DontUse` |

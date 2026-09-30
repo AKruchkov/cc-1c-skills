@@ -1,4 +1,4 @@
-﻿# cf-init v1.15 — Create empty 1C configuration scaffold (+write_xml_file/write_utf8_bom: общий эталон записи)
+﻿# cf-init v1.16 — Create empty 1C configuration scaffold (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -56,6 +56,26 @@ if ($formatRank -lt (Get-FormatRank $formatVerifiedMin) -or $formatRank -gt (Get
 # расхождение портов началось бы прямо здесь.
 if ($CompatibilityMode -and $CompatibilityMode.ToLowerInvariant() -eq 'dontuse') {
 	[Console]::Error.WriteLine("WARNING: CompatibilityMode 'DontUse' is not `"no restrictions`" — the platform stores it as Version8_3_8. For no compatibility restrictions use the target platform version (e.g. Version8_3_27 for 8.3.27).")
+}
+
+# Режим совместимости не новее платформы, которая пишет эту версию формата. Такой конфигурации
+# не выпускает ни одна платформа, а загрузка платформой старше режима МОЛЧА понижает его до своей
+# версии (замерено: Version8_3_25 и Version8_3_27 на 8.3.24 → Version8_3_24). Лестница «платформа →
+# формат» — копия docs/1c-configuration-spec.md §7.1, сверяет tests/skills/check-format-versions.mjs.
+# Режим, которого нет в лестнице (8.3.28), не проверяется: замера нет.
+$platformFormatLadder = [ordered]@{
+	"8.3.20" = "2.13"; "8.3.21" = "2.14"; "8.3.22" = "2.15"; "8.3.23" = "2.16"; "8.3.24" = "2.17"
+	"8.3.25" = "2.18"; "8.3.26" = "2.19"; "8.3.27" = "2.20"; "8.5.1" = "2.21"
+}
+if ($CompatibilityMode -match '^Version(\d+)_(\d+)_(\d+)$') {
+	$compatPlatform = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+	if ($platformFormatLadder.Contains($compatPlatform)) {
+		$needFormat = $platformFormatLadder[$compatPlatform]
+		if ($formatRank -lt (Get-FormatRank $needFormat)) {
+			[Console]::Error.WriteLine("CompatibilityMode '$CompatibilityMode' needs platform $compatPlatform (format $needFormat or newer), but -FormatVersion is $FormatVersion — no platform writes such a configuration, and loading it into an older platform silently lowers the mode. Use -FormatVersion $needFormat or an older -CompatibilityMode.")
+			exit 1
+		}
+	}
 }
 
 # --- Resolve output dir ---

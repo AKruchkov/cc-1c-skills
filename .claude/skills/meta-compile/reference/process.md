@@ -32,6 +32,7 @@
 | `checkUnique` | `true` | bool |
 | `autonumbering` | `true` | bool |
 | `descriptionLength` | `150` | длина наименования |
+| `defaultPresentation` | `AsDescription` | `AsDescription` / `AsNumber` |
 | `addressing` | пусто | ссылка на регистр сведений адресации `InformationRegister.X` |
 | `mainAddressingAttribute` | пусто | основной реквизит адресации (имя реквизита адресации) |
 | `currentPerformer` | пусто | реквизит текущего исполнителя |

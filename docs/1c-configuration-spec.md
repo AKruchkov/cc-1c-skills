@@ -103,7 +103,7 @@ ClassId — фиксированные идентификаторы классо
 | `SynchronousPlatformExtensionAndAddInCallUseMode` | enum | Синхр. вызовы (`DontUse` / `Use`) |
 | `InterfaceCompatibilityMode` | enum | Совместимость интерфейса (`Taxi` / `TaxiEnableVersion8_2`) |
 | `DatabaseTablespacesUseMode` | enum | Табличные пространства (`DontUse` / `Use`) |
-| `MainClientApplicationWindowMode` | enum | Режим окна (`Normal` / `Fullscreen` / `Kiosk`) |
+| `MainClientApplicationWindowMode` | enum | Режим окна (`Normal` / `Workplace` / `FullscreenWorkplace` / `Kiosk` / `EmbeddedWorkplace`) |
 
 #### Назначение и использование
 

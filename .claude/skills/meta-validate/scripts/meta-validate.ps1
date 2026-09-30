@@ -1,4 +1,4 @@
-﻿# meta-validate v1.32 — Validate 1C metadata object structure
+﻿# meta-validate v1.33 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -361,11 +361,14 @@ $validPropertyValues = @{
 	"Posting"                        = @("Allow","Deny")
 	"RealTimePosting"                = @("Allow","Deny")
 	"RegisterRecordsDeletion"        = @("AutoDelete","AutoDeleteOnUnpost","AutoDeleteOff")
-	"RegisterRecordsWritingOnPost"   = @("WriteModified","WriteSelected","WriteAll")
+	"RegisterRecordsWritingOnPost"   = @("WriteModified","WriteSelected")
 	# AutomaticAndManaged — только у внешнего источника данных и его таблиц.
 	"DataLockControlMode"            = @("Automatic","Managed","AutomaticAndManaged")
 	"FullTextSearch"                 = @("Use","DontUse")
 	"DefaultPresentation"            = @("AsDescription","AsCode")
+	# Уточнение по виду объекта («Вид.Свойство») — раньше общего списка. AsNumber («в виде номера»)
+	# есть только у задачи: у справочника и прочих платформа его отвергает (8.3.24 и 8.5.1).
+	"Task.DefaultPresentation"       = @("AsDescription","AsNumber")
 	"HierarchyType"                  = @("HierarchyFoldersAndItems","HierarchyOfItems")
 	"EditType"                       = @("InDialog","InList","BothWays")
 	"WriteMode"                      = @("Independent","RecorderSubordinate")
@@ -373,10 +376,10 @@ $validPropertyValues = @{
 	"RegisterType"                   = @("Balance","Turnovers")
 	"ReturnValuesReuse"              = @("DontUse","DuringRequest","DuringSession")
 	"ReuseSessions"                  = @("DontUse","Use","AutoUse")
-	"FillChecking"                   = @("DontCheck","ShowError","ShowWarning")
+	"FillChecking"                   = @("DontCheck","ShowError")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 	"DataHistory"                    = @("Use","DontUse")
-	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod")
+	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod","OnRegistrationPeriod")
 }
 
 # Properties forbidden per type (would cause LoadConfigFromFiles error)
@@ -739,11 +742,14 @@ if ($propsNode) {
 	$check4Ok = $true
 
 	foreach ($propName in $validPropertyValues.Keys) {
+		if ($propName.Contains('.')) { continue }   # «Вид.Свойство» — уточнение, не отдельное свойство
 		$propNode = $propsNode.SelectSingleNode("md:$propName", $ns)
 		if ($propNode -and $propNode.InnerText) {
 			$val = $propNode.InnerText
-			$allowed = $validPropertyValues[$propName]
-			if ($allowed -notcontains $val) {
+			$allowed = $validPropertyValues["$mdType.$propName"]
+			if (-not $allowed) { $allowed = $validPropertyValues[$propName] }
+			# Регистр значим: платформа читает перечисление по точному имени (-notcontains его не различал)
+			if ($allowed -cnotcontains $val) {
 				Report-Error "4. Property '$propName' has invalid value '$val' (allowed: $($allowed -join ', '))"
 				$check4Ok = $false
 			}

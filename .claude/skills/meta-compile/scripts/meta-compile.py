@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.114 — Compile 1C metadata object from JSON
+# meta-compile v1.115 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -527,7 +527,7 @@ enum_value_aliases = {
     # DefaultPresentation
     'ВВидеНаименования': 'AsDescription', 'ВВидеКода': 'AsCode',
     # FillChecking
-    'НеПроверять': 'DontCheck', 'Ошибка': 'ShowError', 'Предупреждение': 'ShowWarning',
+    'НеПроверять': 'DontCheck', 'Ошибка': 'ShowError',
     # Indexing
     'НеИндексировать': 'DontIndex', 'Индексировать': 'Index',
     'ИндексироватьСДопУпорядочиванием': 'IndexWithAdditionalOrder',
@@ -542,13 +542,17 @@ valid_enum_values = {
     'RegisterType': ['Balance', 'Turnovers'],
     'WriteMode': ['Independent', 'RecorderSubordinate'],
     'InformationRegisterPeriodicity': ['Nonperiodical', 'Second', 'Day', 'Month', 'Quarter', 'Year', 'RecorderPosition'],
-    'DependenceOnCalculationTypes': ['DontUse', 'OnActionPeriod'],
+    'DependenceOnCalculationTypes': ['DontUse', 'OnActionPeriod', 'OnRegistrationPeriod'],
     # AutomaticAndManaged — только у внешнего источника данных и его таблиц: там режим может
     # решаться на уровне таблицы, у прочих объектов такого значения нет.
     'DataLockControlMode': ['Automatic', 'Managed', 'AutomaticAndManaged'],
     'FullTextSearch': ['Use', 'DontUse'],
     'DataHistory': ['Use', 'DontUse'],
     'DefaultPresentation': ['AsDescription', 'AsCode'],
+    # Уточнение по виду объекта («Вид.Свойство») — проверяется раньше общего списка. AsNumber
+    # («в виде номера») есть только у задачи: у справочника и прочих платформа его отвергает
+    # («Неверное значение перечисления», 8.3.24 и 8.5.1).
+    'Task.DefaultPresentation': ['AsDescription', 'AsNumber'],
     'Posting': ['Allow', 'Deny'],
     'RealTimePosting': ['Allow', 'Deny'],
     'EditType': ['InDialog', 'InList', 'BothWays'],
@@ -558,10 +562,10 @@ valid_enum_values = {
     'NumberType': ['String', 'Number'],
     'NumberAllowedLength': ['Variable', 'Fixed'],
     'RegisterRecordsDeletion': ['AutoDelete', 'AutoDeleteOnUnpost', 'AutoDeleteOff'],
-    'RegisterRecordsWritingOnPost': ['WriteModified', 'WriteSelected', 'WriteAll'],
+    'RegisterRecordsWritingOnPost': ['WriteModified', 'WriteSelected'],
     'ReturnValuesReuse': ['DontUse', 'DuringRequest', 'DuringSession'],
     'ReuseSessions': ['DontUse', 'Use', 'AutoUse'],
-    'FillChecking': ['DontCheck', 'ShowError', 'ShowWarning'],
+    'FillChecking': ['DontCheck', 'ShowError'],
     'Indexing': ['DontIndex', 'Index', 'IndexWithAdditionalOrder'],
     'SubordinationUse': ['ToItems', 'ToFolders', 'ToFoldersAndItems'],
     'CodeSeries': ['WholeCatalog', 'WithinSubordination', 'WithinOwnerSubordination', 'WholeCharacteristicKind', 'WholeChartOfAccounts'],
@@ -618,8 +622,8 @@ def normalize_enum_value(prop_name, value):
     # 1. Check alias dictionary — silent auto-correct
     if value in enum_value_aliases:
         return enum_value_aliases[value]
-    # 2. Case-insensitive match against valid values — silent
-    valid = valid_enum_values.get(prop_name)
+    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
+    valid = valid_enum_values.get(f"{obj_type}.{prop_name}") or valid_enum_values.get(prop_name)
     if valid:
         for v in valid:
             if v.lower() == value.lower():
@@ -1394,8 +1398,10 @@ def parse_attribute_shorthand(val):
         'comment': str(val['comment']) if val.get('comment') else '',
         # Лоуэркейз как в строковом пути (стр.809): проверки флагов регистронезависимы (зеркало PS -contains).
         'flags': [str(f).strip().lower() for f in val.get('flags', [])],
-        'fillChecking': fc,
-        'indexing': str(val['indexing']) if val.get('indexing') else '',
+        # Значения перечислений — через список допустимых, как свойства объекта: иначе значение из DSL
+        # (ShowWarning, «Ошибка») уходило в XML как есть, и конфигурация не загружалась.
+        'fillChecking': normalize_enum_value('FillChecking', fc) if fc else '',
+        'indexing': normalize_enum_value('Indexing', str(val['indexing'])) if val.get('indexing') else '',
         'multiLine': True if val.get('multiLine') is True else False,
         'choiceHistoryOnInput': str(val['choiceHistoryOnInput']) if val.get('choiceHistoryOnInput') else '',
         'fullTextSearch': str(val['fullTextSearch']) if val.get('fullTextSearch') else '',
@@ -1884,7 +1890,7 @@ def emit_standard_attributes(indent, object_type):
                 if d.get('tooltip') is not None:
                     ov['ToolTip'] = d['tooltip']   # строка ИЛИ {ru,en}
                 if d.get('fillChecking'):
-                    ov['FillChecking'] = str(d['fillChecking'])
+                    ov['FillChecking'] = normalize_enum_value('FillChecking', str(d['fillChecking']))
                 if d.get('fillFromFillingValue') is not None:
                     ov['FillFromFillingValue'] = 'true' if d['fillFromFillingValue'] else 'false'
                 if d.get('fullTextSearch'):
@@ -2631,7 +2637,8 @@ def emit_tabular_section(indent, ts_name, columns, object_type, object_name, ts_
     else:
         X(f'{indent}\t\t<Comment/>')
     emit_mltext(f'{indent}\t\t', 'ToolTip', ts_tooltip)
-    X(f'{indent}\t\t<FillChecking>{ts_fill_checking if ts_fill_checking else "DontCheck"}</FillChecking>')
+    ts_fc = normalize_enum_value('FillChecking', str(ts_fill_checking)) if ts_fill_checking else 'DontCheck'
+    X(f'{indent}\t\t<FillChecking>{ts_fc}</FillChecking>')
     # TS-блок стандартных реквизитов (LineNumber) эмитим ВСЕГДА, кроме подавления `lineNumber: ""` (дом-конвенция
     # суппресса): ~6% ТЧ исторически опускают блок (правило не выводимо — Товары all-default его имеет, соседи нет).
     if not (isinstance(ts_line_number, str) and ts_line_number == ''):

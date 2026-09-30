@@ -1,4 +1,4 @@
-﻿# meta-edit v1.59 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.60 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -129,7 +129,7 @@ $script:enumValueAliases = @{
 	"Разрешить" = "Allow"; "Запретить" = "Deny"
 	"ВДиалоге" = "InDialog"; "ВСписке" = "InList"; "ОбаСпособа" = "BothWays"
 	"ВВидеНаименования" = "AsDescription"; "ВВидеКода" = "AsCode"
-	"НеПроверять" = "DontCheck"; "Ошибка" = "ShowError"; "Предупреждение" = "ShowWarning"
+	"НеПроверять" = "DontCheck"; "Ошибка" = "ShowError"
 	"НеИндексировать" = "DontIndex"; "Индексировать" = "Index"
 	"ИндексироватьСДопУпорядочиванием" = "IndexWithAdditionalOrder"
 }
@@ -138,12 +138,16 @@ $script:validEnumValues = @{
 	"RegisterType"                   = @("Balance","Turnovers")
 	"WriteMode"                      = @("Independent","RecorderSubordinate")
 	"InformationRegisterPeriodicity" = @("Nonperiodical","Second","Day","Month","Quarter","Year","RecorderPosition")
-	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod")
+	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod","OnRegistrationPeriod")
 	# AutomaticAndManaged — только у внешнего источника данных и его таблиц.
 	"DataLockControlMode"            = @("Automatic","Managed","AutomaticAndManaged")
 	"FullTextSearch"                 = @("Use","DontUse")
 	"DataHistory"                    = @("Use","DontUse")
 	"DefaultPresentation"            = @("AsDescription","AsCode")
+	# Уточнение по виду объекта («Вид.Свойство») — проверяется раньше общего списка. AsNumber
+	# («в виде номера») есть только у задачи: у справочника и прочих платформа его отвергает
+	# («Неверное значение перечисления», 8.3.24 и 8.5.1).
+	"Task.DefaultPresentation"       = @("AsDescription","AsNumber")
 	"Posting"                        = @("Allow","Deny")
 	"RealTimePosting"                = @("Allow","Deny")
 	"EditType"                       = @("InDialog","InList","BothWays")
@@ -153,10 +157,10 @@ $script:validEnumValues = @{
 	"NumberType"                     = @("String","Number")
 	"NumberAllowedLength"            = @("Variable","Fixed")
 	"RegisterRecordsDeletion"        = @("AutoDelete","AutoDeleteOnUnpost","AutoDeleteOff")
-	"RegisterRecordsWritingOnPost"   = @("WriteModified","WriteSelected","WriteAll")
+	"RegisterRecordsWritingOnPost"   = @("WriteModified","WriteSelected")
 	"ReturnValuesReuse"              = @("DontUse","DuringRequest","DuringSession")
 	"ReuseSessions"                  = @("DontUse","Use","AutoUse")
-	"FillChecking"                   = @("DontCheck","ShowError","ShowWarning")
+	"FillChecking"                   = @("DontCheck","ShowError")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 }
 
@@ -166,8 +170,9 @@ function Normalize-EnumValue {
 	if ($script:enumValueAliases.ContainsKey($value)) {
 		return $script:enumValueAliases[$value]
 	}
-	# 2. Case-insensitive match against valid values — silent
-	$valid = $script:validEnumValues[$propName]
+	# 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
+	$valid = $script:validEnumValues["$script:objType.$propName"]
+	if (-not $valid) { $valid = $script:validEnumValues[$propName] }
 	if ($valid) {
 		foreach ($v in $valid) {
 			if ($v -ieq $value) { return $v }

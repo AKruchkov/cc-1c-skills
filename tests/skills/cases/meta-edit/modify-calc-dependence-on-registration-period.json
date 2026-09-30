@@ -1,0 +1,35 @@
+{
+  "name": "План видов расчёта: зависимость по периоду регистрации (OnRegistrationPeriod) принимается",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "ChartOfCalculationTypes",
+        "name": "Начисления",
+        "baseCalculationTypes": [
+          "ChartOfCalculationTypes.Начисления"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "ChartsOfCalculationTypes/Начисления"
+  },
+  "input": {
+    "modify": {
+      "properties": {
+        "DependenceOnCalculationTypes": "OnRegistrationPeriod"
+      }
+    }
+  },
+  "expect": {
+    "fileContains": {
+      "file": "ChartsOfCalculationTypes/Начисления.xml",
+      "text": "<DependenceOnCalculationTypes>OnRegistrationPeriod</DependenceOnCalculationTypes>"
+    }
+  }
+}

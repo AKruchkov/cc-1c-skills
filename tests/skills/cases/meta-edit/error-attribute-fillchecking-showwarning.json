@@ -1,0 +1,32 @@
+{
+  "name": "Ошибка: fillChecking=ShowWarning у реквизита — у платформы только DontCheck и ShowError",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Контрагенты",
+        "attributes": [
+          "ИНН: String(12)"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Контрагенты"
+  },
+  "input": {
+    "modify": {
+      "attributes": {
+        "ИНН": {
+          "fillChecking": "ShowWarning"
+        }
+      }
+    }
+  },
+  "expectError": "Invalid value 'ShowWarning'"
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-edit v1.59 — Edit existing 1C metadata object XML
+# meta-edit v1.60 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -424,7 +424,7 @@ enum_value_aliases = {
     # DefaultPresentation
     'ВВидеНаименования': 'AsDescription', 'ВВидеКода': 'AsCode',
     # FillChecking
-    'НеПроверять': 'DontCheck', 'Ошибка': 'ShowError', 'Предупреждение': 'ShowWarning',
+    'НеПроверять': 'DontCheck', 'Ошибка': 'ShowError',
     # Indexing
     'НеИндексировать': 'DontIndex', 'Индексировать': 'Index',
     'ИндексироватьСДопУпорядочиванием': 'IndexWithAdditionalOrder',
@@ -437,12 +437,16 @@ valid_enum_values = {
     'RegisterType': ['Balance', 'Turnovers'],
     'WriteMode': ['Independent', 'RecorderSubordinate'],
     'InformationRegisterPeriodicity': ['Nonperiodical', 'Second', 'Day', 'Month', 'Quarter', 'Year', 'RecorderPosition'],
-    'DependenceOnCalculationTypes': ['DontUse', 'OnActionPeriod'],
+    'DependenceOnCalculationTypes': ['DontUse', 'OnActionPeriod', 'OnRegistrationPeriod'],
     # AutomaticAndManaged — только у внешнего источника данных и его таблиц.
     'DataLockControlMode': ['Automatic', 'Managed', 'AutomaticAndManaged'],
     'FullTextSearch': ['Use', 'DontUse'],
     'DataHistory': ['Use', 'DontUse'],
     'DefaultPresentation': ['AsDescription', 'AsCode'],
+    # Уточнение по виду объекта («Вид.Свойство») — проверяется раньше общего списка. AsNumber
+    # («в виде номера») есть только у задачи: у справочника и прочих платформа его отвергает
+    # («Неверное значение перечисления», 8.3.24 и 8.5.1).
+    'Task.DefaultPresentation': ['AsDescription', 'AsNumber'],
     'Posting': ['Allow', 'Deny'],
     'RealTimePosting': ['Allow', 'Deny'],
     'EditType': ['InDialog', 'InList', 'BothWays'],
@@ -452,10 +456,10 @@ valid_enum_values = {
     'NumberType': ['String', 'Number'],
     'NumberAllowedLength': ['Variable', 'Fixed'],
     'RegisterRecordsDeletion': ['AutoDelete', 'AutoDeleteOnUnpost', 'AutoDeleteOff'],
-    'RegisterRecordsWritingOnPost': ['WriteModified', 'WriteSelected', 'WriteAll'],
+    'RegisterRecordsWritingOnPost': ['WriteModified', 'WriteSelected'],
     'ReturnValuesReuse': ['DontUse', 'DuringRequest', 'DuringSession'],
     'ReuseSessions': ['DontUse', 'Use', 'AutoUse'],
-    'FillChecking': ['DontCheck', 'ShowError', 'ShowWarning'],
+    'FillChecking': ['DontCheck', 'ShowError'],
     'Indexing': ['DontIndex', 'Index', 'IndexWithAdditionalOrder'],
 }
 
@@ -464,8 +468,8 @@ def normalize_enum_value(prop_name, value):
     # 1. Check alias dictionary — silent auto-correct
     if value in enum_value_aliases:
         return enum_value_aliases[value]
-    # 2. Case-insensitive match against valid values — silent
-    valid = valid_enum_values.get(prop_name)
+    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
+    valid = valid_enum_values.get(f"{obj_type}.{prop_name}") or valid_enum_values.get(prop_name)
     if valid:
         for v in valid:
             if v.lower() == value.lower():

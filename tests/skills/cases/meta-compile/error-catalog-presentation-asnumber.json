@@ -1,0 +1,9 @@
+{
+  "name": "Ошибка: defaultPresentation=AsNumber у справочника — «в виде номера» только у задачи",
+  "input": {
+    "type": "Catalog",
+    "name": "Товары",
+    "defaultPresentation": "AsNumber"
+  },
+  "expectError": "Invalid value 'AsNumber'"
+}

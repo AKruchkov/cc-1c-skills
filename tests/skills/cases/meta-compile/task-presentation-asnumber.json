@@ -1,0 +1,15 @@
+{
+  "name": "Задача с представлением «в виде номера» (AsNumber)",
+  "input": {
+    "type": "Task",
+    "name": "Задача",
+    "defaultPresentation": "AsNumber"
+  },
+  "validatePath": "Tasks/Задача.xml",
+  "expect": {
+    "fileContains": {
+      "file": "Tasks/Задача.xml",
+      "text": "<DefaultPresentation>AsNumber</DefaultPresentation>"
+    }
+  }
+}

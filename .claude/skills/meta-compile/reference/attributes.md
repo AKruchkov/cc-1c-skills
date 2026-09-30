@@ -17,7 +17,7 @@ shorthand — вместо строки задаётся объект:
 | `synonym` | из имени | ML (строка или `{ru,en}`) |
 | `tooltip` | пусто | ML |
 | `comment` | пусто | строка |
-| `fillChecking` | `DontCheck` | `DontCheck` / `ShowError` / `ShowWarning` (то же, что флаг `req`) |
+| `fillChecking` | `DontCheck` | `DontCheck` / `ShowError` (то же, что флаг `req`) |
 | `fullTextSearch` | `Use` | `Use` / `DontUse` |
 | `fillFromFillingValue` | `false` | bool |
 | `fillValue` | по типу (см. ниже) | значение заполнения |
@@ -121,7 +121,7 @@ shorthand — вместо строки задаётся объект:
 | `synonym` | из имени | ML |
 | `tooltip` | пусто | ML |
 | `comment` | пусто | строка |
-| `fillChecking` | `DontCheck` | `DontCheck` / `ShowError` / `ShowWarning` (обязательность заполнения ТЧ) |
+| `fillChecking` | `DontCheck` | `DontCheck` / `ShowError` (обязательность заполнения ТЧ) |
 | `use` | `ForItem` | `ForItem` / `ForFolder` / `ForFolderAndItem` (только Catalog / ChartOfCharacteristicTypes) |
 | `attributes` | `[]` | колонки (shorthand или объектная форма реквизита) |
 | `lineNumber` | — | кастомизация стандартного реквизита НомерСтроки (см. ниже) |

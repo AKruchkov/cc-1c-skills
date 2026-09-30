@@ -22,7 +22,7 @@
 | `posting` | `Allow` | `Allow` / `Deny` (проведение) |
 | `realTimePosting` | `Deny` | `Allow` / `Deny` (оперативное проведение) |
 | `registerRecordsDeletion` | `AutoDelete` | `AutoDelete` / `AutoDeleteOnUnpost` / `AutoDeleteOff` |
-| `registerRecordsWritingOnPost` | `WriteSelected` | `WriteModified` / `WriteSelected` / `WriteAll` |
+| `registerRecordsWritingOnPost` | `WriteSelected` | `WriteModified` / `WriteSelected` |
 | `sequenceFilling` | `AutoFill` | заполнение последовательностей |
 | `postInPrivilegedMode` | `true` | bool |
 | `unpostInPrivilegedMode` | `true` | bool |

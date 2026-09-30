@@ -1,4 +1,4 @@
-﻿# meta-compile v1.114 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.115 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -309,7 +309,7 @@ $script:enumValueAliases = @{
 	# DefaultPresentation
 	"ВВидеНаименования" = "AsDescription"; "ВВидеКода" = "AsCode"
 	# FillChecking
-	"НеПроверять" = "DontCheck"; "Ошибка" = "ShowError"; "Предупреждение" = "ShowWarning"
+	"НеПроверять" = "DontCheck"; "Ошибка" = "ShowError"
 	# Indexing
 	"НеИндексировать" = "DontIndex"; "Индексировать" = "Index"
 	"ИндексироватьСДопУпорядочиванием" = "IndexWithAdditionalOrder"
@@ -320,13 +320,17 @@ $script:validEnumValues = @{
 	"RegisterType"                   = @("Balance","Turnovers")
 	"WriteMode"                      = @("Independent","RecorderSubordinate")
 	"InformationRegisterPeriodicity" = @("Nonperiodical","Second","Day","Month","Quarter","Year","RecorderPosition")
-	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod")
+	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod","OnRegistrationPeriod")
 	# AutomaticAndManaged — только у внешнего источника данных и его таблиц: там режим может
 	# решаться на уровне таблицы, у прочих объектов такого значения нет.
 	"DataLockControlMode"            = @("Automatic","Managed","AutomaticAndManaged")
 	"FullTextSearch"                 = @("Use","DontUse")
 	"DataHistory"                    = @("Use","DontUse")
 	"DefaultPresentation"            = @("AsDescription","AsCode")
+	# Уточнение по виду объекта («Вид.Свойство») — проверяется раньше общего списка. AsNumber
+	# («в виде номера») есть только у задачи: у справочника и прочих платформа его отвергает
+	# («Неверное значение перечисления», 8.3.24 и 8.5.1).
+	"Task.DefaultPresentation"       = @("AsDescription","AsNumber")
 	"Posting"                        = @("Allow","Deny")
 	"RealTimePosting"                = @("Allow","Deny")
 	"EditType"                       = @("InDialog","InList","BothWays")
@@ -336,10 +340,10 @@ $script:validEnumValues = @{
 	"NumberType"                     = @("String","Number")
 	"NumberAllowedLength"            = @("Variable","Fixed")
 	"RegisterRecordsDeletion"        = @("AutoDelete","AutoDeleteOnUnpost","AutoDeleteOff")
-	"RegisterRecordsWritingOnPost"   = @("WriteModified","WriteSelected","WriteAll")
+	"RegisterRecordsWritingOnPost"   = @("WriteModified","WriteSelected")
 	"ReturnValuesReuse"              = @("DontUse","DuringRequest","DuringSession")
 	"ReuseSessions"                  = @("DontUse","Use","AutoUse")
-	"FillChecking"                   = @("DontCheck","ShowError","ShowWarning")
+	"FillChecking"                   = @("DontCheck","ShowError")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 	"SubordinationUse"               = @("ToItems","ToFolders","ToFoldersAndItems")
 	"CodeSeries"                     = @("WholeCatalog","WithinSubordination","WithinOwnerSubordination","WholeCharacteristicKind","WholeChartOfAccounts")
@@ -398,8 +402,9 @@ function Normalize-EnumValue {
 	if ($script:enumValueAliases.ContainsKey($value)) {
 		return $script:enumValueAliases[$value]
 	}
-	# 2. Case-insensitive match against valid values — silent
-	$valid = $script:validEnumValues[$propName]
+	# 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
+	$valid = $script:validEnumValues["$script:objType.$propName"]
+	if (-not $valid) { $valid = $script:validEnumValues[$propName] }
 	if ($valid) {
 		foreach ($v in $valid) {
 			if ($v -ieq $value) { return $v }
@@ -1294,8 +1299,10 @@ function Parse-AttributeShorthand {
 		tooltip = $val.tooltip
 		comment = if ($val.comment) { "$($val.comment)" } else { "" }
 		flags   = @(if ($val.flags) { $val.flags } else { @() })
-		fillChecking = $fc
-		indexing = if ($val.indexing) { "$($val.indexing)" } else { "" }
+		# Значения перечислений — через список допустимых, как свойства объекта: иначе значение из DSL
+		# (ShowWarning, «Ошибка») уходило в XML как есть, и конфигурация не загружалась.
+		fillChecking = if ($fc) { Normalize-EnumValue "FillChecking" $fc } else { "" }
+		indexing = if ($val.indexing) { Normalize-EnumValue "Indexing" "$($val.indexing)" } else { "" }
 		multiLine = if ($val.multiLine -eq $true) { $true } else { $false }
 		choiceHistoryOnInput = if ($val.choiceHistoryOnInput) { "$($val.choiceHistoryOnInput)" } else { "" }
 		fullTextSearch = if ($val.fullTextSearch) { "$($val.fullTextSearch)" } else { "" }
@@ -1773,7 +1780,7 @@ function Emit-StandardAttributes {
 			if ($d) {
 				if ($null -ne $d.synonym) { $ov['Synonym'] = $d.synonym }   # строка ИЛИ {ru,en}
 				if ($null -ne $d.tooltip) { $ov['ToolTip'] = $d.tooltip }   # строка ИЛИ {ru,en}
-				if ($d.fillChecking) { $ov['FillChecking'] = "$($d.fillChecking)" }
+				if ($d.fillChecking) { $ov['FillChecking'] = Normalize-EnumValue "FillChecking" "$($d.fillChecking)" }
 				if ($null -ne $d.fillFromFillingValue) { $ov['FillFromFillingValue'] = if ($d.fillFromFillingValue) { 'true' } else { 'false' } }
 				if ($d.fullTextSearch) { $ov['FullTextSearch'] = "$($d.fullTextSearch)" }
 				if ($d.dataHistory) { $ov['DataHistory'] = "$($d.dataHistory)" }
@@ -2486,7 +2493,7 @@ function Emit-TabularSection {
 	Emit-MLText "$indent`t`t" "Synonym" $tsSynonym
 	if ($tsComment) { X "$indent`t`t<Comment>$(Esc-XmlText $tsComment)</Comment>" } else { X "$indent`t`t<Comment/>" }
 	Emit-MLText "$indent`t`t" "ToolTip" $tsTooltip
-	$tsFc = if ($tsFillChecking) { "$tsFillChecking" } else { "DontCheck" }
+	$tsFc = if ($tsFillChecking) { Normalize-EnumValue "FillChecking" "$tsFillChecking" } else { "DontCheck" }
 	X "$indent`t`t<FillChecking>$tsFc</FillChecking>"
 	# TS-блок стандартных реквизитов (LineNumber) эмитим ВСЕГДА, кроме подавления `lineNumber: ""` (дом-конвенция
 	# суппресса): ~6% ТЧ исторически опускают блок (правило не выводимо — Товары all-default его имеет, соседи нет).

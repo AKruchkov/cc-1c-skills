@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# epf-validate v1.8 — Validate 1C external data processor / report structure
+# epf-validate v1.9 — Validate 1C external data processor / report structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # Works for both EPF (ExternalDataProcessor) and ERF (ExternalReport) — auto-detects
 
