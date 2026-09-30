@@ -1,0 +1,36 @@
+{
+  "name": "NumberLength=0 у документа — номер убирается из ввода по строке, список становится пустым",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Document",
+        "name": "Заказ"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Documents/Заказ"
+  },
+  "input": {
+    "modify": {
+      "properties": {
+        "NumberLength": 0
+      }
+    }
+  },
+  "expect": {
+    "stdoutContains": "InputByString: removed StandardAttribute.Number",
+    "fileContains": {
+      "file": "Documents/Заказ.xml",
+      "text": [
+        "<NumberLength>0</NumberLength>",
+        "<InputByString/>"
+      ]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "CodeLength=0 — код убирается из ввода по строке (иначе платформа отвергает)",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Товары"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Товары"
+  },
+  "input": {
+    "modify": {
+      "properties": {
+        "CodeLength": 0
+      }
+    }
+  },
+  "expect": {
+    "stdoutContains": "InputByString: removed StandardAttribute.Code",
+    "fileContains": {
+      "file": "Catalogs/Товары.xml",
+      "text": [
+        "<CodeLength>0</CodeLength>",
+        "Catalog.Товары.StandardAttribute.Description"
+      ]
+    },
+    "fileNotContains": {
+      "file": "Catalogs/Товары.xml",
+      "text": "Catalog.Товары.StandardAttribute.Code"
+    }
+  }
+}

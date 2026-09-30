@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-edit v1.60 — Edit existing 1C metadata object XML
+# meta-edit v1.61 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -2651,6 +2651,18 @@ def modify_properties(props_def):
         prop_el.text = value_str
         info(f"Modified property: {prop_name} = {value_str}")
         modify_count += 1
+
+        # Код/номер нулевой длины не может стоять во вводе по строке: платформа отвергает загрузку —
+        # «Указано неверное поле для ввода по строке: Код/Номер». Убираем поле вслед за длиной.
+        if prop_name in ('CodeLength', 'NumberLength') and value_str.strip() == '0':
+            std_attr = 'Code' if prop_name == 'CodeLength' else 'Number'
+            ib_el = next((c for c in properties_el if isinstance(c.tag, str) and localname(c) == 'InputByString'), None)
+            if ib_el is not None:
+                cur = [(c.text or '').strip() for c in ib_el if isinstance(c.tag, str)]
+                keep = [v for v in cur if not v.endswith(f'.StandardAttribute.{std_attr}')]
+                if len(keep) < len(cur):
+                    set_complex_property('InputByString', keep)
+                    info(f"InputByString: removed StandardAttribute.{std_attr} ({prop_name}=0 — a zero-length field cannot be an input-by-string field)")
 
 
 def modify_child_elements(modify_def, child_type):

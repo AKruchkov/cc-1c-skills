@@ -1,4 +1,4 @@
-# meta-validate v1.33 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.34 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -1194,6 +1194,20 @@ if props_node is not None:
             and inner_text(hierarchy_type) != "HierarchyFoldersAndItems"):
         report_warn(f"10. HierarchyType='{inner_text(hierarchy_type)}' but Hierarchical=false")
         check10_issues += 1
+
+    # Код/номер нулевой длины во вводе по строке: платформа отвергает загрузку — «Указано неверное
+    # поле для ввода по строке: Код/Номер» (8.3.24, 8.5.1). Бывает после правки длины в 0 без чистки
+    # InputByString (meta-edit так больше не делает, но ручную правку это не страхует).
+    ibs_fields = [inner_text(f).strip() for f in find_all(props_node, "md:InputByString/xr:Field")]
+    for len_prop, std_attr in (("CodeLength", "Code"), ("NumberLength", "Number")):
+        len_node = find(props_node, f"md:{len_prop}")
+        if len_node is None or inner_text(len_node).strip() != "0":
+            continue
+        hit = next((f for f in ibs_fields if f.endswith(f".StandardAttribute.{std_attr}")), None)
+        if hit:
+            report_error(f"10. InputByString contains '{hit}' but {len_prop}=0 — the platform rejects it (invalid input-by-string field)")
+            check10_ok = False
+            check10_issues += 1
 
     # CommonModule: no context enabled
     if md_type == "CommonModule":

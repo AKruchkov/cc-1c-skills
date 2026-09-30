@@ -1,4 +1,4 @@
-﻿# meta-validate v1.33 — Validate 1C metadata object structure
+﻿# meta-validate v1.34 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1187,6 +1187,21 @@ if ($propsNode) {
 		$hierarchyType.InnerText -and $hierarchyType.InnerText -ne "HierarchyFoldersAndItems") {
 		Report-Warn "10. HierarchyType='$($hierarchyType.InnerText)' but Hierarchical=false"
 		$check10Issues++
+	}
+
+	# Код/номер нулевой длины во вводе по строке: платформа отвергает загрузку — «Указано неверное
+	# поле для ввода по строке: Код/Номер» (8.3.24, 8.5.1). Бывает после правки длины в 0 без чистки
+	# InputByString (meta-edit так больше не делает, но ручную правку это не страхует).
+	$ibsFields = @($propsNode.SelectNodes("md:InputByString/xr:Field", $ns) | ForEach-Object { $_.InnerText.Trim() })
+	foreach ($pair in @(@("CodeLength", "Code"), @("NumberLength", "Number"))) {
+		$lenNode = $propsNode.SelectSingleNode("md:$($pair[0])", $ns)
+		if (-not $lenNode -or $lenNode.InnerText.Trim() -ne "0") { continue }
+		$hit = $ibsFields | Where-Object { $_ -cmatch "\.StandardAttribute\.$($pair[1])$" } | Select-Object -First 1
+		if ($hit) {
+			Report-Error "10. InputByString contains '$hit' but $($pair[0])=0 — the platform rejects it (invalid input-by-string field)"
+			$check10Ok = $false
+			$check10Issues++
+		}
 	}
 
 	# CommonModule: no context enabled

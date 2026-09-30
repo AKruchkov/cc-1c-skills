@@ -1,0 +1,13 @@
+{
+  "name": "CodeLength=0, а код во вводе по строке — ошибка: платформа отвергает загрузку",
+  "setup": "fixture:catalog-code-zero-in-input",
+  "params": {
+    "objectPath": "Catalogs/Товары.xml"
+  },
+  "expectError": true,
+  "noSnapshot": "фикстура статична, meta-validate только читает и печатает — эталон зафиксировал бы саму фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура намеренно не загружается — это и проверяется",
+  "expect": {
+    "stdoutContains": "InputByString contains 'Catalog.Товары.StandardAttribute.Code' but CodeLength=0"
+  }
+}

@@ -1,4 +1,4 @@
-﻿# meta-edit v1.60 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.61 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2744,6 +2744,24 @@ function Modify-Properties($propsDef) {
 		$propEl.InnerText = $valueStr
 		Info "Modified property: $propName = $valueStr"
 		$script:modifyCount++
+
+		# Код/номер нулевой длины не может стоять во вводе по строке: платформа отвергает загрузку —
+		# «Указано неверное поле для ввода по строке: Код/Номер». Убираем поле вслед за длиной.
+		if (($propName -ceq 'CodeLength' -or $propName -ceq 'NumberLength') -and $valueStr.Trim() -eq '0') {
+			$stdAttr = if ($propName -ceq 'CodeLength') { 'Code' } else { 'Number' }
+			$ibEl = $null
+			foreach ($child in $script:propertiesEl.ChildNodes) {
+				if ($child.NodeType -eq 'Element' -and $child.LocalName -eq 'InputByString') { $ibEl = $child; break }
+			}
+			if ($ibEl) {
+				$cur = @($ibEl.ChildNodes | Where-Object { $_.NodeType -eq 'Element' } | ForEach-Object { $_.InnerText.Trim() })
+				$keep = @($cur | Where-Object { $_ -cnotmatch "\.StandardAttribute\.$stdAttr$" })
+				if ($keep.Count -lt $cur.Count) {
+					Set-ComplexProperty "InputByString" $keep
+					Info "InputByString: removed StandardAttribute.$stdAttr ($propName=0 — a zero-length field cannot be an input-by-string field)"
+				}
+			}
+		}
 	}
 }
 
@@ -3734,7 +3752,9 @@ function Set-ComplexProperty([string]$propertyName, [string[]]$values) {
 	}
 
 	if ($values.Count -eq 0) {
-		# Leave self-closing
+		# Самозакрывающийся, как пишет платформа (и py-порт): после удаления детей XmlElement
+		# остаётся в форме <X></X>, пока не выставить IsEmpty
+		$propEl.IsEmpty = $true
 		Info "Cleared $propertyName"
 		$script:modifyCount++
 		return
