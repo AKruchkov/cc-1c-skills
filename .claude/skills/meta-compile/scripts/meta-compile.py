@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.116 — Compile 1C metadata object from JSON
+# meta-compile v1.117 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -576,6 +576,42 @@ valid_enum_values = {
     'SearchStringModeOnInputByString': ['Begin', 'AnyPart'],
     'FullTextSearchOnInputByString': ['Use', 'DontUse'],
     'Category': ['NavigationPanel', 'ActionsPanel', 'FormCommandBar', 'FormNavigationPanel'],
+    # Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
+    # выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
+    'ChoiceFoldersAndItems': ['Items', 'Folders', 'FoldersAndItems'],
+    'NumberPeriodicity': ['Nonperiodical', 'Year', 'Quarter', 'Month', 'Day'],
+    'ParameterUseMode': ['Single', 'Multiple'],
+    'Representation': ['Auto', 'Text', 'Picture', 'PictureAndText'],
+    'OnMainServerUnavalableBehavior': ['Auto', 'MakeDisable', 'DontChangeBehavior'],
+    'FormType': ['Managed', 'Ordinary'],
+    'MoveBoundaryOnPosting': ['DontMove', 'Move'],
+    'SequenceFilling': ['AutoFill', 'AutoFillOff'],
+    'TaskNumberAutoPrefix': ['BusinessProcessNumber', 'DontUse'],
+    'AutoUse': ['DontUse', 'Use'],
+    'DataSeparation': ['DontUse', 'Separate'],
+    'UsersSeparation': ['DontUse', 'Separate'],
+    'AuthenticationSeparation': ['DontUse', 'Separate'],
+    'ConfigurationExtensionsSeparation': ['DontUse', 'Separate'],
+    'SeparatedDataUse': ['Independently', 'IndependentlyAndSimultaneously'],
+    'TemplateType': ['SpreadsheetDocument', 'BinaryData', 'ActiveDocument', 'HTMLDocument', 'TextDocument', 'GeographicalSchema', 'GraphicalSchema', 'DataCompositionSchema', 'DataCompositionAppearanceTemplate', 'AddIn'],
+    'UseInInterfaceCompatibilityMode': ['Any', 'Taxi', 'Version85'],
+    'TypeReductionMode': ['TransformValues', 'DeleteData', 'Deny'],
+    'TransactionsIsolationLevel': ['Auto', 'ReadUncommitted', 'ReadCommitted', 'RepeatableRead', 'Serializable'],
+    'TableType': ['Table', 'Expression'],
+    'TableDataType': ['NonobjectData', 'ObjectData'],
+    'ChoiceDataGetModeOnInputByString': ['Directly', 'Background'],
+    'HTTPMethod': ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'MERGE', 'OPTIONS', 'TRACE', 'CONNECT', 'PROPFIND', 'PROPPATCH', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'MKCOL', 'Any'],
+    'TransferDirection': ['In', 'Out', 'InOut'],
+    'ValueChange': ['Clear', 'DontChange'],
+    # QuickChoice у справочника и других ссылочных — булево; перечислением он бывает здесь:
+    'Constant.QuickChoice': ['Auto', 'Use', 'DontUse'],
+    'CommonAttribute.QuickChoice': ['Auto', 'Use', 'DontUse'],
+    'Attribute.QuickChoice': ['Auto', 'Use', 'DontUse'],
+    # Use: у реквизита и ТЧ — для групп/элементов; у состава общего реквизита — Auto/Use/DontUse;
+    # у регламентного задания — булево, у параметра функциональных опций — список (общего ключа нет).
+    'Attribute.Use': ['ForItem', 'ForFolder', 'ForFolderAndItem'],
+    'TabularSection.Use': ['ForItem', 'ForFolder', 'ForFolderAndItem'],
+    'CommonAttributeContent.Use': ['Auto', 'Use', 'DontUse'],
 }
 
 # --- Группы команд объекта (командный интерфейс) ---
@@ -1385,7 +1421,8 @@ def parse_attribute_shorthand(val):
     else:
         fc = ''
     if val.get('quickChoice') is not None:
-        qc = ('Use' if val['quickChoice'] else 'DontUse') if isinstance(val['quickChoice'], bool) else str(val['quickChoice'])
+        # Через список допустимых значений, как свойства объекта: иначе опечатка из DSL уходит в XML как есть
+        qc = ('Use' if val['quickChoice'] else 'DontUse') if isinstance(val['quickChoice'], bool) else normalize_enum_value('Attribute.QuickChoice', str(val['quickChoice']))
     else:
         qc = ''
     return {
@@ -1409,7 +1446,7 @@ def parse_attribute_shorthand(val):
         'createOnInput': str(val['createOnInput']) if val.get('createOnInput') else '',
         'quickChoice': qc,
         'dataHistory': str(val['dataHistory']) if val.get('dataHistory') else '',
-        'use': str(val['use']) if val.get('use') else '',
+        'use': normalize_enum_value('Attribute.Use', str(val['use'])) if val.get('use') else '',
         'passwordMode': True if val.get('passwordMode') is True else False,
         'format': val.get('format'),
         'editFormat': val.get('editFormat'),
@@ -1417,7 +1454,7 @@ def parse_attribute_shorthand(val):
         'extendedEdit': True if val.get('extendedEdit') is True else False,
         'markNegatives': True if val.get('markNegatives') is True else False,
         'choiceForm': str(val['choiceForm']) if val.get('choiceForm') else '',
-        'choiceFoldersAndItems': str(val['choiceFoldersAndItems']) if val.get('choiceFoldersAndItems') else '',
+        'choiceFoldersAndItems': normalize_enum_value('ChoiceFoldersAndItems', str(val['choiceFoldersAndItems'])) if val.get('choiceFoldersAndItems') else '',
         'minValue': val.get('minValue'),
         'maxValue': val.get('maxValue'),
         'hasFillValue': ('fillValue' in val),
@@ -1437,7 +1474,7 @@ def parse_attribute_shorthand(val):
         'addressingDimension': val.get('addressingDimension'),
         # Режим приведения типов измерения РС (формат 2.18). Ключ обязан доехать до эмиттера:
         # без него не-дефолтное значение (Deny / DeleteData) молча заменялось на TransformValues.
-        'typeReductionMode': val.get('typeReductionMode'),
+        'typeReductionMode': normalize_enum_value('TypeReductionMode', str(val['typeReductionMode'])) if val.get('typeReductionMode') else None,
         # Поле внешнего источника данных (контекст eds-field).
         'nameInDataSource': str(val['nameInDataSource']) if val.get('nameInDataSource') else '',
         'readOnly': val.get('readOnly') is True,
@@ -2251,7 +2288,7 @@ def emit_choice_parameter_links(indent, cpl, tag='ChoiceParameterLinks'):
             elif re.match(r'^(dontchange|неизменять|неменять|нет)$', low):
                 vc = 'DontChange'
             else:
-                vc = str(vc_raw)
+                vc = normalize_enum_value('ValueChange', str(vc_raw))
         X(f'{indent}\t<xr:Link>')
         X(f'{indent}\t\t<xr:Name>{esc_xml_text(str(name))}</xr:Name>')
         X(f'{indent}\t\t<xr:DataPath xsi:type="xs:string">{esc_xml_text(str(dp))}</xr:DataPath>')
@@ -2600,16 +2637,16 @@ def emit_command(indent, cmd_name, cmd):
         X(f'{indent}\t\t</CommandParameterType>')
     else:
         X(f'{indent}\t\t<CommandParameterType/>')
-    X(f'{indent}\t\t<ParameterUseMode>{cmd.get("parameterUseMode") or "Single"}</ParameterUseMode>')
+    X(f'{indent}\t\t<ParameterUseMode>{normalize_enum_value("ParameterUseMode", str(cmd["parameterUseMode"])) if cmd.get("parameterUseMode") else "Single"}</ParameterUseMode>')
     X(f'{indent}\t\t<ModifiesData>{"true" if cmd.get("modifiesData") is True else "false"}</ModifiesData>')
-    X(f'{indent}\t\t<Representation>{cmd.get("representation") or "Auto"}</Representation>')
+    X(f'{indent}\t\t<Representation>{normalize_enum_value("Representation", str(cmd["representation"])) if cmd.get("representation") else "Auto"}</Representation>')
     emit_mltext(f'{indent}\t\t', 'ToolTip', cmd.get('tooltip'))
     emit_command_picture(f'{indent}\t\t', cmd)
     if cmd.get('shortcut'):
         X(f'{indent}\t\t<Shortcut>{esc_xml_text(str(cmd["shortcut"]))}</Shortcut>')
     else:
         X(f'{indent}\t\t<Shortcut/>')
-    X(f'{indent}\t\t<OnMainServerUnavalableBehavior>{cmd.get("onMainServerUnavalableBehavior") or "Auto"}</OnMainServerUnavalableBehavior>')
+    X(f'{indent}\t\t<OnMainServerUnavalableBehavior>{normalize_enum_value("OnMainServerUnavalableBehavior", str(cmd["onMainServerUnavalableBehavior"])) if cmd.get("onMainServerUnavalableBehavior") else "Auto"}</OnMainServerUnavalableBehavior>')
     X(f'{indent}\t</Properties>')
     X(f'{indent}</Command>')
 
@@ -2644,7 +2681,7 @@ def emit_tabular_section(indent, ts_name, columns, object_type, object_name, ts_
     if not (isinstance(ts_line_number, str) and ts_line_number == ''):
         emit_tabular_standard_attributes(f'{indent}\t\t', ts_line_number)
     if object_type in ('Catalog', 'ChartOfCharacteristicTypes'):
-        X(f'{indent}\t\t<Use>{ts_use if ts_use else "ForItem"}</Use>')
+        X(f'{indent}\t\t<Use>{normalize_enum_value("TabularSection.Use", str(ts_use)) if ts_use else "ForItem"}</Use>')
     # Формат 2.20 (8.3.27): длина номера строки ТЧ (5..9 → до 999 999 999 строк вместо 99 999).
     # Последним в Properties. Дефолт платформа берёт из режима совместимости на момент создания ТЧ.
     # ТОЛЬКО у объектов с хранением в БД: обработкам и отчётам платформа тег не пишет вовсе
@@ -3461,7 +3498,7 @@ def emit_common_attribute_properties(indent):
         X(f'{i}<Content>')
         for c in content:
             md = c if isinstance(c, str) else str(c.get('metadata', ''))
-            use = 'Use' if isinstance(c, str) else (str(c['use']) if c.get('use') else 'Use')
+            use = 'Use' if isinstance(c, str) else (normalize_enum_value('CommonAttributeContent.Use', str(c['use'])) if c.get('use') else 'Use')
             X(f'{i}\t<xr:Item>')
             X(f'{i}\t\t<xr:Metadata>{esc_xml_text(normalize_md_object_ref(md))}</xr:Metadata>')
             X(f'{i}\t\t<xr:Use>{use}</xr:Use>')
@@ -4217,7 +4254,7 @@ def emit_task_properties(indent):
     number_allowed_length = get_enum_prop('NumberAllowedLength', 'numberAllowedLength', 'Variable')
     check_unique = 'false' if defn.get('checkUnique') is False else 'true'
     autonumbering = 'false' if defn.get('autonumbering') is False else 'true'
-    task_number_auto_prefix = str(defn['taskNumberAutoPrefix']) if defn.get('taskNumberAutoPrefix') else 'BusinessProcessNumber'
+    task_number_auto_prefix = normalize_enum_value('TaskNumberAutoPrefix', str(defn['taskNumberAutoPrefix'])) if defn.get('taskNumberAutoPrefix') else 'BusinessProcessNumber'
     description_length = str(defn['descriptionLength']) if defn.get('descriptionLength') is not None else '150'
     X(f'{i}<NumberType>{number_type}</NumberType>')
     X(f'{i}<NumberLength>{number_length}</NumberLength>')
@@ -4394,12 +4431,12 @@ def emit_url_template(indent, tmpl_name, tmpl_def):
             # Строка — сокращение "только HTTP-метод"; объект — полная форма. Обработчик по
             # умолчанию ИмяШаблона+ИмяМетода, но в реальных конфигурациях он произвольный.
             if isinstance(m_def, str):
-                http_method = m_def
+                http_method = normalize_enum_value('HTTPMethod', m_def)
                 handler = f'{tmpl_name}{method_name}'
                 method_synonym = split_camel_case(method_name)
                 method_comment = ''
             else:
-                http_method = str(m_def.get('httpMethod') or 'GET')
+                http_method = normalize_enum_value('HTTPMethod', str(m_def['httpMethod'])) if m_def.get('httpMethod') else 'GET'
                 handler = str(m_def.get('handler') or f'{tmpl_name}{method_name}')
                 method_synonym = m_def['synonym'] if m_def.get('synonym') else split_camel_case(method_name)
                 method_comment = str(m_def.get('comment') or '')
@@ -4478,7 +4515,7 @@ def emit_operation(indent, op_name, op_def):
                 if param_def.get('nillable') is False:
                     param_nillable = 'false'
                 if param_def.get('direction'):
-                    param_dir = str(param_def['direction'])
+                    param_dir = normalize_enum_value('TransferDirection', str(param_def['direction']))
                 if param_def.get('synonym'):
                     param_synonym = param_def['synonym']
                 if param_def.get('comment'):
@@ -4626,7 +4663,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     else:
         X(f'{i}<Comment/>')
 
-    table_type = str(t.get('tableType') or 'Table')
+    table_type = normalize_enum_value('TableType', str(t['tableType'])) if t.get('tableType') else 'Table'
     X(f'{i}<TableType>{table_type}</TableType>')
     # Имя в источнике по умолчанию равно имени объекта — так поступает и платформа.
     if t.get('nameInDataSource'):
@@ -4638,7 +4675,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     X(f'{i}<NameInDataSource>{esc_xml_text(nids)}</NameInDataSource>' if nids else f'{i}<NameInDataSource/>')
     expr = str(t.get('expressionInDataSource') or t.get('expression') or '')
     X(f'{i}<ExpressionInDataSource>{esc_xml_text(expr)}</ExpressionInDataSource>' if expr else f'{i}<ExpressionInDataSource/>')
-    X(f'{i}<TableDataType>{t.get("tableDataType") or "NonobjectData"}</TableDataType>')
+    X(f'{i}<TableDataType>{normalize_enum_value("TableDataType", str(t["tableDataType"])) if t.get("tableDataType") else "NonobjectData"}</TableDataType>')
 
     emit_eds_field_ref_list(i, 'KeyFields', t.get('keyFields'), src_name, table_name)
     emit_eds_field_ref_scalar(i, 'PresentationField', t.get('presentationField'), src_name, table_name)
@@ -4670,7 +4707,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     emit_eds_field_ref_list(i, 'InputByString', ibs, src_name, table_name)
     X(f'{i}<CreateOnInput>{t.get("createOnInput") or "Auto"}</CreateOnInput>')
     X(f'{i}<SearchStringModeOnInputByString>{t.get("searchStringModeOnInputByString") or "Begin"}</SearchStringModeOnInputByString>')
-    X(f'{i}<ChoiceDataGetModeOnInputByString>{t.get("choiceDataGetModeOnInputByString") or "Directly"}</ChoiceDataGetModeOnInputByString>')
+    X(f'{i}<ChoiceDataGetModeOnInputByString>{normalize_enum_value("ChoiceDataGetModeOnInputByString", str(t["choiceDataGetModeOnInputByString"])) if t.get("choiceDataGetModeOnInputByString") else "Directly"}</ChoiceDataGetModeOnInputByString>')
     X(f'{i}<ChoiceHistoryOnInput>{t.get("choiceHistoryOnInput") or "Auto"}</ChoiceHistoryOnInput>')
 
     # Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
@@ -4685,7 +4722,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
         emit_mltext(i, pres_tag, t.get(key))
     X(f'{i}<IncludeHelpInContents>{"true" if t.get("includeHelpInContents") is True else "false"}</IncludeHelpInContents>')
     X(f'{i}<ReadOnly>{"true" if t.get("readOnly") is True else "false"}</ReadOnly>')
-    X(f'{i}<TransactionsIsolationLevel>{t.get("transactionsIsolationLevel") or "Auto"}</TransactionsIsolationLevel>')
+    X(f'{i}<TransactionsIsolationLevel>{normalize_enum_value("TransactionsIsolationLevel", str(t["transactionsIsolationLevel"])) if t.get("transactionsIsolationLevel") else "Auto"}</TransactionsIsolationLevel>')
     emit_eds_field_ref_scalar(i, 'DataVersionField', t.get('dataVersionField'), src_name, table_name)
     X(f'{i}<EditType>{t.get("editType") or "InDialog"}</EditType>')
     emit_md_ref_list(i, 'BasedOn', t.get('basedOn'))

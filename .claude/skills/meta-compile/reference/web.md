@@ -19,7 +19,8 @@
 `methods` — значение либо строка (только HTTP-метод), либо объект: `httpMethod`, `handler`,
 `synonym`, `comment`.
 
-HTTP-методы: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, `CONNECT`, `TRACE`, `MERGE`.
+HTTP-методы: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, `CONNECT`, `TRACE`, `MERGE`, WebDAV —
+`PROPFIND`, `PROPPATCH`, `MOVE`, `COPY`, `LOCK`, `UNLOCK`, `MKCOL`; `Any` — любой метод.
 Обработчик по умолчанию именуется `{ИмяШаблона}{ИмяМетода}`; в типовых конфигурациях он часто
 произвольный — тогда задавайте `handler` явно.
 

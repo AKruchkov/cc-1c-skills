@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-edit v1.61 — Edit existing 1C metadata object XML
+# meta-edit v1.62 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -461,6 +461,42 @@ valid_enum_values = {
     'ReuseSessions': ['DontUse', 'Use', 'AutoUse'],
     'FillChecking': ['DontCheck', 'ShowError'],
     'Indexing': ['DontIndex', 'Index', 'IndexWithAdditionalOrder'],
+    # Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
+    # выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
+    'ChoiceFoldersAndItems': ['Items', 'Folders', 'FoldersAndItems'],
+    'NumberPeriodicity': ['Nonperiodical', 'Year', 'Quarter', 'Month', 'Day'],
+    'ParameterUseMode': ['Single', 'Multiple'],
+    'Representation': ['Auto', 'Text', 'Picture', 'PictureAndText'],
+    'OnMainServerUnavalableBehavior': ['Auto', 'MakeDisable', 'DontChangeBehavior'],
+    'FormType': ['Managed', 'Ordinary'],
+    'MoveBoundaryOnPosting': ['DontMove', 'Move'],
+    'SequenceFilling': ['AutoFill', 'AutoFillOff'],
+    'TaskNumberAutoPrefix': ['BusinessProcessNumber', 'DontUse'],
+    'AutoUse': ['DontUse', 'Use'],
+    'DataSeparation': ['DontUse', 'Separate'],
+    'UsersSeparation': ['DontUse', 'Separate'],
+    'AuthenticationSeparation': ['DontUse', 'Separate'],
+    'ConfigurationExtensionsSeparation': ['DontUse', 'Separate'],
+    'SeparatedDataUse': ['Independently', 'IndependentlyAndSimultaneously'],
+    'TemplateType': ['SpreadsheetDocument', 'BinaryData', 'ActiveDocument', 'HTMLDocument', 'TextDocument', 'GeographicalSchema', 'GraphicalSchema', 'DataCompositionSchema', 'DataCompositionAppearanceTemplate', 'AddIn'],
+    'UseInInterfaceCompatibilityMode': ['Any', 'Taxi', 'Version85'],
+    'TypeReductionMode': ['TransformValues', 'DeleteData', 'Deny'],
+    'TransactionsIsolationLevel': ['Auto', 'ReadUncommitted', 'ReadCommitted', 'RepeatableRead', 'Serializable'],
+    'TableType': ['Table', 'Expression'],
+    'TableDataType': ['NonobjectData', 'ObjectData'],
+    'ChoiceDataGetModeOnInputByString': ['Directly', 'Background'],
+    'HTTPMethod': ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'MERGE', 'OPTIONS', 'TRACE', 'CONNECT', 'PROPFIND', 'PROPPATCH', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'MKCOL', 'Any'],
+    'TransferDirection': ['In', 'Out', 'InOut'],
+    'ValueChange': ['Clear', 'DontChange'],
+    # QuickChoice у справочника и других ссылочных — булево; перечислением он бывает здесь:
+    'Constant.QuickChoice': ['Auto', 'Use', 'DontUse'],
+    'CommonAttribute.QuickChoice': ['Auto', 'Use', 'DontUse'],
+    'Attribute.QuickChoice': ['Auto', 'Use', 'DontUse'],
+    # Use: у реквизита и ТЧ — для групп/элементов; у состава общего реквизита — Auto/Use/DontUse;
+    # у регламентного задания — булево, у параметра функциональных опций — список (общего ключа нет).
+    'Attribute.Use': ['ForItem', 'ForFolder', 'ForFolderAndItem'],
+    'TabularSection.Use': ['ForItem', 'ForFolder', 'ForFolderAndItem'],
+    'CommonAttributeContent.Use': ['Auto', 'Use', 'DontUse'],
 }
 
 
@@ -479,6 +515,22 @@ def normalize_enum_value(prop_name, value):
         sys.exit(1)
     # 4. Unknown property — pass-through (no validation data)
     return value
+
+
+def get_child_prop_value(xml_tag, change_prop, change_value):
+    """Значение свойства реквизита/измерения/ресурса/ТЧ. QuickChoice здесь — перечисление (Auto/Use/
+    DontUse): булево — Use/DontUse, как в meta-compile (литерал true/false платформа не примет). Список —
+    контекстный («Attribute.QuickChoice», «TabularSection.Use»), если он есть, иначе общий по свойству."""
+    if isinstance(change_value, bool):
+        if change_prop == 'QuickChoice':
+            return 'Use' if change_value else 'DontUse'
+        return "true" if change_value else "false"
+    # Строчная форма (-Value "Рекв: quickChoice=true") приходит строкой
+    if change_prop == 'QuickChoice' and str(change_value).lower() in ('true', 'false'):
+        return 'Use' if str(change_value).lower() == 'true' else 'DontUse'
+    ctx = 'TabularSection' if xml_tag == 'TabularSection' else 'Attribute'
+    enum_key = f"{ctx}.{change_prop}" if f"{ctx}.{change_prop}" in valid_enum_values else change_prop
+    return normalize_enum_value(enum_key, str(change_value))
 
 
 def new_uuid():
@@ -1894,7 +1946,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     else:
         X(f'{i}<Comment/>')
 
-    table_type = str(t.get('tableType') or 'Table')
+    table_type = normalize_enum_value('TableType', str(t['tableType'])) if t.get('tableType') else 'Table'
     X(f'{i}<TableType>{table_type}</TableType>')
     # Имя в источнике по умолчанию равно имени объекта — так поступает и платформа.
     if t.get('nameInDataSource'):
@@ -1906,7 +1958,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     X(f'{i}<NameInDataSource>{esc_xml_text(nids)}</NameInDataSource>' if nids else f'{i}<NameInDataSource/>')
     expr = str(t.get('expressionInDataSource') or t.get('expression') or '')
     X(f'{i}<ExpressionInDataSource>{esc_xml_text(expr)}</ExpressionInDataSource>' if expr else f'{i}<ExpressionInDataSource/>')
-    X(f'{i}<TableDataType>{t.get("tableDataType") or "NonobjectData"}</TableDataType>')
+    X(f'{i}<TableDataType>{normalize_enum_value("TableDataType", str(t["tableDataType"])) if t.get("tableDataType") else "NonobjectData"}</TableDataType>')
 
     emit_eds_field_ref_list(i, 'KeyFields', t.get('keyFields'), src_name, table_name)
     emit_eds_field_ref_scalar(i, 'PresentationField', t.get('presentationField'), src_name, table_name)
@@ -1938,7 +1990,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     emit_eds_field_ref_list(i, 'InputByString', ibs, src_name, table_name)
     X(f'{i}<CreateOnInput>{t.get("createOnInput") or "Auto"}</CreateOnInput>')
     X(f'{i}<SearchStringModeOnInputByString>{t.get("searchStringModeOnInputByString") or "Begin"}</SearchStringModeOnInputByString>')
-    X(f'{i}<ChoiceDataGetModeOnInputByString>{t.get("choiceDataGetModeOnInputByString") or "Directly"}</ChoiceDataGetModeOnInputByString>')
+    X(f'{i}<ChoiceDataGetModeOnInputByString>{normalize_enum_value("ChoiceDataGetModeOnInputByString", str(t["choiceDataGetModeOnInputByString"])) if t.get("choiceDataGetModeOnInputByString") else "Directly"}</ChoiceDataGetModeOnInputByString>')
     X(f'{i}<ChoiceHistoryOnInput>{t.get("choiceHistoryOnInput") or "Auto"}</ChoiceHistoryOnInput>')
 
     # Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
@@ -1953,7 +2005,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
         emit_mltext(i, pres_tag, t.get(key))
     X(f'{i}<IncludeHelpInContents>{"true" if t.get("includeHelpInContents") is True else "false"}</IncludeHelpInContents>')
     X(f'{i}<ReadOnly>{"true" if t.get("readOnly") is True else "false"}</ReadOnly>')
-    X(f'{i}<TransactionsIsolationLevel>{t.get("transactionsIsolationLevel") or "Auto"}</TransactionsIsolationLevel>')
+    X(f'{i}<TransactionsIsolationLevel>{normalize_enum_value("TransactionsIsolationLevel", str(t["transactionsIsolationLevel"])) if t.get("transactionsIsolationLevel") else "Auto"}</TransactionsIsolationLevel>')
     emit_eds_field_ref_scalar(i, 'DataVersionField', t.get('dataVersionField'), src_name, table_name)
     X(f'{i}<EditType>{t.get("editType") or "InDialog"}</EditType>')
     emit_md_ref_list(i, 'BasedOn', t.get('basedOn'))
@@ -2907,11 +2959,7 @@ def modify_child_elements(modify_def, child_type):
                         scalar_el = gc
                         break
                 if scalar_el is not None:
-                    value_str = str(change_value)
-                    if isinstance(change_value, bool):
-                        value_str = "true" if change_value else "false"
-                    else:
-                        value_str = normalize_enum_value(change_prop, value_str)
+                    value_str = get_child_prop_value(xml_tag, change_prop, change_value)
                     # Clear children and set text
                     for ch in list(scalar_el):
                         scalar_el.remove(ch)
@@ -2923,11 +2971,7 @@ def modify_child_elements(modify_def, child_type):
                     if change_prop not in known_child_props:
                         print(f"meta-edit: modify: неизвестное свойство '{change_prop}' у {xml_tag} '{elem_name}' (опечатка?)", file=sys.stderr)
                         sys.exit(1)
-                    value_str = str(change_value)
-                    if isinstance(change_value, bool):
-                        value_str = "true" if change_value else "false"
-                    else:
-                        value_str = normalize_enum_value(change_prop, value_str)
+                    value_str = get_child_prop_value(xml_tag, change_prop, change_value)
                     new_nodes = import_fragment(f"<{change_prop}>{esc_xml_text(value_str)}</{change_prop}>")
                     if new_nodes:
                         insert_property_in_order(props_el, new_nodes[0], attr_prop_order, change_prop)

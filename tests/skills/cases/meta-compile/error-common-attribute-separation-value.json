@@ -1,0 +1,10 @@
+{
+  "name": "Ошибка: dataSeparation=On у общего реквизита — DontUse/Separate",
+  "input": {
+    "type": "CommonAttribute",
+    "name": "ОбластьДанных",
+    "valueType": "Number(7,0)",
+    "dataSeparation": "On"
+  },
+  "expectError": "Invalid value 'On'"
+}

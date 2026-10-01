@@ -35,7 +35,8 @@ BusinessProcess, Task и др.).
 | `commandParameterType` | пусто | тип параметра (напр. `CatalogRef.Номенклатура`) — **только для групп формы** |
 | `parameterUseMode` | `Single` | `Single` / `Multiple` |
 | `modifiesData` | `false` | bool |
-| `representation` | `Auto` | вид отображения |
+| `representation` | `Auto` | `Auto` / `Text` / `Picture` / `PictureAndText` |
+| `onMainServerUnavalableBehavior` | `Auto` | `Auto` / `MakeDisable` / `DontChangeBehavior` (основной сервер недоступен) |
 | `picture` | пусто | ссылка на картинку (`StdPicture.Print`, `CommonPicture.Загрузка`) |
 | `shortcut` | пусто | сочетание клавиш |
 

@@ -1,0 +1,15 @@
+{
+  "name": "Ошибка: quickChoice=Yes у реквизита — допустимы Auto/Use/DontUse или булево",
+  "input": {
+    "type": "Catalog",
+    "name": "Товары",
+    "attributes": [
+      {
+        "name": "Артикул",
+        "type": "String(25)",
+        "quickChoice": "Yes"
+      }
+    ]
+  },
+  "expectError": "Invalid value 'Yes'"
+}

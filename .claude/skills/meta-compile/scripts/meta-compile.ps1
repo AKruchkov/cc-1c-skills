@@ -1,4 +1,4 @@
-﻿# meta-compile v1.116 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.117 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -354,6 +354,42 @@ $script:validEnumValues = @{
 	"SearchStringModeOnInputByString"= @("Begin","AnyPart")
 	"FullTextSearchOnInputByString"  = @("Use","DontUse")
 	"Category"                       = @("NavigationPanel","ActionsPanel","FormCommandBar","FormNavigationPanel")
+	# Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
+	# выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
+	"ChoiceFoldersAndItems"             = @("Items","Folders","FoldersAndItems")
+	"NumberPeriodicity"                 = @("Nonperiodical","Year","Quarter","Month","Day")
+	"ParameterUseMode"                  = @("Single","Multiple")
+	"Representation"                    = @("Auto","Text","Picture","PictureAndText")
+	"OnMainServerUnavalableBehavior"    = @("Auto","MakeDisable","DontChangeBehavior")
+	"FormType"                          = @("Managed","Ordinary")
+	"MoveBoundaryOnPosting"             = @("DontMove","Move")
+	"SequenceFilling"                   = @("AutoFill","AutoFillOff")
+	"TaskNumberAutoPrefix"              = @("BusinessProcessNumber","DontUse")
+	"AutoUse"                           = @("DontUse","Use")
+	"DataSeparation"                    = @("DontUse","Separate")
+	"UsersSeparation"                   = @("DontUse","Separate")
+	"AuthenticationSeparation"          = @("DontUse","Separate")
+	"ConfigurationExtensionsSeparation" = @("DontUse","Separate")
+	"SeparatedDataUse"                  = @("Independently","IndependentlyAndSimultaneously")
+	"TemplateType"                      = @("SpreadsheetDocument","BinaryData","ActiveDocument","HTMLDocument","TextDocument","GeographicalSchema","GraphicalSchema","DataCompositionSchema","DataCompositionAppearanceTemplate","AddIn")
+	"UseInInterfaceCompatibilityMode"   = @("Any","Taxi","Version85")
+	"TypeReductionMode"                 = @("TransformValues","DeleteData","Deny")
+	"TransactionsIsolationLevel"        = @("Auto","ReadUncommitted","ReadCommitted","RepeatableRead","Serializable")
+	"TableType"                         = @("Table","Expression")
+	"TableDataType"                     = @("NonobjectData","ObjectData")
+	"ChoiceDataGetModeOnInputByString"  = @("Directly","Background")
+	"HTTPMethod"                        = @("GET","HEAD","PUT","POST","DELETE","PATCH","MERGE","OPTIONS","TRACE","CONNECT","PROPFIND","PROPPATCH","MOVE","COPY","LOCK","UNLOCK","MKCOL","Any")
+	"TransferDirection"                 = @("In","Out","InOut")
+	"ValueChange"                       = @("Clear","DontChange")
+	# QuickChoice у справочника и других ссылочных — булево; перечислением он бывает здесь:
+	"Constant.QuickChoice"              = @("Auto","Use","DontUse")
+	"CommonAttribute.QuickChoice"       = @("Auto","Use","DontUse")
+	"Attribute.QuickChoice"             = @("Auto","Use","DontUse")
+	# Use: у реквизита и ТЧ — для групп/элементов; у состава общего реквизита — Auto/Use/DontUse;
+	# у регламентного задания — булево, у параметра функциональных опций — список (общего ключа нет).
+	"Attribute.Use"                     = @("ForItem","ForFolder","ForFolderAndItem")
+	"TabularSection.Use"                = @("ForItem","ForFolder","ForFolderAndItem")
+	"CommonAttributeContent.Use"        = @("Auto","Use","DontUse")
 }
 
 # --- Группы команд объекта (командный интерфейс) ---
@@ -1288,7 +1324,8 @@ function Parse-AttributeShorthand {
 	$fc = if ($val.fillChecking) { "$($val.fillChecking)" }
 	      elseif ($null -ne $val.fillCheck) { if ($val.fillCheck -is [bool]) { if ($val.fillCheck) { 'ShowError' } else { '' } } else { "$($val.fillCheck)" } }
 	      else { "" }
-	$qc = if ($null -ne $val.quickChoice) { if ($val.quickChoice -is [bool]) { if ($val.quickChoice) { 'Use' } else { 'DontUse' } } else { "$($val.quickChoice)" } } else { "" }
+	# Через список допустимых значений, как свойства объекта: иначе опечатка из DSL уходит в XML как есть
+	$qc = if ($null -ne $val.quickChoice) { if ($val.quickChoice -is [bool]) { if ($val.quickChoice) { 'Use' } else { 'DontUse' } } else { Normalize-EnumValue "Attribute.QuickChoice" "$($val.quickChoice)" } } else { "" }
 	return @{
 		name    = $name
 		type    = Build-TypeStr $val
@@ -1310,7 +1347,7 @@ function Parse-AttributeShorthand {
 		createOnInput = if ($val.createOnInput) { "$($val.createOnInput)" } else { "" }
 		quickChoice = $qc
 		dataHistory = if ($val.dataHistory) { "$($val.dataHistory)" } else { "" }
-		use = if ($val.use) { "$($val.use)" } else { "" }
+		use = if ($val.use) { Normalize-EnumValue "Attribute.Use" "$($val.use)" } else { "" }
 		passwordMode = if ($val.passwordMode -eq $true) { $true } else { $false }
 		format = $val.format
 		editFormat = $val.editFormat
@@ -1318,7 +1355,7 @@ function Parse-AttributeShorthand {
 		extendedEdit = if ($val.extendedEdit -eq $true) { $true } else { $false }
 		markNegatives = if ($val.markNegatives -eq $true) { $true } else { $false }
 		choiceForm = if ($val.choiceForm) { "$($val.choiceForm)" } else { "" }
-		choiceFoldersAndItems = if ($val.choiceFoldersAndItems) { "$($val.choiceFoldersAndItems)" } else { "" }
+		choiceFoldersAndItems = if ($val.choiceFoldersAndItems) { Normalize-EnumValue "ChoiceFoldersAndItems" "$($val.choiceFoldersAndItems)" } else { "" }
 		minValue = $val.minValue
 		maxValue = $val.maxValue
 		hasFillValue = ($val.PSObject -and $val.PSObject.Properties -and ($val.PSObject.Properties.Name -contains 'fillValue'))
@@ -1338,7 +1375,7 @@ function Parse-AttributeShorthand {
 		addressingDimension = $val.addressingDimension
 		# Режим приведения типов измерения РС (формат 2.18). Ключ обязан доехать до эмиттера:
 		# без него не-дефолтное значение (Deny / DeleteData) молча заменялось на TransformValues.
-		typeReductionMode = $val.typeReductionMode
+		typeReductionMode = if ($val.typeReductionMode) { Normalize-EnumValue "TypeReductionMode" "$($val.typeReductionMode)" } else { $null }
 		# Поле внешнего источника данных (контекст eds-field).
 		nameInDataSource = if ($val.nameInDataSource) { "$($val.nameInDataSource)" } else { "" }
 		readOnly = if ($val.readOnly -eq $true) { $true } else { $false }
@@ -2072,7 +2109,7 @@ function Emit-ChoiceParameterLinks {
 			$vc = switch -Regex ("$vcRaw".ToLower()) {
 				'^(clear|очистить|очистка)$'             { 'Clear'; break }
 				'^(dontchange|неизменять|неменять|нет)$' { 'DontChange'; break }
-				default                                  { "$vcRaw" }
+				default                                  { Normalize-EnumValue "ValueChange" "$vcRaw" }
 			}
 		}
 		X "$indent`t<xr:Link>"
@@ -2449,16 +2486,16 @@ function Emit-Command {
 	} else {
 		X "$indent`t`t<CommandParameterType/>"
 	}
-	$pum = if ($cmd.parameterUseMode) { "$($cmd.parameterUseMode)" } else { "Single" }
+	$pum = if ($cmd.parameterUseMode) { Normalize-EnumValue "ParameterUseMode" "$($cmd.parameterUseMode)" } else { "Single" }
 	X "$indent`t`t<ParameterUseMode>$pum</ParameterUseMode>"
 	$md = if ($cmd.modifiesData -eq $true) { "true" } else { "false" }
 	X "$indent`t`t<ModifiesData>$md</ModifiesData>"
-	$rep = if ($cmd.representation) { "$($cmd.representation)" } else { "Auto" }
+	$rep = if ($cmd.representation) { Normalize-EnumValue "Representation" "$($cmd.representation)" } else { "Auto" }
 	X "$indent`t`t<Representation>$rep</Representation>"
 	Emit-MLText "$indent`t`t" "ToolTip" $cmd.tooltip
 	Emit-CommandPicture "$indent`t`t" $cmd
 	if ($cmd.shortcut) { X "$indent`t`t<Shortcut>$(Esc-XmlText "$($cmd.shortcut)")</Shortcut>" } else { X "$indent`t`t<Shortcut/>" }
-	$osu = if ($cmd.onMainServerUnavalableBehavior) { "$($cmd.onMainServerUnavalableBehavior)" } else { "Auto" }
+	$osu = if ($cmd.onMainServerUnavalableBehavior) { Normalize-EnumValue "OnMainServerUnavalableBehavior" "$($cmd.onMainServerUnavalableBehavior)" } else { "Auto" }
 	X "$indent`t`t<OnMainServerUnavalableBehavior>$osu</OnMainServerUnavalableBehavior>"
 	X "$indent`t</Properties>"
 	X "$indent</Command>"
@@ -2503,7 +2540,7 @@ function Emit-TabularSection {
 	# Use у ТЧ иерархических ссылочных типов (Catalog, ChartOfCharacteristicTypes); Document не имеет Use.
 	# Дефолт ForItem; ForFolderAndItem/ForFolder — при явном ключе `use` объектной формы ТЧ.
 	if ($objectType -in @("Catalog", "ChartOfCharacteristicTypes")) {
-		$use = if ($tsUse) { "$tsUse" } else { "ForItem" }
+		$use = if ($tsUse) { Normalize-EnumValue "TabularSection.Use" "$tsUse" } else { "ForItem" }
 		X "$indent`t`t<Use>$use</Use>"
 	}
 	# Формат 2.20 (8.3.27): длина номера строки ТЧ (5..9 → до 999 999 999 строк вместо 99 999).
@@ -3359,7 +3396,7 @@ function Emit-CommonAttributeProperties {
 		X "$i<Content>"
 		foreach ($c in $content) {
 			$md = if ($c -is [string]) { "$c" } else { "$($c.metadata)" }
-			$use = if ($c -is [string]) { 'Use' } elseif ($c.use) { "$($c.use)" } else { 'Use' }
+			$use = if ($c -is [string]) { 'Use' } elseif ($c.use) { Normalize-EnumValue "CommonAttributeContent.Use" "$($c.use)" } else { 'Use' }
 			X "$i`t<xr:Item>"
 			X "$i`t`t<xr:Metadata>$(Esc-XmlText (Normalize-MDObjectRef $md))</xr:Metadata>"
 			X "$i`t`t<xr:Use>$use</xr:Use>"
@@ -4198,7 +4235,7 @@ function Emit-TaskProperties {
 	$numberAllowedLength = Get-EnumProp "NumberAllowedLength" "numberAllowedLength" "Variable"
 	$checkUnique = if ($def.checkUnique -eq $false) { "false" } else { "true" }
 	$autonumbering = if ($def.autonumbering -eq $false) { "false" } else { "true" }
-	$taskNumberAutoPrefix = if ($def.taskNumberAutoPrefix) { "$($def.taskNumberAutoPrefix)" } else { "BusinessProcessNumber" }
+	$taskNumberAutoPrefix = if ($def.taskNumberAutoPrefix) { Normalize-EnumValue "TaskNumberAutoPrefix" "$($def.taskNumberAutoPrefix)" } else { "BusinessProcessNumber" }
 	$descriptionLength = if ($null -ne $def.descriptionLength) { "$($def.descriptionLength)" } else { "150" }
 	X "$i<NumberType>$numberType</NumberType>"
 	X "$i<NumberLength>$numberLength</NumberLength>"
@@ -4404,10 +4441,10 @@ function Emit-URLTemplate {
 			# выводится как ИмяШаблона+ИмяМетода, но в реальных конфигурациях он произвольный,
 			# поэтому задаётся явно ключом handler.
 			if ($mDef -is [string]) {
-				$httpMethod = "$mDef"; $handler = "${tmplName}${methodName}"
+				$httpMethod = Normalize-EnumValue "HTTPMethod" "$mDef"; $handler = "${tmplName}${methodName}"
 				$methodSynonym = Split-CamelCase $methodName; $methodComment = ""
 			} else {
-				$httpMethod = if ($mDef.httpMethod) { "$($mDef.httpMethod)" } else { 'GET' }
+				$httpMethod = if ($mDef.httpMethod) { Normalize-EnumValue "HTTPMethod" "$($mDef.httpMethod)" } else { 'GET' }
 				$handler = if ($mDef.handler) { "$($mDef.handler)" } else { "${tmplName}${methodName}" }
 				$methodSynonym = if ($mDef.synonym) { $mDef.synonym } else { Split-CamelCase $methodName }
 				$methodComment = if ($mDef.comment) { "$($mDef.comment)" } else { "" }
@@ -4491,7 +4528,7 @@ function Emit-Operation {
 			} else {
 				if ($paramDef.type) { $paramType = "$($paramDef.type)" }
 				if ($paramDef.nillable -eq $false) { $paramNillable = "false" }
-				if ($paramDef.direction) { $paramDir = "$($paramDef.direction)" }
+				if ($paramDef.direction) { $paramDir = Normalize-EnumValue "TransferDirection" "$($paramDef.direction)" }
 				if ($paramDef.synonym) { $paramSynonym = $paramDef.synonym }
 				if ($paramDef.comment) { $paramComment = "$($paramDef.comment)" }
 			}
@@ -4635,14 +4672,14 @@ function Emit-EdsTableProperties {
 	Emit-MLText $i "Synonym" $tblSynonym
 	if ($t -and $t.comment) { X "$i<Comment>$(Esc-XmlText "$($t.comment)")</Comment>" } else { X "$i<Comment/>" }
 
-	$tableType = if ($t -and $t.tableType) { "$($t.tableType)" } else { "Table" }
+	$tableType = if ($t -and $t.tableType) { Normalize-EnumValue "TableType" "$($t.tableType)" } else { "Table" }
 	X "$i<TableType>$tableType</TableType>"
 	# Имя в источнике по умолчанию равно имени объекта — так поступает и платформа.
 	$nids = if ($t -and $t.nameInDataSource) { "$($t.nameInDataSource)" } elseif ($tableType -eq "Expression") { "" } else { $tableName }
 	if ($nids) { X "$i<NameInDataSource>$(Esc-XmlText $nids)</NameInDataSource>" } else { X "$i<NameInDataSource/>" }
 	$expr = if ($t -and $t.expressionInDataSource) { "$($t.expressionInDataSource)" } elseif ($t -and $t.expression) { "$($t.expression)" } else { "" }
 	if ($expr) { X "$i<ExpressionInDataSource>$(Esc-XmlText $expr)</ExpressionInDataSource>" } else { X "$i<ExpressionInDataSource/>" }
-	$dataType = if ($t -and $t.tableDataType) { "$($t.tableDataType)" } else { "NonobjectData" }
+	$dataType = if ($t -and $t.tableDataType) { Normalize-EnumValue "TableDataType" "$($t.tableDataType)" } else { "NonobjectData" }
 	X "$i<TableDataType>$dataType</TableDataType>"
 
 	Emit-EdsFieldRefList $i "KeyFields" $(if ($t) { $t.keyFields } else { $null }) $srcName $tableName
@@ -4666,7 +4703,7 @@ function Emit-EdsTableProperties {
 	Emit-EdsFieldRefList $i "InputByString" $ibs $srcName $tableName
 	X "$i<CreateOnInput>$(if ($t -and $t.createOnInput) { "$($t.createOnInput)" } else { 'Auto' })</CreateOnInput>"
 	X "$i<SearchStringModeOnInputByString>$(if ($t -and $t.searchStringModeOnInputByString) { "$($t.searchStringModeOnInputByString)" } else { 'Begin' })</SearchStringModeOnInputByString>"
-	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
+	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { Normalize-EnumValue "ChoiceDataGetModeOnInputByString" "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
 	X "$i<ChoiceHistoryOnInput>$(if ($t -and $t.choiceHistoryOnInput) { "$($t.choiceHistoryOnInput)" } else { 'Auto' })</ChoiceHistoryOnInput>"
 
 	# Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
@@ -4679,7 +4716,7 @@ function Emit-EdsTableProperties {
 	}
 	X "$i<IncludeHelpInContents>$(if ($t -and $t.includeHelpInContents -eq $true) { 'true' } else { 'false' })</IncludeHelpInContents>"
 	X "$i<ReadOnly>$(if ($t -and $t.readOnly -eq $true) { 'true' } else { 'false' })</ReadOnly>"
-	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
+	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { Normalize-EnumValue "TransactionsIsolationLevel" "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
 	Emit-EdsFieldRefScalar $i "DataVersionField" $(if ($t) { $t.dataVersionField } else { $null }) $srcName $tableName
 	X "$i<EditType>$(if ($t -and $t.editType) { "$($t.editType)" } else { 'InDialog' })</EditType>"
 	Emit-MDRefList $i "BasedOn" $(if ($t) { $t.basedOn } else { $null })

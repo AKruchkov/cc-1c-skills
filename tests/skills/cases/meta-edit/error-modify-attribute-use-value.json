@@ -1,0 +1,13 @@
+{
+  "name": "Ошибка: use=Item у реквизита — допустимы ForItem/ForFolder/ForFolderAndItem",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": { "type": "Catalog", "name": "Контрагенты", "hierarchical": true, "attributes": ["ИНН: String(12)"] },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    }
+  ],
+  "params": { "objectPath": "Catalogs/Контрагенты" },
+  "input": { "modify": { "attributes": { "ИНН": { "use": "Item" } } } },
+  "expectError": "Invalid value 'Item'"
+}

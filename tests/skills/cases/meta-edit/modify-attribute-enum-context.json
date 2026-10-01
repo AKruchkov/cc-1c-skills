@@ -1,0 +1,28 @@
+{
+  "name": "Быстрый выбор и использование реквизита и ТЧ: булево → Use/DontUse, значения по контексту реквизита",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Номенклатура",
+        "hierarchical": true,
+        "attributes": ["Артикул: String(25)", "Вид: String(10)"],
+        "tabularSections": { "Штрихкоды": ["Штрихкод: String(50)"] }
+      },
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    }
+  ],
+  "params": { "objectPath": "Catalogs/Номенклатура" },
+  "input": {
+    "modify": {
+      "attributes": {
+        "Артикул": { "quickChoice": true, "use": "ForFolderAndItem" },
+        "Вид": { "quickChoice": "auto" }
+      },
+      "tabularSections": {
+        "Штрихкоды": { "use": "ForFolder" }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Ошибка: tableType=View у таблицы внешнего источника — Table/Expression",
+  "input": {
+    "type": "ExternalDataSource",
+    "name": "PG",
+    "tables": {
+      "items": {
+        "tableType": "View",
+        "keyFields": [
+          "id"
+        ],
+        "fields": [
+          "id: Number(10,0)"
+        ]
+      }
+    }
+  },
+  "expectError": "Invalid value 'View'"
+}

@@ -1,4 +1,4 @@
-# meta-validate v1.34 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.35 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -435,6 +435,42 @@ valid_property_values = {
     "Indexing":                     ["DontIndex", "Index", "IndexWithAdditionalOrder"],
     "DataHistory":                  ["Use", "DontUse"],
     "DependenceOnCalculationTypes": ["DontUse", "OnActionPeriod", "OnRegistrationPeriod"],
+    # Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
+    # выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
+    "ChoiceFoldersAndItems": ["Items", "Folders", "FoldersAndItems"],
+    "NumberPeriodicity": ["Nonperiodical", "Year", "Quarter", "Month", "Day"],
+    "ParameterUseMode": ["Single", "Multiple"],
+    "Representation": ["Auto", "Text", "Picture", "PictureAndText"],
+    "OnMainServerUnavalableBehavior": ["Auto", "MakeDisable", "DontChangeBehavior"],
+    "FormType": ["Managed", "Ordinary"],
+    "MoveBoundaryOnPosting": ["DontMove", "Move"],
+    "SequenceFilling": ["AutoFill", "AutoFillOff"],
+    "TaskNumberAutoPrefix": ["BusinessProcessNumber", "DontUse"],
+    "AutoUse": ["DontUse", "Use"],
+    "DataSeparation": ["DontUse", "Separate"],
+    "UsersSeparation": ["DontUse", "Separate"],
+    "AuthenticationSeparation": ["DontUse", "Separate"],
+    "ConfigurationExtensionsSeparation": ["DontUse", "Separate"],
+    "SeparatedDataUse": ["Independently", "IndependentlyAndSimultaneously"],
+    "TemplateType": ["SpreadsheetDocument", "BinaryData", "ActiveDocument", "HTMLDocument", "TextDocument", "GeographicalSchema", "GraphicalSchema", "DataCompositionSchema", "DataCompositionAppearanceTemplate", "AddIn"],
+    "UseInInterfaceCompatibilityMode": ["Any", "Taxi", "Version85"],
+    "TypeReductionMode": ["TransformValues", "DeleteData", "Deny"],
+    "TransactionsIsolationLevel": ["Auto", "ReadUncommitted", "ReadCommitted", "RepeatableRead", "Serializable"],
+    "TableType": ["Table", "Expression"],
+    "TableDataType": ["NonobjectData", "ObjectData"],
+    "ChoiceDataGetModeOnInputByString": ["Directly", "Background"],
+    "HTTPMethod": ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH", "MERGE", "OPTIONS", "TRACE", "CONNECT", "PROPFIND", "PROPPATCH", "MOVE", "COPY", "LOCK", "UNLOCK", "MKCOL", "Any"],
+    "TransferDirection": ["In", "Out", "InOut"],
+    "ValueChange": ["Clear", "DontChange"],
+    # QuickChoice у справочника и других ссылочных — булево; перечислением он бывает здесь:
+    "Constant.QuickChoice": ["Auto", "Use", "DontUse"],
+    "CommonAttribute.QuickChoice": ["Auto", "Use", "DontUse"],
+    "Attribute.QuickChoice": ["Auto", "Use", "DontUse"],
+    # Use: у реквизита и ТЧ — для групп/элементов; у состава общего реквизита — Auto/Use/DontUse;
+    # у регламентного задания — булево, у параметра функциональных опций — список (общего ключа нет).
+    "Attribute.Use": ["ForItem", "ForFolder", "ForFolderAndItem"],
+    "TabularSection.Use": ["ForItem", "ForFolder", "ForFolderAndItem"],
+    "CommonAttributeContent.Use": ["Auto", "Use", "DontUse"],
 }
 
 # Properties forbidden per type (would cause LoadConfigFromFiles error)
@@ -656,7 +692,90 @@ if dump_ver:
     else:
         report_ok(f"24. Format version: matches the dump ({dump_ver})")
 
-# ── Structural-only types: базовая проверка (Name), без type-specific правил ──
+# Проверка 4 — значения свойств-перечислений. Блоком: её зовут и для видов без глубоких правил
+# (общая форма, команда, общий реквизит, макет…) — иначе их перечисления не проверялись вовсе.
+def check4():
+    if props_node is not None:
+        enum_checked = 0
+        check4_ok = True
+
+        # Общие свойства плюс свойства, заданные только для своего вида («Constant.QuickChoice»):
+        # остальные ключи с точкой — уточнения чужих видов и контекстов (реквизит, состав), не корня
+        root_props = [k for k in valid_property_values if "." not in k]
+        root_props += [k[len(md_type) + 1:] for k in valid_property_values if k.startswith(f"{md_type}.")]
+        for prop_name in dict.fromkeys(root_props):
+            allowed = valid_property_values.get(prop_name)
+            prop_node = find(props_node, f"md:{prop_name}")
+            if prop_node is not None and inner_text(prop_node):
+                val = inner_text(prop_node)
+                allowed = valid_property_values.get(f"{md_type}.{prop_name}") or allowed
+                if val not in allowed:
+                    report_error(f"4. Property '{prop_name}' has invalid value '{val}' (allowed: {', '.join(allowed)})")
+                    check4_ok = False
+                enum_checked += 1
+
+        # Значения у реквизитов, измерений, ресурсов и табличных частей: QuickChoice здесь — перечисление
+        # (в корне справочника — булево), Use у реквизита и ТЧ — для групп/элементов. Ключи «Attribute.*»,
+        # «TabularSection.*»; иначе — общий ключ свойства.
+        co_node4 = find(type_node, "md:ChildObjects")
+        items4 = []
+        if co_node4 is not None:
+            for ch in co_node4:
+                if not isinstance(ch.tag, str):
+                    continue
+                items4.append(ch)
+                if local_name(ch) == "TabularSection":
+                    items4.extend(find_all(ch, "md:ChildObjects/md:Attribute"))
+        for it in items4:
+            it_props = find(it, "md:Properties")
+            if it_props is None:
+                continue
+            ctx = "TabularSection" if local_name(it) == "TabularSection" else "Attribute"
+            if ctx == "TabularSection":
+                names = ["Use"]
+            elif local_name(it) == "Attribute":
+                names = ["QuickChoice", "ChoiceFoldersAndItems", "Use"]
+            else:
+                names = ["QuickChoice", "ChoiceFoldersAndItems"]
+            it_name = find(it_props, "md:Name")
+            for pn in names:
+                pnode = find(it_props, f"md:{pn}")
+                if pnode is None or not inner_text(pnode):
+                    continue
+                allowed = valid_property_values.get(f"{ctx}.{pn}") or valid_property_values.get(pn)
+                if not allowed:
+                    continue
+                if inner_text(pnode) not in allowed:
+                    report_error(f"4. {local_name(it)} '{inner_text(it_name) if it_name is not None else ''}': property '{pn}' has invalid value '{inner_text(pnode)}' (allowed: {', '.join(allowed)})")
+                    check4_ok = False
+                enum_checked += 1
+        # Состав общего реквизита: Use элемента состава — Auto/Use/DontUse
+        for cu in find_all(props_node, "md:Content/xr:Item/xr:Use"):
+            allowed = valid_property_values.get("CommonAttributeContent.Use")
+            if inner_text(cu) and inner_text(cu) not in allowed:
+                report_error(f"4. Content item: property 'Use' has invalid value '{inner_text(cu)}' (allowed: {', '.join(allowed)})")
+                check4_ok = False
+            enum_checked += 1
+
+        # Корневой <Type> (дескриптор типа значения — Константа, ПВХ) должен быть структурным:
+        # <v8:Type>/<v8:TypeSet>, а не скалярный текст. Скаляр = повреждённый тип (напр. после
+        # старого meta-edit modify-property Type). См. issue #42.
+        root_type_el = find(props_node, "md:Type")
+        if root_type_el is not None:
+            scalar_text = inner_text(root_type_el).strip()
+            v8_types = find_all(root_type_el, "v8:Type")
+            v8_type_sets = find_all(root_type_el, "v8:TypeSet")
+            if len(v8_types) == 0 and len(v8_type_sets) == 0 and scalar_text:
+                report_error(f"4. Property <Type> содержит скалярный текст '{scalar_text}' без структуры типа (<v8:Type>/<v8:TypeSet>) — повреждённый дескриптор типа значения")
+                check4_ok = False
+
+        if check4_ok:
+            report_ok(f"4. Property values: {enum_checked} enum properties checked")
+    else:
+        report_warn("4. No Properties block to check")
+
+
+# ── Structural-only types: базовая проверка (Name) и значения перечислений, без type-specific правил ──
 if md_type in structural_only_types:
     if obj_name == "(unknown)":
         report_error("3. Properties: missing or empty Name")
@@ -664,6 +783,7 @@ if md_type in structural_only_types:
         report_error(f"3. Properties: Name '{obj_name}' is not a valid 1C identifier")
     else:
         report_ok(f'3. Properties: Name="{obj_name}" (базовая структурная проверка для {md_type})')
+    check4()
     finalize()
     sys.exit(1 if errors > 0 else 0)
 
@@ -800,38 +920,7 @@ if stopped:
 
 # ── Check 4: Property values -- enum properties ──────────────
 
-if props_node is not None:
-    enum_checked = 0
-    check4_ok = True
-
-    for prop_name, allowed in valid_property_values.items():
-        if "." in prop_name:   # «Вид.Свойство» — уточнение, не отдельное свойство
-            continue
-        prop_node = find(props_node, f"md:{prop_name}")
-        if prop_node is not None and inner_text(prop_node):
-            val = inner_text(prop_node)
-            allowed = valid_property_values.get(f"{md_type}.{prop_name}") or allowed
-            if val not in allowed:
-                report_error(f"4. Property '{prop_name}' has invalid value '{val}' (allowed: {', '.join(allowed)})")
-                check4_ok = False
-            enum_checked += 1
-
-    # Корневой <Type> (дескриптор типа значения — Константа, ПВХ) должен быть структурным:
-    # <v8:Type>/<v8:TypeSet>, а не скалярный текст. Скаляр = повреждённый тип (напр. после
-    # старого meta-edit modify-property Type). См. issue #42.
-    root_type_el = find(props_node, "md:Type")
-    if root_type_el is not None:
-        scalar_text = inner_text(root_type_el).strip()
-        v8_types = find_all(root_type_el, "v8:Type")
-        v8_type_sets = find_all(root_type_el, "v8:TypeSet")
-        if len(v8_types) == 0 and len(v8_type_sets) == 0 and scalar_text:
-            report_error(f"4. Property <Type> содержит скалярный текст '{scalar_text}' без структуры типа (<v8:Type>/<v8:TypeSet>) — повреждённый дескриптор типа значения")
-            check4_ok = False
-
-    if check4_ok:
-        report_ok(f"4. Property values: {enum_checked} enum properties checked")
-else:
-    report_warn("4. No Properties block to check")
+check4()
 
 if stopped:
     finalize()

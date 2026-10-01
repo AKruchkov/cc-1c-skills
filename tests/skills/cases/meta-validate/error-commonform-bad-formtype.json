@@ -1,0 +1,15 @@
+{
+  "name": "FormType общей формы вне перечисления — ошибка",
+  "setup": "fixture:commonform-bad-formtype",
+  "params": {
+    "objectPath": "CommonForms/Настройки.xml"
+  },
+  "expectError": true,
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура намеренно не загружается: FormType 'Usual' платформа отвергает",
+  "expect": {
+    "stdoutContains": [
+      "Property 'FormType' has invalid value 'Usual' (allowed: Managed, Ordinary)"
+    ]
+  }
+}

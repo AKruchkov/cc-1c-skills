@@ -1,0 +1,16 @@
+{
+  "name": "Ошибка: use=Item у реквизита иерархического справочника",
+  "input": {
+    "type": "Catalog",
+    "name": "Товары",
+    "hierarchical": true,
+    "attributes": [
+      {
+        "name": "Артикул",
+        "type": "String(25)",
+        "use": "Item"
+      }
+    ]
+  },
+  "expectError": "Invalid value 'Item'"
+}

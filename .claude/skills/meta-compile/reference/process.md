@@ -33,6 +33,7 @@
 | `autonumbering` | `true` | bool |
 | `descriptionLength` | `150` | длина наименования |
 | `defaultPresentation` | `AsDescription` | `AsDescription` / `AsNumber` |
+| `taskNumberAutoPrefix` | `BusinessProcessNumber` | `BusinessProcessNumber` / `DontUse` (префикс номера задачи) |
 | `addressing` | пусто | ссылка на регистр сведений адресации `InformationRegister.X` |
 | `mainAddressingAttribute` | пусто | основной реквизит адресации (имя реквизита адресации) |
 | `currentPerformer` | пусто | реквизит текущего исполнителя |

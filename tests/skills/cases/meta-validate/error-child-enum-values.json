@@ -1,0 +1,21 @@
+{
+  "name": "Значения у реквизита и ТЧ проверяются по их контексту, булево QuickChoice в корне справочника — не ошибка",
+  "setup": "fixture:catalog-child-enum-values",
+  "params": {
+    "objectPath": "Catalogs/Товары.xml"
+  },
+  "expectError": true,
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура намеренно не загружается: значения вне перечислений",
+  "expect": {
+    "stdoutContains": [
+      "4. Attribute 'Артикул': property 'QuickChoice' has invalid value 'Yes' (allowed: Auto, Use, DontUse)",
+      "4. TabularSection 'Штрихкоды': property 'Use' has invalid value 'Item' (allowed: ForItem, ForFolder, ForFolderAndItem)",
+      "4. Attribute 'Штрихкод': property 'QuickChoice' has invalid value 'On' (allowed: Auto, Use, DontUse)"
+    ],
+    "stdoutNotContains": [
+      "property 'QuickChoice' has invalid value 'false'",
+      "Property 'QuickChoice'"
+    ]
+  }
+}

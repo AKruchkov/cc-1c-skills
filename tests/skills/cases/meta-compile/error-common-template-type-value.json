@@ -1,0 +1,9 @@
+{
+  "name": "Ошибка: templateType=Excel у общего макета",
+  "input": {
+    "type": "CommonTemplate",
+    "name": "Печать",
+    "templateType": "Excel"
+  },
+  "expectError": "Invalid value 'Excel'"
+}

@@ -45,7 +45,8 @@
 
 | Ключ | Умолчание | Значения |
 |------|-----------|----------|
-| `formType` | `Managed` | тип формы |
+| `formType` | `Managed` | `Managed` / `Ordinary` |
+| `useInInterfaceCompatibilityMode` | `Any` | `Any` / `Taxi` / `Version85` (только формат 2.21) |
 | `usePurposes` | `[PlatformApplication, MobilePlatformApplication]` | назначение (массив) |
 | `useStandardCommands` | `false` | bool |
 | `includeHelpInContents` | `false` | bool |
@@ -62,7 +63,8 @@
 
 - **CommonPicture** — `availabilityForChoice` / `availabilityForAppearance` (bool, по умолчанию `false`).
 - **CommonTemplate** — `templateType` (`SpreadsheetDocument` по умолчанию / `TextDocument` / `HTMLDocument` /
-  `BinaryData` / `AddIn` / `DataCompositionSchema` / `DataCompositionAppearanceTemplate` / `GraphicalSchema`).
+  `BinaryData` / `AddIn` / `DataCompositionSchema` / `DataCompositionAppearanceTemplate` / `GraphicalSchema` /
+  `GeographicalSchema` / `ActiveDocument`).
 
 ```json
 { "type": "CommonTemplate", "name": "ПечатьЗаказа", "templateType": "SpreadsheetDocument" }
@@ -75,14 +77,19 @@
 - **WSReference** (WS-ссылка) — `locationURL` (URL WSDL).
 - **CommandGroup** (группа команд) — `category` (по умолч. `NavigationPanel`) — где размещается группа:
   `NavigationPanel` / `ActionsPanel` (командный интерфейс раздела) или `FormCommandBar` / `FormNavigationPanel`
-  (командный интерфейс формы); `representation` (`Auto`), `tooltip` (ML), `picture`. Команды объекта ссылаются на
+  (командный интерфейс формы); `representation` (`Auto` / `Text` / `Picture` / `PictureAndText`), `tooltip` (ML), `picture`. Команды объекта ссылаются на
   группу через `group: "CommandGroup.<Имя>"` (см. `blocks.md`).
-- **CommonCommand** (общая команда) — `group`, `representation`, `tooltip`, `picture`, `shortcut`,
-  `commandParameterType`, `parameterUseMode` (`Single`/`Multiple`), `modifiesData`, `includeHelpInContents`.
+- **CommonCommand** (общая команда) — `group`, `representation` (как у группы команд), `tooltip`, `picture`, `shortcut`,
+  `commandParameterType`, `parameterUseMode` (`Single`/`Multiple`), `modifiesData`, `includeHelpInContents`,
+  `onMainServerUnavalableBehavior` (`Auto` / `MakeDisable` / `DontChangeBehavior`).
   Создаёт `Ext/CommandModule.bsl`.
 - **CommonAttribute** (общий реквизит) — `valueType` (по умолчанию `String(0)`) + свойства реквизита
-  (`attributes.md`) + `content` (объекты, куда входит реквизит) + свойства разделения данных
-  (`dataSeparation`, `separatedDataUse`, `usersSeparation`, … — по умолчанию `DontUse`/`Independently`).
+  (`attributes.md`; `quickChoice` здесь — `Auto` / `Use` / `DontUse`) + `autoUse` (`DontUse` / `Use`) + `content`
+  (объекты, куда входит реквизит; у элемента — `use`: `Auto` / `Use` / `DontUse`) + разделение данных:
+  `dataSeparation`, `usersSeparation`, `authenticationSeparation`, `configurationExtensionsSeparation` —
+  `DontUse` (по умолчанию) / `Separate`; `separatedDataUse` — `Independently` (по умолчанию) /
+  `IndependentlyAndSimultaneously`. При `dataSeparation: Separate` обязательны `dataSeparationValue` и
+  `dataSeparationUse` — параметры сеанса значения и использования разделителя (`SessionParameter.<Имя>`).
 
 ```json
 { "type": "CommonAttribute", "name": "Организация", "valueType": "CatalogRef.Организации",

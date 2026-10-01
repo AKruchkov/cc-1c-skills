@@ -61,6 +61,7 @@
 | `dataVersionField` | пусто | имя поля версии данных |
 | `dataLockFields` | `[]` | имена полей блокировки |
 | `transactionsIsolationLevel` | `Auto` | `Auto` / `ReadUncommitted` / `ReadCommitted` / `RepeatableRead` / `Serializable` |
+| `choiceDataGetModeOnInputByString` | `Directly` | `Directly` / `Background` (получение данных выбора при вводе по строке) |
 | `dataLockControlMode` | `Automatic` | `Automatic` / `Managed` / `AutomaticAndManaged` |
 | `basedOn` | `[]` | ввод на основании, ссылки вида `Catalog.Контрагенты` |
 | `useStandardCommands` | `true` | bool |

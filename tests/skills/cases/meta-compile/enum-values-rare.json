@@ -1,0 +1,146 @@
+{
+  "name": "Перечисления: редкие допустимые значения (подтверждены загрузкой 8.3.24 и 8.5.1)",
+  "input": [
+    {
+      "type": "Catalog",
+      "name": "Номенклатура",
+      "hierarchical": true,
+      "attributes": [
+        {
+          "name": "Артикул",
+          "type": "String(25)",
+          "quickChoice": "DontUse",
+          "use": "ForFolderAndItem",
+          "choiceFoldersAndItems": "FoldersAndItems"
+        },
+        {
+          "name": "Группа",
+          "type": "CatalogRef.Номенклатура",
+          "quickChoice": true,
+          "choiceFoldersAndItems": "Folders"
+        }
+      ],
+      "tabularSections": {
+        "Штрихкоды": {
+          "use": "ForFolderAndItem",
+          "attributes": [
+            "Штрихкод: String(50)"
+          ]
+        }
+      },
+      "commands": {
+        "Печать": {
+          "group": "FormCommandBarImportant",
+          "representation": "PictureAndText",
+          "parameterUseMode": "Multiple",
+          "onMainServerUnavalableBehavior": "MakeDisable"
+        }
+      }
+    },
+    {
+      "type": "Document",
+      "name": "Заказ",
+      "numberPeriodicity": "Quarter",
+      "sequenceFilling": "AutoFillOff"
+    },
+    {
+      "type": "Sequence",
+      "name": "Взаиморасчеты",
+      "moveBoundaryOnPosting": "Move",
+      "documents": [
+        "Document.Заказ"
+      ]
+    },
+    {
+      "type": "CommonCommand",
+      "name": "Обновить",
+      "group": "NavigationPanelImportant",
+      "representation": "Text",
+      "onMainServerUnavalableBehavior": "DontChangeBehavior"
+    },
+    {
+      "type": "CommonTemplate",
+      "name": "Схема",
+      "templateType": "GeographicalSchema"
+    },
+    {
+      "type": "SessionParameter",
+      "name": "ОбластьДанныхЗначение",
+      "valueType": "Number(7,0)"
+    },
+    {
+      "type": "SessionParameter",
+      "name": "ОбластьДанныхИспользование",
+      "valueType": "Boolean"
+    },
+    {
+      "type": "CommonAttribute",
+      "name": "ОбластьДанных",
+      "valueType": "Number(7,0)",
+      "autoUse": "Use",
+      "dataSeparation": "Separate",
+      "separatedDataUse": "IndependentlyAndSimultaneously",
+      "usersSeparation": "Separate",
+      "quickChoice": "DontUse",
+      "content": [
+        {
+          "metadata": "Catalog.Номенклатура",
+          "use": "DontUse"
+        }
+      ],
+      "dataSeparationValue": "SessionParameter.ОбластьДанныхЗначение",
+      "dataSeparationUse": "SessionParameter.ОбластьДанныхИспользование"
+    },
+    {
+      "type": "HTTPService",
+      "name": "API",
+      "rootURL": "api",
+      "urlTemplates": {
+        "Всё": {
+          "template": "/*",
+          "methods": {
+            "Любой": "Any",
+            "Найти": {
+              "httpMethod": "PROPFIND",
+              "handler": "Найти"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "fileContains": [
+      {
+        "file": "Catalogs/Номенклатура.xml",
+        "text": [
+          "<QuickChoice>DontUse</QuickChoice>",
+          "<QuickChoice>Use</QuickChoice>",
+          "<Use>ForFolderAndItem</Use>",
+          "<ChoiceFoldersAndItems>Folders</ChoiceFoldersAndItems>",
+          "<Representation>PictureAndText</Representation>",
+          "<OnMainServerUnavalableBehavior>MakeDisable</OnMainServerUnavalableBehavior>"
+        ]
+      },
+      {
+        "file": "Sequences/Взаиморасчеты.xml",
+        "text": [
+          "<MoveBoundaryOnPosting>Move</MoveBoundaryOnPosting>"
+        ]
+      },
+      {
+        "file": "CommonTemplates/Схема.xml",
+        "text": [
+          "<TemplateType>GeographicalSchema</TemplateType>"
+        ]
+      },
+      {
+        "file": "HTTPServices/API.xml",
+        "text": [
+          "<HTTPMethod>Any</HTTPMethod>",
+          "<HTTPMethod>PROPFIND</HTTPMethod>"
+        ]
+      }
+    ]
+  }
+}

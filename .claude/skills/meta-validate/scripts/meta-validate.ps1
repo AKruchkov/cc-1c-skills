@@ -1,4 +1,4 @@
-﻿# meta-validate v1.34 — Validate 1C metadata object structure
+﻿# meta-validate v1.35 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -380,6 +380,42 @@ $validPropertyValues = @{
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 	"DataHistory"                    = @("Use","DontUse")
 	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod","OnRegistrationPeriod")
+	# Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
+	# выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
+	"ChoiceFoldersAndItems"             = @("Items","Folders","FoldersAndItems")
+	"NumberPeriodicity"                 = @("Nonperiodical","Year","Quarter","Month","Day")
+	"ParameterUseMode"                  = @("Single","Multiple")
+	"Representation"                    = @("Auto","Text","Picture","PictureAndText")
+	"OnMainServerUnavalableBehavior"    = @("Auto","MakeDisable","DontChangeBehavior")
+	"FormType"                          = @("Managed","Ordinary")
+	"MoveBoundaryOnPosting"             = @("DontMove","Move")
+	"SequenceFilling"                   = @("AutoFill","AutoFillOff")
+	"TaskNumberAutoPrefix"              = @("BusinessProcessNumber","DontUse")
+	"AutoUse"                           = @("DontUse","Use")
+	"DataSeparation"                    = @("DontUse","Separate")
+	"UsersSeparation"                   = @("DontUse","Separate")
+	"AuthenticationSeparation"          = @("DontUse","Separate")
+	"ConfigurationExtensionsSeparation" = @("DontUse","Separate")
+	"SeparatedDataUse"                  = @("Independently","IndependentlyAndSimultaneously")
+	"TemplateType"                      = @("SpreadsheetDocument","BinaryData","ActiveDocument","HTMLDocument","TextDocument","GeographicalSchema","GraphicalSchema","DataCompositionSchema","DataCompositionAppearanceTemplate","AddIn")
+	"UseInInterfaceCompatibilityMode"   = @("Any","Taxi","Version85")
+	"TypeReductionMode"                 = @("TransformValues","DeleteData","Deny")
+	"TransactionsIsolationLevel"        = @("Auto","ReadUncommitted","ReadCommitted","RepeatableRead","Serializable")
+	"TableType"                         = @("Table","Expression")
+	"TableDataType"                     = @("NonobjectData","ObjectData")
+	"ChoiceDataGetModeOnInputByString"  = @("Directly","Background")
+	"HTTPMethod"                        = @("GET","HEAD","PUT","POST","DELETE","PATCH","MERGE","OPTIONS","TRACE","CONNECT","PROPFIND","PROPPATCH","MOVE","COPY","LOCK","UNLOCK","MKCOL","Any")
+	"TransferDirection"                 = @("In","Out","InOut")
+	"ValueChange"                       = @("Clear","DontChange")
+	# QuickChoice у справочника и других ссылочных — булево; перечислением он бывает здесь:
+	"Constant.QuickChoice"              = @("Auto","Use","DontUse")
+	"CommonAttribute.QuickChoice"       = @("Auto","Use","DontUse")
+	"Attribute.QuickChoice"             = @("Auto","Use","DontUse")
+	# Use: у реквизита и ТЧ — для групп/элементов; у состава общего реквизита — Auto/Use/DontUse;
+	# у регламентного задания — булево, у параметра функциональных опций — список (общего ключа нет).
+	"Attribute.Use"                     = @("ForItem","ForFolder","ForFolderAndItem")
+	"TabularSection.Use"                = @("ForItem","ForFolder","ForFolderAndItem")
+	"CommonAttributeContent.Use"        = @("Auto","Use","DontUse")
 }
 
 # Properties forbidden per type (would cause LoadConfigFromFiles error)
@@ -568,7 +604,104 @@ if ($dumpVer) {
 	}
 }
 
-# --- Structural-only types: базовая проверка (Name), без type-specific правил ---
+# Проверка 4 — значения свойств-перечислений. Блоком: её зовут и для видов без глубоких правил
+# (общая форма, команда, общий реквизит, макет…) — иначе их перечисления не проверялись вовсе.
+$check4 = {
+	if ($propsNode) {
+		$enumChecked = 0
+		$check4Ok = $true
+
+		# Общие свойства плюс свойства, заданные только для своего вида («Constant.QuickChoice»):
+		# остальные ключи с точкой — уточнения чужих видов и контекстов (реквизит, состав), не корня
+		$rootProps = @($validPropertyValues.Keys | Where-Object { -not $_.Contains('.') })
+		$rootProps += @($validPropertyValues.Keys | Where-Object { $_.StartsWith("$mdType.") } | ForEach-Object { $_.Substring($mdType.Length + 1) })
+		foreach ($propName in ($rootProps | Select-Object -Unique)) {
+			$propNode = $propsNode.SelectSingleNode("md:$propName", $ns)
+			if ($propNode -and $propNode.InnerText) {
+				$val = $propNode.InnerText
+				$allowed = $validPropertyValues["$mdType.$propName"]
+				if (-not $allowed) { $allowed = $validPropertyValues[$propName] }
+				# Регистр значим: платформа читает перечисление по точному имени (-notcontains его не различал)
+				if ($allowed -cnotcontains $val) {
+					Report-Error "4. Property '$propName' has invalid value '$val' (allowed: $($allowed -join ', '))"
+					$check4Ok = $false
+				}
+				$enumChecked++
+			}
+		}
+
+		# Значения у реквизитов, измерений, ресурсов и табличных частей: QuickChoice здесь — перечисление
+		# (в корне справочника — булево), Use у реквизита и ТЧ — для групп/элементов. Ключи «Attribute.*»,
+		# «TabularSection.*»; иначе — общий ключ свойства.
+		$coNode4 = $typeNode.SelectSingleNode("md:ChildObjects", $ns)
+		$items4 = New-Object System.Collections.ArrayList
+		if ($coNode4) {
+			foreach ($ch in $coNode4.ChildNodes) {
+				if ($ch.NodeType -ne 'Element') { continue }
+				[void]$items4.Add($ch)
+				if ($ch.LocalName -eq 'TabularSection') {
+					foreach ($tsAttr in $ch.SelectNodes("md:ChildObjects/md:Attribute", $ns)) { [void]$items4.Add($tsAttr) }
+				}
+			}
+		}
+		foreach ($it in $items4) {
+			$itProps = $it.SelectSingleNode("md:Properties", $ns)
+			if (-not $itProps) { continue }
+			$ctx = if ($it.LocalName -eq 'TabularSection') { 'TabularSection' } else { 'Attribute' }
+			$names = if ($ctx -eq 'TabularSection') { @('Use') } elseif ($it.LocalName -eq 'Attribute') { @('QuickChoice', 'ChoiceFoldersAndItems', 'Use') } else { @('QuickChoice', 'ChoiceFoldersAndItems') }
+			$itName = $itProps.SelectSingleNode("md:Name", $ns)
+			foreach ($pn in $names) {
+				$pnode = $itProps.SelectSingleNode("md:$pn", $ns)
+				if (-not $pnode -or -not $pnode.InnerText) { continue }
+				$allowed = $validPropertyValues["$ctx.$pn"]
+				if (-not $allowed) { $allowed = $validPropertyValues[$pn] }
+				if (-not $allowed) { continue }
+				if ($allowed -cnotcontains $pnode.InnerText) {
+					Report-Error "4. $($it.LocalName) '$(if ($itName) { $itName.InnerText })': property '$pn' has invalid value '$($pnode.InnerText)' (allowed: $($allowed -join ', '))"
+					$check4Ok = $false
+				}
+				$enumChecked++
+			}
+		}
+		# Состав общего реквизита: Use элемента состава — Auto/Use/DontUse
+		foreach ($cu in $propsNode.SelectNodes("md:Content/xr:Item/xr:Use", $ns)) {
+			$allowed = $validPropertyValues["CommonAttributeContent.Use"]
+			if ($cu.InnerText -and $allowed -cnotcontains $cu.InnerText) {
+				Report-Error "4. Content item: property 'Use' has invalid value '$($cu.InnerText)' (allowed: $($allowed -join ', '))"
+				$check4Ok = $false
+			}
+			$enumChecked++
+		}
+
+		# Корневой <Type> (дескриптор типа значения — Константа, ПВХ) должен быть структурным:
+		# <v8:Type>/<v8:TypeSet>, а не скалярный текст. Скаляр = повреждённый тип (напр. после
+		# старого meta-edit modify-property Type). См. issue #42.
+		$rootTypeEl = $propsNode.SelectSingleNode("md:Type", $ns)
+		if ($rootTypeEl) {
+			$v8Types = $rootTypeEl.SelectNodes("v8:Type", $ns)
+			$v8TypeSets = $rootTypeEl.SelectNodes("v8:TypeSet", $ns)
+			$scalarText = ""
+			foreach ($cn in $rootTypeEl.ChildNodes) {
+				if ($cn.NodeType -eq 'Text' -or $cn.NodeType -eq 'CDATA') {
+					$t = $cn.Value.Trim()
+					if ($t) { $scalarText = $t; break }
+				}
+			}
+			if ($v8Types.Count -eq 0 -and $v8TypeSets.Count -eq 0 -and $scalarText) {
+				Report-Error "4. Property <Type> содержит скалярный текст '$scalarText' без структуры типа (<v8:Type>/<v8:TypeSet>) — повреждённый дескриптор типа значения"
+				$check4Ok = $false
+			}
+		}
+
+		if ($check4Ok) {
+			Report-OK "4. Property values: $enumChecked enum properties checked"
+		}
+	} else {
+		Report-Warn "4. No Properties block to check"
+	}
+}
+
+# --- Structural-only types: базовая проверка (Name) и значения перечислений, без type-specific правил ---
 if ($structuralOnlyTypes -contains $mdType) {
 	if ($objName -eq "(unknown)") {
 		Report-Error "3. Properties: missing or empty Name"
@@ -577,6 +710,7 @@ if ($structuralOnlyTypes -contains $mdType) {
 	} else {
 		Report-OK "3. Properties: Name=`"$objName`" (базовая структурная проверка для $mdType)"
 	}
+	& $check4
 	& $finalize
 	if ($script:errors -gt 0) { exit 1 }
 	exit 0
@@ -737,52 +871,7 @@ if ($script:stopped) { & $finalize; exit 1 }
 
 # --- Check 4: Property values — enum properties ---
 
-if ($propsNode) {
-	$enumChecked = 0
-	$check4Ok = $true
-
-	foreach ($propName in $validPropertyValues.Keys) {
-		if ($propName.Contains('.')) { continue }   # «Вид.Свойство» — уточнение, не отдельное свойство
-		$propNode = $propsNode.SelectSingleNode("md:$propName", $ns)
-		if ($propNode -and $propNode.InnerText) {
-			$val = $propNode.InnerText
-			$allowed = $validPropertyValues["$mdType.$propName"]
-			if (-not $allowed) { $allowed = $validPropertyValues[$propName] }
-			# Регистр значим: платформа читает перечисление по точному имени (-notcontains его не различал)
-			if ($allowed -cnotcontains $val) {
-				Report-Error "4. Property '$propName' has invalid value '$val' (allowed: $($allowed -join ', '))"
-				$check4Ok = $false
-			}
-			$enumChecked++
-		}
-	}
-
-	# Корневой <Type> (дескриптор типа значения — Константа, ПВХ) должен быть структурным:
-	# <v8:Type>/<v8:TypeSet>, а не скалярный текст. Скаляр = повреждённый тип (напр. после
-	# старого meta-edit modify-property Type). См. issue #42.
-	$rootTypeEl = $propsNode.SelectSingleNode("md:Type", $ns)
-	if ($rootTypeEl) {
-		$v8Types = $rootTypeEl.SelectNodes("v8:Type", $ns)
-		$v8TypeSets = $rootTypeEl.SelectNodes("v8:TypeSet", $ns)
-		$scalarText = ""
-		foreach ($cn in $rootTypeEl.ChildNodes) {
-			if ($cn.NodeType -eq 'Text' -or $cn.NodeType -eq 'CDATA') {
-				$t = $cn.Value.Trim()
-				if ($t) { $scalarText = $t; break }
-			}
-		}
-		if ($v8Types.Count -eq 0 -and $v8TypeSets.Count -eq 0 -and $scalarText) {
-			Report-Error "4. Property <Type> содержит скалярный текст '$scalarText' без структуры типа (<v8:Type>/<v8:TypeSet>) — повреждённый дескриптор типа значения"
-			$check4Ok = $false
-		}
-	}
-
-	if ($check4Ok) {
-		Report-OK "4. Property values: $enumChecked enum properties checked"
-	}
-} else {
-	Report-Warn "4. No Properties block to check"
-}
+& $check4
 
 if ($script:stopped) { & $finalize; exit 1 }
 

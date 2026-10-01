@@ -1,4 +1,4 @@
-﻿# meta-edit v1.61 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.62 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -162,6 +162,42 @@ $script:validEnumValues = @{
 	"ReuseSessions"                  = @("DontUse","Use","AutoUse")
 	"FillChecking"                   = @("DontCheck","ShowError")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
+	# Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
+	# выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
+	"ChoiceFoldersAndItems"             = @("Items","Folders","FoldersAndItems")
+	"NumberPeriodicity"                 = @("Nonperiodical","Year","Quarter","Month","Day")
+	"ParameterUseMode"                  = @("Single","Multiple")
+	"Representation"                    = @("Auto","Text","Picture","PictureAndText")
+	"OnMainServerUnavalableBehavior"    = @("Auto","MakeDisable","DontChangeBehavior")
+	"FormType"                          = @("Managed","Ordinary")
+	"MoveBoundaryOnPosting"             = @("DontMove","Move")
+	"SequenceFilling"                   = @("AutoFill","AutoFillOff")
+	"TaskNumberAutoPrefix"              = @("BusinessProcessNumber","DontUse")
+	"AutoUse"                           = @("DontUse","Use")
+	"DataSeparation"                    = @("DontUse","Separate")
+	"UsersSeparation"                   = @("DontUse","Separate")
+	"AuthenticationSeparation"          = @("DontUse","Separate")
+	"ConfigurationExtensionsSeparation" = @("DontUse","Separate")
+	"SeparatedDataUse"                  = @("Independently","IndependentlyAndSimultaneously")
+	"TemplateType"                      = @("SpreadsheetDocument","BinaryData","ActiveDocument","HTMLDocument","TextDocument","GeographicalSchema","GraphicalSchema","DataCompositionSchema","DataCompositionAppearanceTemplate","AddIn")
+	"UseInInterfaceCompatibilityMode"   = @("Any","Taxi","Version85")
+	"TypeReductionMode"                 = @("TransformValues","DeleteData","Deny")
+	"TransactionsIsolationLevel"        = @("Auto","ReadUncommitted","ReadCommitted","RepeatableRead","Serializable")
+	"TableType"                         = @("Table","Expression")
+	"TableDataType"                     = @("NonobjectData","ObjectData")
+	"ChoiceDataGetModeOnInputByString"  = @("Directly","Background")
+	"HTTPMethod"                        = @("GET","HEAD","PUT","POST","DELETE","PATCH","MERGE","OPTIONS","TRACE","CONNECT","PROPFIND","PROPPATCH","MOVE","COPY","LOCK","UNLOCK","MKCOL","Any")
+	"TransferDirection"                 = @("In","Out","InOut")
+	"ValueChange"                       = @("Clear","DontChange")
+	# QuickChoice у справочника и других ссылочных — булево; перечислением он бывает здесь:
+	"Constant.QuickChoice"              = @("Auto","Use","DontUse")
+	"CommonAttribute.QuickChoice"       = @("Auto","Use","DontUse")
+	"Attribute.QuickChoice"             = @("Auto","Use","DontUse")
+	# Use: у реквизита и ТЧ — для групп/элементов; у состава общего реквизита — Auto/Use/DontUse;
+	# у регламентного задания — булево, у параметра функциональных опций — список (общего ключа нет).
+	"Attribute.Use"                     = @("ForItem","ForFolder","ForFolderAndItem")
+	"TabularSection.Use"                = @("ForItem","ForFolder","ForFolderAndItem")
+	"CommonAttributeContent.Use"        = @("Auto","Use","DontUse")
 }
 
 function Normalize-EnumValue {
@@ -1914,14 +1950,14 @@ function Emit-EdsTableProperties {
 	Emit-MLText $i "Synonym" $tblSynonym
 	if ($t -and $t.comment) { X "$i<Comment>$(Esc-XmlText "$($t.comment)")</Comment>" } else { X "$i<Comment/>" }
 
-	$tableType = if ($t -and $t.tableType) { "$($t.tableType)" } else { "Table" }
+	$tableType = if ($t -and $t.tableType) { Normalize-EnumValue "TableType" "$($t.tableType)" } else { "Table" }
 	X "$i<TableType>$tableType</TableType>"
 	# Имя в источнике по умолчанию равно имени объекта — так поступает и платформа.
 	$nids = if ($t -and $t.nameInDataSource) { "$($t.nameInDataSource)" } elseif ($tableType -eq "Expression") { "" } else { $tableName }
 	if ($nids) { X "$i<NameInDataSource>$(Esc-XmlText $nids)</NameInDataSource>" } else { X "$i<NameInDataSource/>" }
 	$expr = if ($t -and $t.expressionInDataSource) { "$($t.expressionInDataSource)" } elseif ($t -and $t.expression) { "$($t.expression)" } else { "" }
 	if ($expr) { X "$i<ExpressionInDataSource>$(Esc-XmlText $expr)</ExpressionInDataSource>" } else { X "$i<ExpressionInDataSource/>" }
-	$dataType = if ($t -and $t.tableDataType) { "$($t.tableDataType)" } else { "NonobjectData" }
+	$dataType = if ($t -and $t.tableDataType) { Normalize-EnumValue "TableDataType" "$($t.tableDataType)" } else { "NonobjectData" }
 	X "$i<TableDataType>$dataType</TableDataType>"
 
 	Emit-EdsFieldRefList $i "KeyFields" $(if ($t) { $t.keyFields } else { $null }) $srcName $tableName
@@ -1945,7 +1981,7 @@ function Emit-EdsTableProperties {
 	Emit-EdsFieldRefList $i "InputByString" $ibs $srcName $tableName
 	X "$i<CreateOnInput>$(if ($t -and $t.createOnInput) { "$($t.createOnInput)" } else { 'Auto' })</CreateOnInput>"
 	X "$i<SearchStringModeOnInputByString>$(if ($t -and $t.searchStringModeOnInputByString) { "$($t.searchStringModeOnInputByString)" } else { 'Begin' })</SearchStringModeOnInputByString>"
-	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
+	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { Normalize-EnumValue "ChoiceDataGetModeOnInputByString" "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
 	X "$i<ChoiceHistoryOnInput>$(if ($t -and $t.choiceHistoryOnInput) { "$($t.choiceHistoryOnInput)" } else { 'Auto' })</ChoiceHistoryOnInput>"
 
 	# Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
@@ -1958,7 +1994,7 @@ function Emit-EdsTableProperties {
 	}
 	X "$i<IncludeHelpInContents>$(if ($t -and $t.includeHelpInContents -eq $true) { 'true' } else { 'false' })</IncludeHelpInContents>"
 	X "$i<ReadOnly>$(if ($t -and $t.readOnly -eq $true) { 'true' } else { 'false' })</ReadOnly>"
-	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
+	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { Normalize-EnumValue "TransactionsIsolationLevel" "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
 	Emit-EdsFieldRefScalar $i "DataVersionField" $(if ($t) { $t.dataVersionField } else { $null }) $srcName $tableName
 	X "$i<EditType>$(if ($t -and $t.editType) { "$($t.editType)" } else { 'InDialog' })</EditType>"
 	Emit-MDRefList $i "BasedOn" $(if ($t) { $t.basedOn } else { $null })
@@ -2765,6 +2801,21 @@ function Modify-Properties($propsDef) {
 	}
 }
 
+# Значение свойства реквизита/измерения/ресурса/ТЧ. QuickChoice здесь — перечисление (Auto/Use/
+# DontUse): булево — Use/DontUse, как в meta-compile (литерал true/false платформа не примет). Список —
+# контекстный («Attribute.QuickChoice», «TabularSection.Use»), если он есть, иначе общий по свойству.
+function Get-ChildPropValue([string]$xmlTag, [string]$changeProp, $changeValue) {
+	if ($changeValue -is [bool]) {
+		if ($changeProp -ceq 'QuickChoice') { return $(if ($changeValue) { 'Use' } else { 'DontUse' }) }
+		return $(if ($changeValue) { "true" } else { "false" })
+	}
+	# Строчная форма (-Value "Рекв: quickChoice=true") приходит строкой
+	if ($changeProp -ceq 'QuickChoice' -and "$changeValue" -in 'true', 'false') { return $(if ("$changeValue" -eq 'true') { 'Use' } else { 'DontUse' }) }
+	$ctx = if ($xmlTag -ceq 'TabularSection') { 'TabularSection' } else { 'Attribute' }
+	$enumKey = if ($script:validEnumValues.ContainsKey("$ctx.$changeProp")) { "$ctx.$changeProp" } else { $changeProp }
+	return (Normalize-EnumValue $enumKey "$changeValue")
+}
+
 function Modify-ChildElements($modifyDef, [string]$childType) {
 	$xmlTag = $script:childTypeToXmlTag[$childType]
 	if (-not $xmlTag -or -not $script:childObjectsEl) {
@@ -3047,12 +3098,7 @@ function Modify-ChildElements($modifyDef, [string]$childType) {
 						}
 					}
 					if ($scalarEl) {
-						$valueStr = "$changeValue"
-						if ($changeValue -is [bool]) {
-							$valueStr = if ($changeValue) { "true" } else { "false" }
-						} else {
-							$valueStr = Normalize-EnumValue $changeProp $valueStr
-						}
+						$valueStr = Get-ChildPropValue $xmlTag $changeProp $changeValue
 						$scalarEl.InnerText = $valueStr
 						Info "Modified $xmlTag '$elemName'.$changeProp = $valueStr"
 						$script:modifyCount++
@@ -3062,12 +3108,7 @@ function Modify-ChildElements($modifyDef, [string]$childType) {
 							Write-Error "modify: неизвестное свойство '$changeProp' у $xmlTag '$elemName' (опечатка?)"
 							exit 1
 						}
-						$valueStr = "$changeValue"
-						if ($changeValue -is [bool]) {
-							$valueStr = if ($changeValue) { "true" } else { "false" }
-						} else {
-							$valueStr = Normalize-EnumValue $changeProp $valueStr
-						}
+						$valueStr = Get-ChildPropValue $xmlTag $changeProp $changeValue
 						$newNodes = Import-Fragment "<$changeProp>$(Esc-XmlText $valueStr)</$changeProp>"
 						if ($newNodes.Count -gt 0) {
 							Insert-PropertyInOrder $propsEl $newNodes[0] $script:attrPropOrder $changeProp

@@ -2,6 +2,8 @@
 
 **Измерения и ресурсы** задаются как реквизиты (shorthand `"Имя: Тип | флаги"` или объектная форма, см.
 `attributes.md`). Флаги измерений: `master`, `mainFilter`, `denyIncomplete`, `useInTotals` (регистр накопления).
+У измерения регистра сведений в формате 2.18+ — `typeReductionMode`: `TransformValues` (по умолчанию) /
+`DeleteData` / `Deny` (режим приведения типов).
 
 ```json
 "dimensions": ["Организация: CatalogRef.Организации | master, mainFilter"],
