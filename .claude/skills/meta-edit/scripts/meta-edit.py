@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-edit v1.63 — Edit existing 1C metadata object XML
+# meta-edit v1.64 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -497,6 +497,16 @@ valid_enum_values = {
     'Attribute.Use': ['ForItem', 'ForFolder', 'ForFolderAndItem'],
     'TabularSection.Use': ['ForItem', 'ForFolder', 'ForFolderAndItem'],
     'CommonAttributeContent.Use': ['Auto', 'Use', 'DontUse'],
+    # Свойства объекта, которые модель меняет через modify-property и свойства реквизита — как в meta-compile
+    'Category': ['NavigationPanel', 'ActionsPanel', 'FormCommandBar', 'FormNavigationPanel'],
+    'ChoiceHistoryOnInput': ['Auto', 'DontUse'],
+    'ChoiceMode': ['BothWays', 'QuickChoice', 'FromForm'],
+    'CodeSeries': ['WholeCatalog', 'WithinSubordination', 'WithinOwnerSubordination', 'WholeCharacteristicKind', 'WholeChartOfAccounts'],
+    'CreateOnInput': ['Auto', 'Use', 'DontUse'],
+    'FullTextSearchOnInputByString': ['Use', 'DontUse'],
+    'PredefinedDataUpdate': ['Auto', 'DontAutoUpdate', 'AutoUpdate'],
+    'SearchStringModeOnInputByString': ['Begin', 'AnyPart'],
+    'SubordinationUse': ['ToItems', 'ToFolders', 'ToFoldersAndItems'],
 }
 
 
@@ -518,6 +528,17 @@ def normalize_enum_value(prop_name, value):
         sys.exit(1)
     # 4. Unknown property — pass-through (no validation data)
     return value
+
+
+def get_enum_field(obj, field, prop_name):
+    """Значение перечисления из поля объекта DSL (реквизит, таблица внешнего источника…). Не задано —
+    только null или пустая строка: false — значение, его проверит список, а не молча заменит умолчание."""
+    if obj is None:
+        return ''
+    v = obj.get(field)
+    if v is None or str(v) == '':
+        return ''
+    return normalize_enum_value(prop_name, str(v))
 
 
 def quick_choice_from_bool(v):
@@ -2002,10 +2023,10 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     else:
         ibs = None
     emit_eds_field_ref_list(i, 'InputByString', ibs, src_name, table_name)
-    X(f'{i}<CreateOnInput>{normalize_enum_value("CreateOnInput", str(t["createOnInput"])) if t.get("createOnInput") else "Auto"}</CreateOnInput>')
-    X(f'{i}<SearchStringModeOnInputByString>{normalize_enum_value("SearchStringModeOnInputByString", str(t["searchStringModeOnInputByString"])) if t.get("searchStringModeOnInputByString") else "Begin"}</SearchStringModeOnInputByString>')
+    X(f'{i}<CreateOnInput>{get_enum_field(t, "createOnInput", "CreateOnInput") or "Auto"}</CreateOnInput>')
+    X(f'{i}<SearchStringModeOnInputByString>{get_enum_field(t, "searchStringModeOnInputByString", "SearchStringModeOnInputByString") or "Begin"}</SearchStringModeOnInputByString>')
     X(f'{i}<ChoiceDataGetModeOnInputByString>{normalize_enum_value("ChoiceDataGetModeOnInputByString", str(t["choiceDataGetModeOnInputByString"])) if t.get("choiceDataGetModeOnInputByString") else "Directly"}</ChoiceDataGetModeOnInputByString>')
-    X(f'{i}<ChoiceHistoryOnInput>{normalize_enum_value("ChoiceHistoryOnInput", str(t["choiceHistoryOnInput"])) if t.get("choiceHistoryOnInput") else "Auto"}</ChoiceHistoryOnInput>')
+    X(f'{i}<ChoiceHistoryOnInput>{get_enum_field(t, "choiceHistoryOnInput", "ChoiceHistoryOnInput") or "Auto"}</ChoiceHistoryOnInput>')
 
     # Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
     if default_forms_xml:
@@ -2021,7 +2042,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     X(f'{i}<ReadOnly>{"true" if t.get("readOnly") is True else "false"}</ReadOnly>')
     X(f'{i}<TransactionsIsolationLevel>{normalize_enum_value("TransactionsIsolationLevel", str(t["transactionsIsolationLevel"])) if t.get("transactionsIsolationLevel") else "Auto"}</TransactionsIsolationLevel>')
     emit_eds_field_ref_scalar(i, 'DataVersionField', t.get('dataVersionField'), src_name, table_name)
-    X(f'{i}<EditType>{normalize_enum_value("EditType", str(t["editType"])) if t.get("editType") else "InDialog"}</EditType>')
+    X(f'{i}<EditType>{get_enum_field(t, "editType", "EditType") or "InDialog"}</EditType>')
     emit_md_ref_list(i, 'BasedOn', t.get('basedOn'))
     emit_eds_field_ref_list(i, 'DataLockFields', t.get('dataLockFields'), src_name, table_name)
     X(f'{i}<DataLockControlMode>{t.get("dataLockControlMode") or "Automatic"}</DataLockControlMode>')

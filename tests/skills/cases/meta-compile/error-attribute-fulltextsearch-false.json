@@ -1,0 +1,15 @@
+{
+  "name": "Ошибка: fullTextSearch=false у реквизита — перечисление Use/DontUse, false не подменяется умолчанием",
+  "input": {
+    "type": "Catalog",
+    "name": "Товары",
+    "attributes": [
+      {
+        "name": "Артикул",
+        "type": "String(25)",
+        "fullTextSearch": false
+      }
+    ]
+  },
+  "expectError": "Invalid value 'False'"
+}

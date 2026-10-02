@@ -1,4 +1,4 @@
-﻿# meta-compile v1.118 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.119 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -453,6 +453,15 @@ function Normalize-EnumValue {
 	}
 	# 4. Unknown property — pass-through (no validation data)
 	return $value
+}
+
+# Значение перечисления из поля объекта DSL (реквизит, таблица внешнего источника…). Не задано —
+# только null или пустая строка: false — значение, его проверит список, а не молча заменит умолчание.
+function Get-EnumField($obj, [string]$field, [string]$propName) {
+	if ($null -eq $obj) { return "" }
+	$v = $obj.$field
+	if ($null -eq $v -or "$v" -eq '') { return "" }
+	return (Normalize-EnumValue $propName "$v")
 }
 
 # QuickChoice-перечисление (реквизит, константа, общий реквизит) из булева: true → Use, false → DontUse;
@@ -1357,12 +1366,12 @@ function Parse-AttributeShorthand {
 		fillChecking = if ($fc) { Normalize-EnumValue "FillChecking" $fc } else { "" }
 		indexing = if ($val.indexing) { Normalize-EnumValue "Indexing" "$($val.indexing)" } else { "" }
 		multiLine = if ($val.multiLine -eq $true) { $true } else { $false }
-		choiceHistoryOnInput = if ($val.choiceHistoryOnInput) { Normalize-EnumValue "ChoiceHistoryOnInput" "$($val.choiceHistoryOnInput)" } else { "" }
-		fullTextSearch = if ($val.fullTextSearch) { Normalize-EnumValue "FullTextSearch" "$($val.fullTextSearch)" } else { "" }
+		choiceHistoryOnInput = Get-EnumField $val 'choiceHistoryOnInput' 'ChoiceHistoryOnInput'
+		fullTextSearch = Get-EnumField $val 'fullTextSearch' 'FullTextSearch'
 		fillFromFillingValue = if ($val.fillFromFillingValue -eq $true) { $true } else { $false }
-		createOnInput = if ($val.createOnInput) { Normalize-EnumValue "CreateOnInput" "$($val.createOnInput)" } else { "" }
+		createOnInput = Get-EnumField $val 'createOnInput' 'CreateOnInput'
 		quickChoice = $qc
-		dataHistory = if ($val.dataHistory) { Normalize-EnumValue "DataHistory" "$($val.dataHistory)" } else { "" }
+		dataHistory = Get-EnumField $val 'dataHistory' 'DataHistory'
 		use = if ($val.use) { Normalize-EnumValue "Attribute.Use" "$($val.use)" } else { "" }
 		passwordMode = if ($val.passwordMode -eq $true) { $true } else { $false }
 		format = $val.format
@@ -1835,8 +1844,8 @@ function Emit-StandardAttributes {
 				if ($null -ne $d.tooltip) { $ov['ToolTip'] = $d.tooltip }   # строка ИЛИ {ru,en}
 				if ($d.fillChecking) { $ov['FillChecking'] = Normalize-EnumValue "FillChecking" "$($d.fillChecking)" }
 				if ($null -ne $d.fillFromFillingValue) { $ov['FillFromFillingValue'] = if ($d.fillFromFillingValue) { 'true' } else { 'false' } }
-				if ($d.fullTextSearch) { $ov['FullTextSearch'] = Normalize-EnumValue "FullTextSearch" "$($d.fullTextSearch)" }
-				if ($d.dataHistory) { $ov['DataHistory'] = Normalize-EnumValue "DataHistory" "$($d.dataHistory)" }
+				if ($x = Get-EnumField $d 'fullTextSearch' 'FullTextSearch') { $ov['FullTextSearch'] = $x }
+				if ($x = Get-EnumField $d 'dataHistory' 'DataHistory') { $ov['DataHistory'] = $x }
 				if ($null -ne $d.fillValue) { $ov['FillValue'] = $d.fillValue }   # DTR-путь/строка/bool
 				if ($null -ne $d.choiceParameterLinks) { $ov['ChoiceParameterLinks'] = $d.choiceParameterLinks }
 				if ($null -ne $d.choiceParameters) { $ov['ChoiceParameters'] = $d.choiceParameters }
@@ -1863,11 +1872,11 @@ function Emit-TabularStandardAttributes {
 		$ov = @{}
 		if ($null -ne $lineNumber.synonym)            { $ov['Synonym'] = $lineNumber.synonym }
 		if ($lineNumber.comment)                      { $ov['Comment'] = "$($lineNumber.comment)" }
-		if ($lineNumber.fullTextSearch)               { $ov['FullTextSearch'] = Normalize-EnumValue "FullTextSearch" "$($lineNumber.fullTextSearch)" }
+		if ($x = Get-EnumField $lineNumber 'fullTextSearch' 'FullTextSearch') { $ov['FullTextSearch'] = $x }
 		if ($null -ne $lineNumber.tooltip)            { $ov['ToolTip'] = $lineNumber.tooltip }
 		if ($null -ne $lineNumber.format)             { $ov['Format'] = $lineNumber.format }
 		if ($null -ne $lineNumber.editFormat)         { $ov['EditFormat'] = $lineNumber.editFormat }
-		if ($lineNumber.choiceHistoryOnInput)         { $ov['ChoiceHistoryOnInput'] = Normalize-EnumValue "ChoiceHistoryOnInput" "$($lineNumber.choiceHistoryOnInput)" }
+		if ($x = Get-EnumField $lineNumber 'choiceHistoryOnInput' 'ChoiceHistoryOnInput') { $ov['ChoiceHistoryOnInput'] = $x }
 		if ($null -ne $lineNumber.fillValue)          { $ov['FillValue'] = $lineNumber.fillValue }
 	}
 	X "$indent<StandardAttributes>"
@@ -4717,10 +4726,10 @@ function Emit-EdsTableProperties {
 	$ibsGiven = ($t -and $t.PSObject -and $t.PSObject.Properties -and ($t.PSObject.Properties.Name -contains 'inputByString'))
 	$ibs = if ($ibsGiven) { $t.inputByString } elseif ($t -and $t.presentationField) { @($t.presentationField) } else { $null }
 	Emit-EdsFieldRefList $i "InputByString" $ibs $srcName $tableName
-	X "$i<CreateOnInput>$(if ($t -and $t.createOnInput) { Normalize-EnumValue "CreateOnInput" "$($t.createOnInput)" } else { 'Auto' })</CreateOnInput>"
-	X "$i<SearchStringModeOnInputByString>$(if ($t -and $t.searchStringModeOnInputByString) { Normalize-EnumValue "SearchStringModeOnInputByString" "$($t.searchStringModeOnInputByString)" } else { 'Begin' })</SearchStringModeOnInputByString>"
+	X "$i<CreateOnInput>$(if ($x = Get-EnumField $t 'createOnInput' 'CreateOnInput') { $x } else { 'Auto' })</CreateOnInput>"
+	X "$i<SearchStringModeOnInputByString>$(if ($x = Get-EnumField $t 'searchStringModeOnInputByString' 'SearchStringModeOnInputByString') { $x } else { 'Begin' })</SearchStringModeOnInputByString>"
 	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { Normalize-EnumValue "ChoiceDataGetModeOnInputByString" "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
-	X "$i<ChoiceHistoryOnInput>$(if ($t -and $t.choiceHistoryOnInput) { Normalize-EnumValue "ChoiceHistoryOnInput" "$($t.choiceHistoryOnInput)" } else { 'Auto' })</ChoiceHistoryOnInput>"
+	X "$i<ChoiceHistoryOnInput>$(if ($x = Get-EnumField $t 'choiceHistoryOnInput' 'ChoiceHistoryOnInput') { $x } else { 'Auto' })</ChoiceHistoryOnInput>"
 
 	# Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
 	if ($defaultFormsXml) { X $defaultFormsXml.TrimEnd("`r", "`n") }
@@ -4734,7 +4743,7 @@ function Emit-EdsTableProperties {
 	X "$i<ReadOnly>$(if ($t -and $t.readOnly -eq $true) { 'true' } else { 'false' })</ReadOnly>"
 	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { Normalize-EnumValue "TransactionsIsolationLevel" "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
 	Emit-EdsFieldRefScalar $i "DataVersionField" $(if ($t) { $t.dataVersionField } else { $null }) $srcName $tableName
-	X "$i<EditType>$(if ($t -and $t.editType) { Normalize-EnumValue "EditType" "$($t.editType)" } else { 'InDialog' })</EditType>"
+	X "$i<EditType>$(if ($x = Get-EnumField $t 'editType' 'EditType') { $x } else { 'InDialog' })</EditType>"
 	Emit-MDRefList $i "BasedOn" $(if ($t) { $t.basedOn } else { $null })
 	Emit-EdsFieldRefList $i "DataLockFields" $(if ($t) { $t.dataLockFields } else { $null }) $srcName $tableName
 	X "$i<DataLockControlMode>$(if ($t -and $t.dataLockControlMode) { "$($t.dataLockControlMode)" } else { 'Automatic' })</DataLockControlMode>"

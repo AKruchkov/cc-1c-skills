@@ -1,0 +1,28 @@
+{
+  "name": "Алиас значения работает у свойства, в чей список входит: periodicity None → Nonperiodical, fullTextSearch Использовать → Use",
+  "input": [
+    {
+      "type": "InformationRegister",
+      "name": "Курсы",
+      "periodicity": "None",
+      "fullTextSearch": "Использовать",
+      "dimensions": [
+        "Валюта: String(3)"
+      ],
+      "resources": [
+        "Курс: Number(15,4)"
+      ]
+    }
+  ],
+  "expect": {
+    "fileContains": [
+      {
+        "file": "InformationRegisters/Курсы.xml",
+        "text": [
+          "<InformationRegisterPeriodicity>Nonperiodical</InformationRegisterPeriodicity>",
+          "<FullTextSearch>Use</FullTextSearch>"
+        ]
+      }
+    ]
+  }
+}

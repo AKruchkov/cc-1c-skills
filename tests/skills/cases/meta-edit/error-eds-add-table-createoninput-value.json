@@ -1,0 +1,46 @@
+{
+  "name": "Ошибка: createOnInput=Bogus у добавляемой таблицы внешнего источника",
+  "setup": "empty-config",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "ExternalDataSource",
+        "name": "PG",
+        "tables": {
+          "products": {
+            "keyFields": [
+              "id"
+            ],
+            "fields": [
+              "id: Number(10,0)"
+            ]
+          }
+        }
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "ExternalDataSources/PG.xml"
+  },
+  "input": {
+    "add": {
+      "tables": {
+        "sales": {
+          "createOnInput": "Bogus",
+          "keyFields": [
+            "id"
+          ],
+          "fields": [
+            "id: Number(10,0)"
+          ]
+        }
+      }
+    }
+  },
+  "expectError": "Invalid value 'Bogus'"
+}

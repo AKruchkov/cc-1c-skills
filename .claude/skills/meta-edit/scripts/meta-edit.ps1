@@ -1,4 +1,4 @@
-﻿# meta-edit v1.63 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.64 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -198,6 +198,16 @@ $script:validEnumValues = @{
 	"Attribute.Use"                     = @("ForItem","ForFolder","ForFolderAndItem")
 	"TabularSection.Use"                = @("ForItem","ForFolder","ForFolderAndItem")
 	"CommonAttributeContent.Use"        = @("Auto","Use","DontUse")
+	# Свойства объекта, которые модель меняет через modify-property и свойства реквизита — как в meta-compile
+	"Category"                          = @("NavigationPanel","ActionsPanel","FormCommandBar","FormNavigationPanel")
+	"ChoiceHistoryOnInput"              = @("Auto","DontUse")
+	"ChoiceMode"                        = @("BothWays","QuickChoice","FromForm")
+	"CodeSeries"                        = @("WholeCatalog","WithinSubordination","WithinOwnerSubordination","WholeCharacteristicKind","WholeChartOfAccounts")
+	"CreateOnInput"                     = @("Auto","Use","DontUse")
+	"FullTextSearchOnInputByString"     = @("Use","DontUse")
+	"PredefinedDataUpdate"              = @("Auto","DontAutoUpdate","AutoUpdate")
+	"SearchStringModeOnInputByString"   = @("Begin","AnyPart")
+	"SubordinationUse"                  = @("ToItems","ToFolders","ToFoldersAndItems")
 }
 
 function Normalize-EnumValue {
@@ -1981,10 +1991,10 @@ function Emit-EdsTableProperties {
 	$ibsGiven = ($t -and $t.PSObject -and $t.PSObject.Properties -and ($t.PSObject.Properties.Name -contains 'inputByString'))
 	$ibs = if ($ibsGiven) { $t.inputByString } elseif ($t -and $t.presentationField) { @($t.presentationField) } else { $null }
 	Emit-EdsFieldRefList $i "InputByString" $ibs $srcName $tableName
-	X "$i<CreateOnInput>$(if ($t -and $t.createOnInput) { Normalize-EnumValue "CreateOnInput" "$($t.createOnInput)" } else { 'Auto' })</CreateOnInput>"
-	X "$i<SearchStringModeOnInputByString>$(if ($t -and $t.searchStringModeOnInputByString) { Normalize-EnumValue "SearchStringModeOnInputByString" "$($t.searchStringModeOnInputByString)" } else { 'Begin' })</SearchStringModeOnInputByString>"
+	X "$i<CreateOnInput>$(if ($x = Get-EnumField $t 'createOnInput' 'CreateOnInput') { $x } else { 'Auto' })</CreateOnInput>"
+	X "$i<SearchStringModeOnInputByString>$(if ($x = Get-EnumField $t 'searchStringModeOnInputByString' 'SearchStringModeOnInputByString') { $x } else { 'Begin' })</SearchStringModeOnInputByString>"
 	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { Normalize-EnumValue "ChoiceDataGetModeOnInputByString" "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
-	X "$i<ChoiceHistoryOnInput>$(if ($t -and $t.choiceHistoryOnInput) { Normalize-EnumValue "ChoiceHistoryOnInput" "$($t.choiceHistoryOnInput)" } else { 'Auto' })</ChoiceHistoryOnInput>"
+	X "$i<ChoiceHistoryOnInput>$(if ($x = Get-EnumField $t 'choiceHistoryOnInput' 'ChoiceHistoryOnInput') { $x } else { 'Auto' })</ChoiceHistoryOnInput>"
 
 	# Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
 	if ($defaultFormsXml) { X $defaultFormsXml.TrimEnd("`r", "`n") }
@@ -1998,7 +2008,7 @@ function Emit-EdsTableProperties {
 	X "$i<ReadOnly>$(if ($t -and $t.readOnly -eq $true) { 'true' } else { 'false' })</ReadOnly>"
 	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { Normalize-EnumValue "TransactionsIsolationLevel" "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
 	Emit-EdsFieldRefScalar $i "DataVersionField" $(if ($t) { $t.dataVersionField } else { $null }) $srcName $tableName
-	X "$i<EditType>$(if ($t -and $t.editType) { Normalize-EnumValue "EditType" "$($t.editType)" } else { 'InDialog' })</EditType>"
+	X "$i<EditType>$(if ($x = Get-EnumField $t 'editType' 'EditType') { $x } else { 'InDialog' })</EditType>"
 	Emit-MDRefList $i "BasedOn" $(if ($t) { $t.basedOn } else { $null })
 	Emit-EdsFieldRefList $i "DataLockFields" $(if ($t) { $t.dataLockFields } else { $null }) $srcName $tableName
 	X "$i<DataLockControlMode>$(if ($t -and $t.dataLockControlMode) { "$($t.dataLockControlMode)" } else { 'Automatic' })</DataLockControlMode>"
@@ -2803,6 +2813,15 @@ function Modify-Properties($propsDef) {
 			}
 		}
 	}
+}
+
+# Значение перечисления из поля объекта DSL (реквизит, таблица внешнего источника…). Не задано —
+# только null или пустая строка: false — значение, его проверит список, а не молча заменит умолчание.
+function Get-EnumField($obj, [string]$field, [string]$propName) {
+	if ($null -eq $obj) { return "" }
+	$v = $obj.$field
+	if ($null -eq $v -or "$v" -eq '') { return "" }
+	return (Normalize-EnumValue $propName "$v")
 }
 
 # QuickChoice-перечисление (реквизит, константа, общий реквизит) из булева: true → Use, false → DontUse;

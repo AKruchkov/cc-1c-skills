@@ -47,6 +47,14 @@ for (const [name, map] of [['meta-validate', validate], ['meta-edit', edit]]) {
     }
   }
 }
+// meta-edit нормализует те же свойства, что и meta-compile (Normalize-EnumValue — общая копия):
+// ключ, которого в meta-edit нет, там молча не проверяется — и алиас подставляется вслепую.
+for (const prop of Object.keys(compile)) {
+  if (!edit[prop]) {
+    console.log(`MISSING meta-edit.${prop}: есть в meta-compile, нет в meta-edit — значение там не проверяется`);
+    drift++;
+  }
+}
 // Информационно: свойства в валидаторе/редакторе, которых НЕТ в авторитете (возможен опечатка-ключ или устаревшее)
 for (const [name, map] of [['meta-validate', validate], ['meta-edit', edit]]) {
   for (const prop of Object.keys(map)) {

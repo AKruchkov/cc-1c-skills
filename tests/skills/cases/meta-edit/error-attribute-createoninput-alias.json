@@ -1,0 +1,32 @@
+{
+  "name": "Ошибка: createOnInput=None у реквизита — алиас другого свойства (Nonperiodical) не подставляется",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Контрагенты",
+        "attributes": [
+          "ИНН: String(12)"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Контрагенты"
+  },
+  "input": {
+    "modify": {
+      "attributes": {
+        "ИНН": {
+          "createOnInput": "None"
+        }
+      }
+    }
+  },
+  "expectError": "Invalid value 'None'"
+}
