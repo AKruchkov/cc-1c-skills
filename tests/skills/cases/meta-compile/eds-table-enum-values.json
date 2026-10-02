@@ -1,0 +1,61 @@
+{
+  "name": "Таблицы внешнего источника: уровни изоляции и фоновое получение данных выбора (проверены платформой 8.3.24 и 8.5.1)",
+  "input": {
+    "type": "ExternalDataSource",
+    "name": "PG",
+    "tables": {
+      "t_rc": {
+        "keyFields": [
+          "id"
+        ],
+        "fields": [
+          "id: Number(10,0)"
+        ],
+        "transactionsIsolationLevel": "ReadCommitted"
+      },
+      "t_rr": {
+        "keyFields": [
+          "id"
+        ],
+        "fields": [
+          "id: Number(10,0)"
+        ],
+        "transactionsIsolationLevel": "RepeatableRead"
+      },
+      "t_ser": {
+        "keyFields": [
+          "id"
+        ],
+        "fields": [
+          "id: Number(10,0)"
+        ],
+        "transactionsIsolationLevel": "Serializable",
+        "choiceDataGetModeOnInputByString": "Background"
+      }
+    }
+  },
+  "validatePath": "ExternalDataSources/PG",
+  "expect": {
+    "fileContains": [
+      {
+        "file": "ExternalDataSources/PG/Tables/t_rc.xml",
+        "text": [
+          "<TransactionsIsolationLevel>ReadCommitted</TransactionsIsolationLevel>"
+        ]
+      },
+      {
+        "file": "ExternalDataSources/PG/Tables/t_rr.xml",
+        "text": [
+          "<TransactionsIsolationLevel>RepeatableRead</TransactionsIsolationLevel>"
+        ]
+      },
+      {
+        "file": "ExternalDataSources/PG/Tables/t_ser.xml",
+        "text": [
+          "<TransactionsIsolationLevel>Serializable</TransactionsIsolationLevel>",
+          "<ChoiceDataGetModeOnInputByString>Background</ChoiceDataGetModeOnInputByString>"
+        ]
+      }
+    ]
+  }
+}
