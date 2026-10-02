@@ -1,0 +1,19 @@
+{
+  "name": "Ошибка: editType=List у таблицы внешнего источника — InDialog/InList/BothWays",
+  "input": {
+    "type": "ExternalDataSource",
+    "name": "PG",
+    "tables": {
+      "items": {
+        "editType": "List",
+        "keyFields": [
+          "id"
+        ],
+        "fields": [
+          "id: Number(10,0)"
+        ]
+      }
+    }
+  },
+  "expectError": "Invalid value 'List'"
+}

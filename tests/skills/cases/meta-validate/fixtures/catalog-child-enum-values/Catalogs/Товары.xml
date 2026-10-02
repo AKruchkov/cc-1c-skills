@@ -121,7 +121,7 @@
 					<ChoiceParameterLinks/>
 					<ChoiceParameters/>
 					<QuickChoice>Yes</QuickChoice>
-					<CreateOnInput>Auto</CreateOnInput>
+					<CreateOnInput>Always</CreateOnInput>
 					<ChoiceForm/>
 					<LinkByType/>
 					<ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>

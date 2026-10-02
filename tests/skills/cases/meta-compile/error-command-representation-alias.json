@@ -1,0 +1,10 @@
+{
+  "name": "Ошибка: representation=None — алиас другого свойства (Nonperiodical) не подставляется",
+  "input": {
+    "type": "CommonCommand",
+    "name": "Обновить",
+    "group": "NavigationPanelImportant",
+    "representation": "None"
+  },
+  "expectError": "Invalid value 'None'"
+}

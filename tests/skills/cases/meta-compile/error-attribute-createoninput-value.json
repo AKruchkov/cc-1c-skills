@@ -1,0 +1,15 @@
+{
+  "name": "Ошибка: createOnInput=Bogus у реквизита",
+  "input": {
+    "type": "Catalog",
+    "name": "Товары",
+    "attributes": [
+      {
+        "name": "Артикул",
+        "type": "String(25)",
+        "createOnInput": "Bogus"
+      }
+    ]
+  },
+  "expectError": "Invalid value 'Bogus'"
+}

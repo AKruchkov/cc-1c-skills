@@ -1,0 +1,37 @@
+{
+  "name": "Быстрый выбор константы — перечисление: true → Use",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Constant",
+        "name": "ОсновнаяВалюта",
+        "valueType": "String(3)"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Constants/ОсновнаяВалюта"
+  },
+  "input": {
+    "modify": {
+      "properties": {
+        "QuickChoice": true
+      }
+    }
+  },
+  "expect": {
+    "fileContains": [
+      {
+        "file": "Constants/ОсновнаяВалюта.xml",
+        "text": [
+          "<QuickChoice>Use</QuickChoice>"
+        ]
+      }
+    ]
+  }
+}

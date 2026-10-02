@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-edit v1.62 — Edit existing 1C metadata object XML
+# meta-edit v1.63 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -501,11 +501,14 @@ valid_enum_values = {
 
 
 def normalize_enum_value(prop_name, value):
-    # 1. Check alias dictionary — silent auto-correct
-    if value in enum_value_aliases:
-        return enum_value_aliases[value]
-    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
     valid = valid_enum_values.get(f"{obj_type}.{prop_name}") or valid_enum_values.get(prop_name)
+    # 1. Check alias dictionary — silent auto-correct. Словарь общий для всех свойств: у свойства со
+    # списком алиас берётся, только если его результат в списке (иначе «None» дало бы Nonperiodical везде)
+    if value in enum_value_aliases:
+        aliased = enum_value_aliases[value]
+        if not valid or aliased in valid:
+            return aliased
+    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
     if valid:
         for v in valid:
             if v.lower() == value.lower():
@@ -517,17 +520,28 @@ def normalize_enum_value(prop_name, value):
     return value
 
 
+def quick_choice_from_bool(v):
+    """QuickChoice-перечисление (реквизит, константа, общий реквизит) из булева: true → Use, false → DontUse;
+    строки "true"/"false" — так же (строчная форма). Иначе None — значение идёт обычной нормализацией."""
+    if isinstance(v, bool):
+        return 'Use' if v else 'DontUse'
+    if str(v).lower() == 'true':
+        return 'Use'
+    if str(v).lower() == 'false':
+        return 'DontUse'
+    return None
+
+
 def get_child_prop_value(xml_tag, change_prop, change_value):
     """Значение свойства реквизита/измерения/ресурса/ТЧ. QuickChoice здесь — перечисление (Auto/Use/
     DontUse): булево — Use/DontUse, как в meta-compile (литерал true/false платформа не примет). Список —
     контекстный («Attribute.QuickChoice», «TabularSection.Use»), если он есть, иначе общий по свойству."""
+    if change_prop == 'QuickChoice':
+        qcb = quick_choice_from_bool(change_value)
+        if qcb:
+            return qcb
     if isinstance(change_value, bool):
-        if change_prop == 'QuickChoice':
-            return 'Use' if change_value else 'DontUse'
         return "true" if change_value else "false"
-    # Строчная форма (-Value "Рекв: quickChoice=true") приходит строкой
-    if change_prop == 'QuickChoice' and str(change_value).lower() in ('true', 'false'):
-        return 'Use' if str(change_value).lower() == 'true' else 'DontUse'
     ctx = 'TabularSection' if xml_tag == 'TabularSection' else 'Attribute'
     enum_key = f"{ctx}.{change_prop}" if f"{ctx}.{change_prop}" in valid_enum_values else change_prop
     return normalize_enum_value(enum_key, str(change_value))
@@ -1988,10 +2002,10 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     else:
         ibs = None
     emit_eds_field_ref_list(i, 'InputByString', ibs, src_name, table_name)
-    X(f'{i}<CreateOnInput>{t.get("createOnInput") or "Auto"}</CreateOnInput>')
-    X(f'{i}<SearchStringModeOnInputByString>{t.get("searchStringModeOnInputByString") or "Begin"}</SearchStringModeOnInputByString>')
+    X(f'{i}<CreateOnInput>{normalize_enum_value("CreateOnInput", str(t["createOnInput"])) if t.get("createOnInput") else "Auto"}</CreateOnInput>')
+    X(f'{i}<SearchStringModeOnInputByString>{normalize_enum_value("SearchStringModeOnInputByString", str(t["searchStringModeOnInputByString"])) if t.get("searchStringModeOnInputByString") else "Begin"}</SearchStringModeOnInputByString>')
     X(f'{i}<ChoiceDataGetModeOnInputByString>{normalize_enum_value("ChoiceDataGetModeOnInputByString", str(t["choiceDataGetModeOnInputByString"])) if t.get("choiceDataGetModeOnInputByString") else "Directly"}</ChoiceDataGetModeOnInputByString>')
-    X(f'{i}<ChoiceHistoryOnInput>{t.get("choiceHistoryOnInput") or "Auto"}</ChoiceHistoryOnInput>')
+    X(f'{i}<ChoiceHistoryOnInput>{normalize_enum_value("ChoiceHistoryOnInput", str(t["choiceHistoryOnInput"])) if t.get("choiceHistoryOnInput") else "Auto"}</ChoiceHistoryOnInput>')
 
     # Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
     if default_forms_xml:
@@ -2007,7 +2021,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     X(f'{i}<ReadOnly>{"true" if t.get("readOnly") is True else "false"}</ReadOnly>')
     X(f'{i}<TransactionsIsolationLevel>{normalize_enum_value("TransactionsIsolationLevel", str(t["transactionsIsolationLevel"])) if t.get("transactionsIsolationLevel") else "Auto"}</TransactionsIsolationLevel>')
     emit_eds_field_ref_scalar(i, 'DataVersionField', t.get('dataVersionField'), src_name, table_name)
-    X(f'{i}<EditType>{t.get("editType") or "InDialog"}</EditType>')
+    X(f'{i}<EditType>{normalize_enum_value("EditType", str(t["editType"])) if t.get("editType") else "InDialog"}</EditType>')
     emit_md_ref_list(i, 'BasedOn', t.get('basedOn'))
     emit_eds_field_ref_list(i, 'DataLockFields', t.get('dataLockFields'), src_name, table_name)
     X(f'{i}<DataLockControlMode>{t.get("dataLockControlMode") or "Automatic"}</DataLockControlMode>')
@@ -2695,7 +2709,9 @@ def modify_properties(props_def):
         # Значение свойства-перечисления приводим к канону (как это делает meta-compile): иначе
         # в XML уезжает то, что дала модель, и платформа отвергает выгрузку уже при загрузке.
         # Неизвестное свойство функция пропускает как есть, неизвестное значение — отвергает.
-        value_str = normalize_enum_value(prop_name, value_str)
+        # QuickChoice константы и общего реквизита — перечисление: булево → Use/DontUse, как в meta-compile.
+        qcb = quick_choice_from_bool(prop_value) if prop_name == 'QuickChoice' and f"{obj_type}.QuickChoice" in valid_enum_values else None
+        value_str = qcb or normalize_enum_value(prop_name, value_str)
 
         # Set inner text — clear children first, set text
         for ch in list(prop_el):
@@ -3263,7 +3279,7 @@ def build_choice_parameter_links_xml(indent, cpl):
             elif re.match(r'^(dontchange|неизменять|неменять|нет)$', low):
                 vc = 'DontChange'
             else:
-                vc = str(vc_raw)
+                vc = normalize_enum_value('ValueChange', str(vc_raw))
         parts.append(f"{indent}\t<xr:Link>")
         parts.append(f"{indent}\t\t<xr:Name>{esc_xml_text(str(name) if name is not None else '')}</xr:Name>")
         parts.append(f'{indent}\t\t<xr:DataPath xsi:type="xs:string">{esc_xml_text(str(dp) if dp is not None else "")}</xr:DataPath>')

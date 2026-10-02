@@ -1,0 +1,14 @@
+{
+  "name": "Элемент стиля (ERP): скалярный <Type>Color</Type> — штатный вид элемента, не повреждённый тип",
+  "setup": "fixture:styleitem-color",
+  "params": {
+    "objectPath": "StyleItems/АктуальнаяПодпискаЦвет.xml"
+  },
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура — один объект из выгрузки ERP без остальной конфигурации",
+  "expect": {
+    "stdoutNotContains": [
+      "[ERROR]"
+    ]
+  }
+}

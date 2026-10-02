@@ -1,0 +1,13 @@
+{
+  "name": "Ошибка: fullTextSearch=Bogus у стандартного реквизита",
+  "input": {
+    "type": "Catalog",
+    "name": "Товары",
+    "standardAttributes": {
+      "Description": {
+        "fullTextSearch": "Bogus"
+      }
+    }
+  },
+  "expectError": "Invalid value 'Bogus'"
+}

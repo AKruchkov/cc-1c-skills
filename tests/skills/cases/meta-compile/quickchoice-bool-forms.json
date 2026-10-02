@@ -1,0 +1,50 @@
+{
+  "name": "Быстрый выбор-перечисление из булева: константа false → DontUse, общий реквизит true → Use, реквизит \"true\" → Use",
+  "input": [
+    {
+      "type": "Constant",
+      "name": "ОсновнаяВалюта",
+      "valueType": "String(3)",
+      "quickChoice": false
+    },
+    {
+      "type": "CommonAttribute",
+      "name": "Комментарий",
+      "valueType": "String(100)",
+      "quickChoice": true
+    },
+    {
+      "type": "Catalog",
+      "name": "Товары",
+      "attributes": [
+        {
+          "name": "Артикул",
+          "type": "String(25)",
+          "quickChoice": "true"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fileContains": [
+      {
+        "file": "Constants/ОсновнаяВалюта.xml",
+        "text": [
+          "<QuickChoice>DontUse</QuickChoice>"
+        ]
+      },
+      {
+        "file": "CommonAttributes/Комментарий.xml",
+        "text": [
+          "<QuickChoice>Use</QuickChoice>"
+        ]
+      },
+      {
+        "file": "Catalogs/Товары.xml",
+        "text": [
+          "<QuickChoice>Use</QuickChoice>"
+        ]
+      }
+    ]
+  }
+}

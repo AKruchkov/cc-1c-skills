@@ -1,0 +1,16 @@
+{
+  "name": "Общий реквизит: QuickChoice в корне — перечисление, Use элемента состава — Auto/Use/DontUse",
+  "setup": "fixture:common-attribute-bad-values",
+  "params": {
+    "objectPath": "CommonAttributes/Организация.xml"
+  },
+  "expectError": true,
+  "noSnapshot": "meta-validate только читает и печатает — эталон зафиксировал бы фикстуру; проверяется stdout",
+  "skipPlatformVerify": "фикстура намеренно не загружается: значения вне перечислений",
+  "expect": {
+    "stdoutContains": [
+      "Property 'QuickChoice' has invalid value 'true' (allowed: Auto, Use, DontUse)",
+      "4. Content item: property 'Use' has invalid value 'Never' (allowed: Auto, Use, DontUse)"
+    ]
+  }
+}

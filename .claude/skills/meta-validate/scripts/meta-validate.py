@@ -1,4 +1,4 @@
-# meta-validate v1.35 — Validate 1C metadata object structure (Python port)
+# meta-validate v1.36 — Validate 1C metadata object structure (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -434,6 +434,8 @@ valid_property_values = {
     "FillChecking":                 ["DontCheck", "ShowError"],
     "Indexing":                     ["DontIndex", "Index", "IndexWithAdditionalOrder"],
     "DataHistory":                  ["Use", "DontUse"],
+    "CreateOnInput":                ["Auto", "Use", "DontUse"],
+    "ChoiceHistoryOnInput":         ["Auto", "DontUse"],
     "DependenceOnCalculationTypes": ["DontUse", "OnActionPeriod", "OnRegistrationPeriod"],
     # Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
     # выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
@@ -717,6 +719,7 @@ def check4():
         # Значения у реквизитов, измерений, ресурсов и табличных частей: QuickChoice здесь — перечисление
         # (в корне справочника — булево), Use у реквизита и ТЧ — для групп/элементов. Ключи «Attribute.*»,
         # «TabularSection.*»; иначе — общий ключ свойства.
+        child_common4 = ["CreateOnInput", "FullTextSearch", "DataHistory", "ChoiceHistoryOnInput"]
         co_node4 = find(type_node, "md:ChildObjects")
         items4 = []
         if co_node4 is not None:
@@ -734,9 +737,9 @@ def check4():
             if ctx == "TabularSection":
                 names = ["Use"]
             elif local_name(it) == "Attribute":
-                names = ["QuickChoice", "ChoiceFoldersAndItems", "Use"]
+                names = ["QuickChoice", "ChoiceFoldersAndItems", "Use"] + child_common4
             else:
-                names = ["QuickChoice", "ChoiceFoldersAndItems"]
+                names = ["QuickChoice", "ChoiceFoldersAndItems"] + child_common4
             it_name = find(it_props, "md:Name")
             for pn in names:
                 pnode = find(it_props, f"md:{pn}")
@@ -759,8 +762,9 @@ def check4():
 
         # Корневой <Type> (дескриптор типа значения — Константа, ПВХ) должен быть структурным:
         # <v8:Type>/<v8:TypeSet>, а не скалярный текст. Скаляр = повреждённый тип (напр. после
-        # старого meta-edit modify-property Type). См. issue #42.
-        root_type_el = find(props_node, "md:Type")
+        # старого meta-edit modify-property Type). См. issue #42. У элемента стиля <Type> — вид элемента
+        # (Color/Font/Border), скаляр там штатный.
+        root_type_el = find(props_node, "md:Type") if md_type != "StyleItem" else None
         if root_type_el is not None:
             scalar_text = inner_text(root_type_el).strip()
             v8_types = find_all(root_type_el, "v8:Type")

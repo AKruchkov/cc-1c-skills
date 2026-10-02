@@ -1,4 +1,4 @@
-﻿# meta-edit v1.62 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.63 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -202,13 +202,15 @@ $script:validEnumValues = @{
 
 function Normalize-EnumValue {
 	param([string]$propName, [string]$value)
-	# 1. Check alias dictionary — silent auto-correct
-	if ($script:enumValueAliases.ContainsKey($value)) {
-		return $script:enumValueAliases[$value]
-	}
-	# 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
 	$valid = $script:validEnumValues["$script:objType.$propName"]
 	if (-not $valid) { $valid = $script:validEnumValues[$propName] }
+	# 1. Check alias dictionary — silent auto-correct. Словарь общий для всех свойств: у свойства со
+	# списком алиас берётся, только если его результат в списке (иначе «None» дало бы Nonperiodical везде)
+	if ($script:enumValueAliases.ContainsKey($value)) {
+		$aliased = $script:enumValueAliases[$value]
+		if (-not $valid -or $valid -ccontains $aliased) { return $aliased }
+	}
+	# 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
 	if ($valid) {
 		foreach ($v in $valid) {
 			if ($v -ieq $value) { return $v }
@@ -1979,10 +1981,10 @@ function Emit-EdsTableProperties {
 	$ibsGiven = ($t -and $t.PSObject -and $t.PSObject.Properties -and ($t.PSObject.Properties.Name -contains 'inputByString'))
 	$ibs = if ($ibsGiven) { $t.inputByString } elseif ($t -and $t.presentationField) { @($t.presentationField) } else { $null }
 	Emit-EdsFieldRefList $i "InputByString" $ibs $srcName $tableName
-	X "$i<CreateOnInput>$(if ($t -and $t.createOnInput) { "$($t.createOnInput)" } else { 'Auto' })</CreateOnInput>"
-	X "$i<SearchStringModeOnInputByString>$(if ($t -and $t.searchStringModeOnInputByString) { "$($t.searchStringModeOnInputByString)" } else { 'Begin' })</SearchStringModeOnInputByString>"
+	X "$i<CreateOnInput>$(if ($t -and $t.createOnInput) { Normalize-EnumValue "CreateOnInput" "$($t.createOnInput)" } else { 'Auto' })</CreateOnInput>"
+	X "$i<SearchStringModeOnInputByString>$(if ($t -and $t.searchStringModeOnInputByString) { Normalize-EnumValue "SearchStringModeOnInputByString" "$($t.searchStringModeOnInputByString)" } else { 'Begin' })</SearchStringModeOnInputByString>"
 	X "$i<ChoiceDataGetModeOnInputByString>$(if ($t -and $t.choiceDataGetModeOnInputByString) { Normalize-EnumValue "ChoiceDataGetModeOnInputByString" "$($t.choiceDataGetModeOnInputByString)" } else { 'Directly' })</ChoiceDataGetModeOnInputByString>"
-	X "$i<ChoiceHistoryOnInput>$(if ($t -and $t.choiceHistoryOnInput) { "$($t.choiceHistoryOnInput)" } else { 'Auto' })</ChoiceHistoryOnInput>"
+	X "$i<ChoiceHistoryOnInput>$(if ($t -and $t.choiceHistoryOnInput) { Normalize-EnumValue "ChoiceHistoryOnInput" "$($t.choiceHistoryOnInput)" } else { 'Auto' })</ChoiceHistoryOnInput>"
 
 	# Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
 	if ($defaultFormsXml) { X $defaultFormsXml.TrimEnd("`r", "`n") }
@@ -1996,7 +1998,7 @@ function Emit-EdsTableProperties {
 	X "$i<ReadOnly>$(if ($t -and $t.readOnly -eq $true) { 'true' } else { 'false' })</ReadOnly>"
 	X "$i<TransactionsIsolationLevel>$(if ($t -and $t.transactionsIsolationLevel) { Normalize-EnumValue "TransactionsIsolationLevel" "$($t.transactionsIsolationLevel)" } else { 'Auto' })</TransactionsIsolationLevel>"
 	Emit-EdsFieldRefScalar $i "DataVersionField" $(if ($t) { $t.dataVersionField } else { $null }) $srcName $tableName
-	X "$i<EditType>$(if ($t -and $t.editType) { "$($t.editType)" } else { 'InDialog' })</EditType>"
+	X "$i<EditType>$(if ($t -and $t.editType) { Normalize-EnumValue "EditType" "$($t.editType)" } else { 'InDialog' })</EditType>"
 	Emit-MDRefList $i "BasedOn" $(if ($t) { $t.basedOn } else { $null })
 	Emit-EdsFieldRefList $i "DataLockFields" $(if ($t) { $t.dataLockFields } else { $null }) $srcName $tableName
 	X "$i<DataLockControlMode>$(if ($t -and $t.dataLockControlMode) { "$($t.dataLockControlMode)" } else { 'Automatic' })</DataLockControlMode>"
@@ -2775,7 +2777,9 @@ function Modify-Properties($propsDef) {
 		# Значение свойства-перечисления приводим к канону (как это делает meta-compile): иначе
 		# в XML уезжает то, что дала модель, и платформа отвергает выгрузку уже при загрузке.
 		# Неизвестное свойство функция пропускает как есть, неизвестное значение — отвергает.
-		$valueStr = Normalize-EnumValue $propName $valueStr
+		# QuickChoice константы и общего реквизита — перечисление: булево → Use/DontUse, как в meta-compile.
+		$qcb = if ($propName -ceq 'QuickChoice' -and $script:validEnumValues.ContainsKey("$script:objType.QuickChoice")) { ConvertFrom-QuickChoiceBool $propValue } else { $null }
+		$valueStr = if ($qcb) { $qcb } else { Normalize-EnumValue $propName $valueStr }
 
 		$propEl.InnerText = $valueStr
 		Info "Modified property: $propName = $valueStr"
@@ -2801,16 +2805,24 @@ function Modify-Properties($propsDef) {
 	}
 }
 
+# QuickChoice-перечисление (реквизит, константа, общий реквизит) из булева: true → Use, false → DontUse;
+# строки "true"/"false" — так же (строчная форма). Иначе $null — значение идёт обычной нормализацией.
+function ConvertFrom-QuickChoiceBool($v) {
+	if ($v -is [bool]) { return $(if ($v) { 'Use' } else { 'DontUse' }) }
+	if ("$v" -eq 'true') { return 'Use' }
+	if ("$v" -eq 'false') { return 'DontUse' }
+	return $null
+}
+
 # Значение свойства реквизита/измерения/ресурса/ТЧ. QuickChoice здесь — перечисление (Auto/Use/
 # DontUse): булево — Use/DontUse, как в meta-compile (литерал true/false платформа не примет). Список —
 # контекстный («Attribute.QuickChoice», «TabularSection.Use»), если он есть, иначе общий по свойству.
 function Get-ChildPropValue([string]$xmlTag, [string]$changeProp, $changeValue) {
-	if ($changeValue -is [bool]) {
-		if ($changeProp -ceq 'QuickChoice') { return $(if ($changeValue) { 'Use' } else { 'DontUse' }) }
-		return $(if ($changeValue) { "true" } else { "false" })
+	if ($changeProp -ceq 'QuickChoice') {
+		$qcb = ConvertFrom-QuickChoiceBool $changeValue
+		if ($qcb) { return $qcb }
 	}
-	# Строчная форма (-Value "Рекв: quickChoice=true") приходит строкой
-	if ($changeProp -ceq 'QuickChoice' -and "$changeValue" -in 'true', 'false') { return $(if ("$changeValue" -eq 'true') { 'Use' } else { 'DontUse' }) }
+	if ($changeValue -is [bool]) { return $(if ($changeValue) { "true" } else { "false" }) }
 	$ctx = if ($xmlTag -ceq 'TabularSection') { 'TabularSection' } else { 'Attribute' }
 	$enumKey = if ($script:validEnumValues.ContainsKey("$ctx.$changeProp")) { "$ctx.$changeProp" } else { $changeProp }
 	return (Normalize-EnumValue $enumKey "$changeValue")
@@ -3386,7 +3398,7 @@ function Build-ChoiceParameterLinksXml([string]$indent, $cpl) {
 			$vc = switch -Regex ("$vcRaw".ToLower()) {
 				'^(clear|очистить|очистка)$'             { 'Clear'; break }
 				'^(dontchange|неизменять|неменять|нет)$' { 'DontChange'; break }
-				default                                  { "$vcRaw" }
+				default                                  { Normalize-EnumValue "ValueChange" "$vcRaw" }
 			}
 		}
 		$sb.Append("`r`n$indent`t<xr:Link>") | Out-Null

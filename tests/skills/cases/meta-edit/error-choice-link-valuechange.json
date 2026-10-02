@@ -1,0 +1,39 @@
+{
+  "name": "Ошибка: valueChange=Bogus в связи параметров выбора — Clear/DontChange",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "Catalog",
+        "name": "Спр",
+        "attributes": [
+          "Родитель2: CatalogRef.Спр",
+          "Ссылка2: CatalogRef.Спр"
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "objectPath": "Catalogs/Спр"
+  },
+  "input": {
+    "modify": {
+      "attributes": {
+        "Ссылка2": {
+          "ChoiceParameterLinks": [
+            {
+              "name": "Отбор.Владелец",
+              "dataPath": "Родитель2",
+              "valueChange": "Bogus"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expectError": "Invalid value 'Bogus'"
+}

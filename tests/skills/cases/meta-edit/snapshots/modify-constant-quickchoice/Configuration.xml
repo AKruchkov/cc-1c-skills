@@ -246,7 +246,7 @@
 		</Properties>
 		<ChildObjects>
 			<Language>Русский</Language>
-			<Catalog>Номенклатура</Catalog>
+			<Constant>ОсновнаяВалюта</Constant>
 		</ChildObjects>
 	</Configuration>
 </MetaDataObject>

@@ -11,7 +11,8 @@
     "stdoutContains": [
       "4. Attribute 'Артикул': property 'QuickChoice' has invalid value 'Yes' (allowed: Auto, Use, DontUse)",
       "4. TabularSection 'Штрихкоды': property 'Use' has invalid value 'Item' (allowed: ForItem, ForFolder, ForFolderAndItem)",
-      "4. Attribute 'Штрихкод': property 'QuickChoice' has invalid value 'On' (allowed: Auto, Use, DontUse)"
+      "4. Attribute 'Штрихкод': property 'QuickChoice' has invalid value 'On' (allowed: Auto, Use, DontUse)",
+      "4. Attribute 'Артикул': property 'CreateOnInput' has invalid value 'Always' (allowed: Auto, Use, DontUse)"
     ],
     "stdoutNotContains": [
       "property 'QuickChoice' has invalid value 'false'",

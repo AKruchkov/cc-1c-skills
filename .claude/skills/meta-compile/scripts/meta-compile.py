@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.117 — Compile 1C metadata object from JSON
+# meta-compile v1.118 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -655,11 +655,14 @@ def resolve_command_group(raw, cmd_name):
     return g
 
 def normalize_enum_value(prop_name, value):
-    # 1. Check alias dictionary — silent auto-correct
-    if value in enum_value_aliases:
-        return enum_value_aliases[value]
-    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
     valid = valid_enum_values.get(f"{obj_type}.{prop_name}") or valid_enum_values.get(prop_name)
+    # 1. Check alias dictionary — silent auto-correct. Словарь общий для всех свойств: у свойства со
+    # списком алиас берётся, только если его результат в списке (иначе «None» дало бы Nonperiodical везде)
+    if value in enum_value_aliases:
+        aliased = enum_value_aliases[value]
+        if not valid or aliased in valid:
+            return aliased
+    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
     if valid:
         for v in valid:
             if v.lower() == value.lower():
@@ -670,10 +673,28 @@ def normalize_enum_value(prop_name, value):
     # 4. Unknown property — pass-through (no validation data)
     return value
 
+def quick_choice_from_bool(v):
+    """QuickChoice-перечисление (реквизит, константа, общий реквизит) из булева: true → Use, false → DontUse;
+    строки "true"/"false" — так же (строчная форма). Иначе None — значение идёт обычной нормализацией."""
+    if isinstance(v, bool):
+        return 'Use' if v else 'DontUse'
+    if str(v).lower() == 'true':
+        return 'Use'
+    if str(v).lower() == 'false':
+        return 'DontUse'
+    return None
+
+
 def get_enum_prop(prop_name, field_name, default):
     val = defn.get(field_name)
-    raw = str(val) if val else default
-    return normalize_enum_value(prop_name, raw)
+    # Не задано — только null или пустая строка: false у перечисления — значение, а не «по умолчанию»
+    if val is None or str(val) == '':
+        return normalize_enum_value(prop_name, default)
+    if prop_name == 'QuickChoice':
+        qcb = quick_choice_from_bool(val)
+        if qcb:
+            return qcb
+    return normalize_enum_value(prop_name, str(val))
 
 def get_bool_prop(field_name, default):
     """Bool object-свойство: presence-aware (иначе false спутать с отсутствием). Прощаем строки."""
@@ -1422,7 +1443,7 @@ def parse_attribute_shorthand(val):
         fc = ''
     if val.get('quickChoice') is not None:
         # Через список допустимых значений, как свойства объекта: иначе опечатка из DSL уходит в XML как есть
-        qc = ('Use' if val['quickChoice'] else 'DontUse') if isinstance(val['quickChoice'], bool) else normalize_enum_value('Attribute.QuickChoice', str(val['quickChoice']))
+        qc = quick_choice_from_bool(val['quickChoice']) or normalize_enum_value('Attribute.QuickChoice', str(val['quickChoice']))
     else:
         qc = ''
     return {
@@ -1440,12 +1461,12 @@ def parse_attribute_shorthand(val):
         'fillChecking': normalize_enum_value('FillChecking', fc) if fc else '',
         'indexing': normalize_enum_value('Indexing', str(val['indexing'])) if val.get('indexing') else '',
         'multiLine': True if val.get('multiLine') is True else False,
-        'choiceHistoryOnInput': str(val['choiceHistoryOnInput']) if val.get('choiceHistoryOnInput') else '',
-        'fullTextSearch': str(val['fullTextSearch']) if val.get('fullTextSearch') else '',
+        'choiceHistoryOnInput': normalize_enum_value('ChoiceHistoryOnInput', str(val['choiceHistoryOnInput'])) if val.get('choiceHistoryOnInput') else '',
+        'fullTextSearch': normalize_enum_value('FullTextSearch', str(val['fullTextSearch'])) if val.get('fullTextSearch') else '',
         'fillFromFillingValue': True if val.get('fillFromFillingValue') is True else False,
-        'createOnInput': str(val['createOnInput']) if val.get('createOnInput') else '',
+        'createOnInput': normalize_enum_value('CreateOnInput', str(val['createOnInput'])) if val.get('createOnInput') else '',
         'quickChoice': qc,
-        'dataHistory': str(val['dataHistory']) if val.get('dataHistory') else '',
+        'dataHistory': normalize_enum_value('DataHistory', str(val['dataHistory'])) if val.get('dataHistory') else '',
         'use': normalize_enum_value('Attribute.Use', str(val['use'])) if val.get('use') else '',
         'passwordMode': True if val.get('passwordMode') is True else False,
         'format': val.get('format'),
@@ -1931,9 +1952,9 @@ def emit_standard_attributes(indent, object_type):
                 if d.get('fillFromFillingValue') is not None:
                     ov['FillFromFillingValue'] = 'true' if d['fillFromFillingValue'] else 'false'
                 if d.get('fullTextSearch'):
-                    ov['FullTextSearch'] = str(d['fullTextSearch'])
+                    ov['FullTextSearch'] = normalize_enum_value('FullTextSearch', str(d['fullTextSearch']))
                 if d.get('dataHistory'):
-                    ov['DataHistory'] = str(d['dataHistory'])
+                    ov['DataHistory'] = normalize_enum_value('DataHistory', str(d['dataHistory']))
                 if d.get('fillValue') is not None:
                     ov['FillValue'] = d['fillValue']
                 if d.get('choiceParameterLinks') is not None:
@@ -1966,7 +1987,7 @@ def emit_tabular_standard_attributes(indent, line_number=None):
         if line_number.get('comment'):
             ov['Comment'] = str(line_number['comment'])
         if line_number.get('fullTextSearch'):
-            ov['FullTextSearch'] = str(line_number['fullTextSearch'])
+            ov['FullTextSearch'] = normalize_enum_value('FullTextSearch', str(line_number['fullTextSearch']))
         if line_number.get('tooltip') is not None:
             ov['ToolTip'] = line_number['tooltip']
         if line_number.get('format') is not None:
@@ -1974,7 +1995,7 @@ def emit_tabular_standard_attributes(indent, line_number=None):
         if line_number.get('editFormat') is not None:
             ov['EditFormat'] = line_number['editFormat']
         if line_number.get('choiceHistoryOnInput'):
-            ov['ChoiceHistoryOnInput'] = str(line_number['choiceHistoryOnInput'])
+            ov['ChoiceHistoryOnInput'] = normalize_enum_value('ChoiceHistoryOnInput', str(line_number['choiceHistoryOnInput']))
         if line_number.get('fillValue') is not None:
             ov['FillValue'] = line_number['fillValue']
     X(f'{indent}<StandardAttributes>')
@@ -4705,10 +4726,10 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     else:
         ibs = None
     emit_eds_field_ref_list(i, 'InputByString', ibs, src_name, table_name)
-    X(f'{i}<CreateOnInput>{t.get("createOnInput") or "Auto"}</CreateOnInput>')
-    X(f'{i}<SearchStringModeOnInputByString>{t.get("searchStringModeOnInputByString") or "Begin"}</SearchStringModeOnInputByString>')
+    X(f'{i}<CreateOnInput>{normalize_enum_value("CreateOnInput", str(t["createOnInput"])) if t.get("createOnInput") else "Auto"}</CreateOnInput>')
+    X(f'{i}<SearchStringModeOnInputByString>{normalize_enum_value("SearchStringModeOnInputByString", str(t["searchStringModeOnInputByString"])) if t.get("searchStringModeOnInputByString") else "Begin"}</SearchStringModeOnInputByString>')
     X(f'{i}<ChoiceDataGetModeOnInputByString>{normalize_enum_value("ChoiceDataGetModeOnInputByString", str(t["choiceDataGetModeOnInputByString"])) if t.get("choiceDataGetModeOnInputByString") else "Directly"}</ChoiceDataGetModeOnInputByString>')
-    X(f'{i}<ChoiceHistoryOnInput>{t.get("choiceHistoryOnInput") or "Auto"}</ChoiceHistoryOnInput>')
+    X(f'{i}<ChoiceHistoryOnInput>{normalize_enum_value("ChoiceHistoryOnInput", str(t["choiceHistoryOnInput"])) if t.get("choiceHistoryOnInput") else "Auto"}</ChoiceHistoryOnInput>')
 
     # Пустая строка — четыре слота всё равно обязаны быть: в свойствах таблицы их ровно 38.
     if default_forms_xml:
@@ -4724,7 +4745,7 @@ def emit_eds_table_properties(indent, src_name, table_name, t, char_xml, default
     X(f'{i}<ReadOnly>{"true" if t.get("readOnly") is True else "false"}</ReadOnly>')
     X(f'{i}<TransactionsIsolationLevel>{normalize_enum_value("TransactionsIsolationLevel", str(t["transactionsIsolationLevel"])) if t.get("transactionsIsolationLevel") else "Auto"}</TransactionsIsolationLevel>')
     emit_eds_field_ref_scalar(i, 'DataVersionField', t.get('dataVersionField'), src_name, table_name)
-    X(f'{i}<EditType>{t.get("editType") or "InDialog"}</EditType>')
+    X(f'{i}<EditType>{normalize_enum_value("EditType", str(t["editType"])) if t.get("editType") else "InDialog"}</EditType>')
     emit_md_ref_list(i, 'BasedOn', t.get('basedOn'))
     emit_eds_field_ref_list(i, 'DataLockFields', t.get('dataLockFields'), src_name, table_name)
     X(f'{i}<DataLockControlMode>{t.get("dataLockControlMode") or "Automatic"}</DataLockControlMode>')

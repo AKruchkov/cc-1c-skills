@@ -1,5 +1,5 @@
 {
-  "name": "Быстрый выбор и использование реквизита и ТЧ: булево → Use/DontUse, значения по контексту реквизита",
+  "name": "Быстрый выбор и использование реквизита и ТЧ: булево true/false → Use/DontUse, значения по контексту реквизита",
   "preRun": [
     {
       "script": "meta-compile/scripts/meta-compile",
@@ -7,22 +7,58 @@
         "type": "Catalog",
         "name": "Номенклатура",
         "hierarchical": true,
-        "attributes": ["Артикул: String(25)", "Вид: String(10)"],
-        "tabularSections": { "Штрихкоды": ["Штрихкод: String(50)"] }
+        "attributes": [
+          "Артикул: String(25)",
+          "Вид: String(10)",
+          "Цена: Number(15,2)"
+        ],
+        "tabularSections": {
+          "Штрихкоды": [
+            "Штрихкод: String(50)"
+          ]
+        }
       },
-      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
     }
   ],
-  "params": { "objectPath": "Catalogs/Номенклатура" },
+  "params": {
+    "objectPath": "Catalogs/Номенклатура"
+  },
   "input": {
     "modify": {
       "attributes": {
-        "Артикул": { "quickChoice": true, "use": "ForFolderAndItem" },
-        "Вид": { "quickChoice": "auto" }
+        "Артикул": {
+          "quickChoice": true,
+          "use": "ForFolderAndItem"
+        },
+        "Вид": {
+          "quickChoice": "auto"
+        },
+        "Цена": {
+          "quickChoice": false
+        }
       },
       "tabularSections": {
-        "Штрихкоды": { "use": "ForFolder" }
+        "Штрихкоды": {
+          "use": "ForFolder"
+        }
       }
     }
+  },
+  "expect": {
+    "fileContains": [
+      {
+        "file": "Catalogs/Номенклатура.xml",
+        "text": [
+          "<QuickChoice>DontUse</QuickChoice>",
+          "<QuickChoice>Use</QuickChoice>",
+          "<Use>ForFolderAndItem</Use>",
+          "<Use>ForFolder</Use>"
+        ]
+      }
+    ]
   }
 }

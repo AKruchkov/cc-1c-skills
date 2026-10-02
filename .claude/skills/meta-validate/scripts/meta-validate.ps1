@@ -1,4 +1,4 @@
-﻿# meta-validate v1.35 — Validate 1C metadata object structure
+﻿# meta-validate v1.36 — Validate 1C metadata object structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -379,6 +379,8 @@ $validPropertyValues = @{
 	"FillChecking"                   = @("DontCheck","ShowError")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 	"DataHistory"                    = @("Use","DontUse")
+	"CreateOnInput"                  = @("Auto","Use","DontUse")
+	"ChoiceHistoryOnInput"           = @("Auto","DontUse")
 	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod","OnRegistrationPeriod")
 	# Значения — по XSD платформы; не встреченные в выгрузках БП/УНФ/ERP подтверждены загрузкой и
 	# выгрузкой на 8.3.24 и 8.5.1. Имя с разным смыслом у разных владельцев — только ключом «Контекст.Свойство».
@@ -633,6 +635,7 @@ $check4 = {
 		# Значения у реквизитов, измерений, ресурсов и табличных частей: QuickChoice здесь — перечисление
 		# (в корне справочника — булево), Use у реквизита и ТЧ — для групп/элементов. Ключи «Attribute.*»,
 		# «TabularSection.*»; иначе — общий ключ свойства.
+		$childCommon4 = @('CreateOnInput', 'FullTextSearch', 'DataHistory', 'ChoiceHistoryOnInput')
 		$coNode4 = $typeNode.SelectSingleNode("md:ChildObjects", $ns)
 		$items4 = New-Object System.Collections.ArrayList
 		if ($coNode4) {
@@ -648,7 +651,7 @@ $check4 = {
 			$itProps = $it.SelectSingleNode("md:Properties", $ns)
 			if (-not $itProps) { continue }
 			$ctx = if ($it.LocalName -eq 'TabularSection') { 'TabularSection' } else { 'Attribute' }
-			$names = if ($ctx -eq 'TabularSection') { @('Use') } elseif ($it.LocalName -eq 'Attribute') { @('QuickChoice', 'ChoiceFoldersAndItems', 'Use') } else { @('QuickChoice', 'ChoiceFoldersAndItems') }
+			$names = if ($ctx -eq 'TabularSection') { @('Use') } elseif ($it.LocalName -eq 'Attribute') { @('QuickChoice', 'ChoiceFoldersAndItems', 'Use') + $childCommon4 } else { @('QuickChoice', 'ChoiceFoldersAndItems') + $childCommon4 }
 			$itName = $itProps.SelectSingleNode("md:Name", $ns)
 			foreach ($pn in $names) {
 				$pnode = $itProps.SelectSingleNode("md:$pn", $ns)
@@ -675,8 +678,9 @@ $check4 = {
 
 		# Корневой <Type> (дескриптор типа значения — Константа, ПВХ) должен быть структурным:
 		# <v8:Type>/<v8:TypeSet>, а не скалярный текст. Скаляр = повреждённый тип (напр. после
-		# старого meta-edit modify-property Type). См. issue #42.
-		$rootTypeEl = $propsNode.SelectSingleNode("md:Type", $ns)
+		# старого meta-edit modify-property Type). См. issue #42. У элемента стиля <Type> — вид элемента
+		# (Color/Font/Border), скаляр там штатный.
+		$rootTypeEl = if ($mdType -ne 'StyleItem') { $propsNode.SelectSingleNode("md:Type", $ns) } else { $null }
 		if ($rootTypeEl) {
 			$v8Types = $rootTypeEl.SelectNodes("v8:Type", $ns)
 			$v8TypeSets = $rootTypeEl.SelectNodes("v8:TypeSet", $ns)
