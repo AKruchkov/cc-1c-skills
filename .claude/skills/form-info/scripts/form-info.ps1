@@ -1,4 +1,4 @@
-﻿# form-info v1.8 — Analyze 1C managed form structure
+﻿# form-info v1.9 — Analyze 1C managed form structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -737,6 +737,8 @@ if ($lines.Count -gt $Limit) {
 	$remaining = $totalLines - $Offset - $Limit
 	Write-Host ""
 	Write-Host "[TRUNCATED] Shown $Limit of $totalLines lines. Use -Offset $($Offset + $Limit) to continue."
+	# Подсказка про свёрнутые секции стоит в конце вывода — при обрезке повторяем её здесь
+	if ($script:hasCollapsed) { Write-Host "Hint: use -Expand <name> to expand a collapsed section, -Expand * for all" }
 } else {
 	foreach ($l in $lines) { Write-Host $l }
 }

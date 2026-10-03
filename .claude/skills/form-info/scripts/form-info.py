@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-info v1.8 — Analyze 1C managed form structure
+# form-info v1.9 — Analyze 1C managed form structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -787,6 +787,9 @@ def main():
         remaining = total_lines - offset - limit
         print("")
         print(f"[TRUNCATED] Shown {limit} of {total_lines} lines. Use -Offset {offset + limit} to continue.")
+        # Подсказка про свёрнутые секции стоит в конце вывода — при обрезке повторяем её здесь
+        if tree_state["has_collapsed"]:
+            print("Hint: use -Expand <name> to expand a collapsed section, -Expand * for all")
     else:
         for l in lines:
             print(l)

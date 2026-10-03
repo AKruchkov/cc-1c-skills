@@ -1,0 +1,18 @@
+{
+  "name": "Вывод обрезан по Limit — подсказка про -Expand всё равно видна",
+  "setup": "external:C:/WS/tasks/cfsrc/erp_8.3.24",
+  "params": {
+    "formPath": "Documents/ЗаказКлиента/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "args_extra": [
+    "-Limit",
+    "40"
+  ],
+  "noSnapshot": "read-only навык на внешней выгрузке — проверяется stdout",
+  "expect": {
+    "stdoutContains": [
+      "[TRUNCATED]",
+      "Hint: use -Expand"
+    ]
+  }
+}
