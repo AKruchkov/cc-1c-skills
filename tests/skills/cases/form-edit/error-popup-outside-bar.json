@@ -1,0 +1,19 @@
+{
+  "name": "Подменю вне командной панели → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "popup": "Подменю",
+        "into": "ГруппаШапка"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "(Popup) лежит только в командной панели"
+  }
+}

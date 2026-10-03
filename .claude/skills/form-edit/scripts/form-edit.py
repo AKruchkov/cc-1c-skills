@@ -1623,6 +1623,9 @@ def assert_placement(nt, name, node, container, ctx):
         fail(f"{ctx}: в группе страниц '{cl}' лежат только страницы (Page), а '{name}' — {nt}")
     if ct in BAR_TAGS and nt not in BAR_ITEM_TAGS:
         fail(f"{ctx}: в командной панели '{cl}' лежат только кнопки, группы кнопок и подменю, а '{name}' — {nt}")
+    # Группа кнопок и подменю — только внутри командной панели, меню, подменю или группы кнопок (по корпусу)
+    if nt in ('ButtonGroup', 'Popup') and ct not in BAR_TAGS:
+        fail(f"{ctx}: '{name}' ({nt}) лежит только в командной панели, контекстном меню, подменю или группе кнопок, а '{cl}' — {ct}")
     if nt == 'ColumnGroup' and get_nearest_table(container, True) is None:
         fail(f"{ctx}: группа колонок '{name}' может лежать только внутри таблицы")
     # Колонки таблицы — только поля и группы колонок (по корпусу других типов там нет);
@@ -1951,6 +1954,9 @@ def add_element_events(node, on, handlers, ctx):
                 handler = str(handlers.get(evt_name))
             else:
                 handler = get_handler_name(name, evt_name)
+        # Заимствованный элемент в расширении: событие без callType платформа читает как Before и так и пишет
+        if not call_type and is_extension and test_borrowed(name, 'element'):
+            call_type = 'Before'
         if allowed and evt_name not in allowed:
             print(f"[WARN] Unknown event '{evt_name}' for {dsl} '{name}'. Known: {', '.join(allowed)}")
         ct_str = f"[{call_type}]" if call_type else ""

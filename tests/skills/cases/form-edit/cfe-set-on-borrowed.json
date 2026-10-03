@@ -1,0 +1,24 @@
+{
+  "name": "Extension-форма: обработчик на заимствованный элемент без callType пишется как Before (как у платформы)",
+  "setup": "fixture:move-cfe",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Приоритет",
+        "on": [
+          "OnChange"
+        ],
+        "handlers": {
+          "OnChange": "Перенос_ПриоритетПриИзменении"
+        }
+      }
+    ]
+  },
+  "expect": {
+    "stdoutContains": "OnChange[Before]"
+  },
+  "skipPlatformVerify": "фикстура — расширение без базовой конфигурации; то же событие без callType загружено на стенде — платформа записала callType=\"Before\""
+}

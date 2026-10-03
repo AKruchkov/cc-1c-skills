@@ -1,0 +1,35 @@
+{
+  "name": "Правка формы без BOM: BOM не добавляется (стиль файла сохраняется)",
+  "setup": "none",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "Form.xml",
+        "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Form xmlns=\"http://v8.1c.ru/8.3/xcf/logform\" xmlns:v8=\"http://v8.1c.ru/8.1/data/core\" version=\"2.17\">\n\t<AutoTitle>false</AutoTitle>\n\t<Attributes>\n\t\t<Attribute name=\"Объект\" id=\"1\">\n\t\t\t<Type/>\n\t\t</Attribute>\n\t</Attributes>\n</Form>\n"
+      }
+    }
+  ],
+  "params": {
+    "formPath": "Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "input": "А",
+        "path": "Объект.А"
+      }
+    ]
+  },
+  "noSnapshot": "проверяются сырые байты (BOM/EOL) через preserves; форма вне конфигурации — грузить в платформу нечего",
+  "expect": {
+    "preserves": {
+      "file": "Form.xml",
+      "bom": false,
+      "eol": "lf"
+    },
+    "fileContains": {
+      "file": "Form.xml",
+      "text": "name=\"А\""
+    }
+  }
+}

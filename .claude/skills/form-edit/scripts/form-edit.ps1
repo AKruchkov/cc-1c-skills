@@ -1338,6 +1338,8 @@ function Assert-Placement([string]$nt, [string]$name, $node, $container, [string
 	if ($nt -eq 'Page' -and $ct -ne 'Pages') { Fail "${ctx}: страница '$name' может лежать только в группе страниц (Pages), а '$cl' — $ct" }
 	if ($ct -eq 'Pages' -and $nt -ne 'Page') { Fail "${ctx}: в группе страниц '$cl' лежат только страницы (Page), а '$name' — $nt" }
 	if ($script:barTags -contains $ct -and $script:barItemTags -notcontains $nt) { Fail "${ctx}: в командной панели '$cl' лежат только кнопки, группы кнопок и подменю, а '$name' — $nt" }
+	# Группа кнопок и подменю — только внутри командной панели, меню, подменю или группы кнопок (по корпусу)
+	if (@('ButtonGroup','Popup') -contains $nt -and $script:barTags -notcontains $ct) { Fail "${ctx}: '$name' ($nt) лежит только в командной панели, контекстном меню, подменю или группе кнопок, а '$cl' — $ct" }
 	if ($nt -eq 'ColumnGroup' -and $null -eq (Get-NearestTable $container $true)) { Fail "${ctx}: группа колонок '$name' может лежать только внутри таблицы" }
 	# Колонки таблицы — только поля и группы колонок (по корпусу других типов там нет);
 	# командная панель и контекстное меню таблицы — свои правила выше.
@@ -1628,6 +1630,8 @@ function Add-ElementEvents($node, $on, $handlers, [string]$ctx) {
 			$evtName = "$($evt.event)"; $callType = if ($evt.callType) { "$($evt.callType)" } else { "" }
 			$handler = if ($evt.handler) { "$($evt.handler)" } elseif ($handlers -and $handlers.$evtName) { "$($handlers.$evtName)" } else { Get-HandlerName -elementName $name -eventName $evtName }
 		}
+		# Заимствованный элемент в расширении: событие без callType платформа читает как Before и так и пишет
+		if (-not $callType -and $script:isExtension -and (Test-Borrowed $name 'element')) { $callType = 'Before' }
 		if ($allowed.Count -gt 0 -and $allowed -notcontains $evtName) {
 			Write-Host "[WARN] Unknown event '$evtName' for $dsl '$name'. Known: $($allowed -join ', ')"
 		}
@@ -2552,7 +2556,14 @@ $content = $content -replace '^<\?xml version="1.0" encoding="utf-8"\?>', '<?xml
 # поэтому они идут первыми ветками альтернации и возвращаются как есть.
 $content = [regex]::Replace($content, '(?s)<!\[CDATA\[.*?\]\]>|<!--.*?-->|(?<=\S) />', { param($m) if ($m.Value -eq ' />') { '/>' } else { $m.Value } })
 
-$enc = New-Object System.Text.UTF8Encoding($true)
+# BOM — как у файла-назначения: правка не меняет того, о чём не просили (#44/#46/#47).
+# Выгрузка платформы всегда с BOM; без BOM — только файл, созданный не платформой.
+$targetBom = $true
+if (Test-Path -LiteralPath $resolvedFormPath) {
+	$head = [System.IO.File]::ReadAllBytes($resolvedFormPath)
+	$targetBom = ($head.Length -ge 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF)
+}
+$enc = New-Object System.Text.UTF8Encoding($targetBom)
 # Целевой перевод строки: стиль файла-назначения — правка наследует его (#44/#46/#47),
 # новый файл получает канон выгрузки CRLF. Зеркало _detect_xml_style в py-порту.
 $targetEol = if ((Test-Path -LiteralPath $resolvedFormPath) -and ([System.IO.File]::ReadAllText($resolvedFormPath) -notmatch "`r`n")) { "`n" } else { "`r`n" }
