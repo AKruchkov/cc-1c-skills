@@ -1,4 +1,4 @@
-﻿# form-edit v1.19 — Edit 1C managed form elements
+﻿# form-edit v1.20 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -273,11 +273,16 @@ if ($rootCI) {
 		}
 	}
 }
+# Командная панель формы: сама (id=-1) и её кнопки — из того же пула, что и элементы
 $acb = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr)
 if ($acb) {
-	$id = $acb.GetAttribute("id")
-	if ($id -and $id -ne "-1") {
-		try { $intId = [int]$id; if ($intId -gt $script:nextElemId) { $script:nextElemId = $intId } } catch {}
+	$acbIds = New-Object System.Collections.ArrayList
+	[void]$acbIds.Add($acb.GetAttribute("id"))
+	foreach ($elem in $acb.SelectNodes(".//*[@id]")) { [void]$acbIds.Add($elem.GetAttribute("id")) }
+	foreach ($id in $acbIds) {
+		if ($id -and $id -ne "-1") {
+			try { $intId = [int]$id; if ($intId -gt $script:nextElemId) { $script:nextElemId = $intId } } catch {}
+		}
 	}
 }
 
@@ -929,6 +934,7 @@ function Emit-Element {
 		"commandBarLocation"=1;"searchStringLocation"=1;"pagesRepresentation"=1
 		"type"=1;"command"=1;"stdCommand"=1;"defaultButton"=1;"locationInCommandBar"=1
 		"src"=1;"autofill"=1
+		"into"=1;"after"=1;"before"=1;"first"=1
 	}
 	foreach ($p in $el.PSObject.Properties) {
 		if (-not $knownKeys.ContainsKey($p.Name)) {
@@ -1057,65 +1063,695 @@ function Import-ElementNodes($fragDoc) {
 	return $nodes
 }
 
-# === 10. Add elements ===
+# === 9b. Канонический порядок дочерних тегов элемента ===
+# В каком порядке платформа пишет свойства и вложенные узлы элемента формы. Построено по корпусу
+# выгрузок (БП и ERP, 8.3.24, 17036 форм): для каждого типа элемента — граф «тег A раньше тега B»,
+# противоречий нет. По нему новое свойство (set), новый ChildItems или Events встают туда, где их
+# пишет платформа, — иначе первая же выгрузка из базы переставит их обратно.
+$script:childTagOrder = @{
+	'AutoCommandBar' = 'HorizontalAlign Autofill ChildItems'
+	'Button' = 'Type Visible TitleHeight UserVisible Representation DefaultButton SkipOnInput Enabled DefaultItem Width AutoMaxWidth MaxWidth Height AutoMaxHeight HorizontalStretch MaxHeight VerticalStretch GroupHorizontalAlign Check GroupVerticalAlign CommandName Parameter DataPath TextColor BackColor BorderColor Font Picture Title Shape ToolTipRepresentation RepresentationInContextMenu ShapeRepresentation PictureLocation LocationInCommandBar CommandUniqueness ExtendedTooltip'
+	'ButtonGroup' = 'EnableContentChange Visible Title GroupVerticalAlign ToolTip HorizontalStretch GroupHorizontalAlign ToolTipRepresentation CommandSource Representation VerticalStretch ExtendedTooltip ChildItems'
+	'CalendarField' = 'DataPath SkipOnInput Title TitleLocation ToolTip ToolTipRepresentation Width AutoMaxWidth Height HorizontalStretch SelectionMode ShowCurrentDate ShowMonthsPanel WidthInMonths HeightInMonths ContextMenu ExtendedTooltip Events'
+	'ChartField' = 'DataPath Enabled Title TitleFont Visible TitleLocation GroupHorizontalAlign Width AutoMaxWidth MaxHeight MaxWidth Height AutoMaxHeight HorizontalStretch VerticalStretch ContextMenu ExtendedTooltip Events'
+	'CheckBoxField' = 'DataPath Visible Enabled UserVisible DefaultItem ReadOnly SkipOnInput Title TitleTextColor TitleFont TitleLocation TitleHeight ToolTip FooterHorizontalAlign HorizontalAlign ToolTipRepresentation Shortcut GroupHorizontalAlign VerticalAlign GroupVerticalAlign WarningOnEditRepresentation WarningOnEdit EditMode AutoCellHeight CellHyperlink FixingInTable ShowInHeader FooterDataPath HeaderPicture HeaderHorizontalAlign ShowInFooter CheckBoxType EditFormat ItemHeight ItemTitleHeight ItemWidth EqualItemsWidth ThreeState ContextMenu ExtendedTooltip Events'
+	'ColumnGroup' = 'Visible Enabled ReadOnly UserVisible EnableContentChange Title GroupVerticalAlign TitleFont TitleTextColor ToolTip ToolTipRepresentation Width Height HorizontalStretch GroupHorizontalAlign VerticalStretch Group ShowTitle ShowInHeader HeaderDataPath HeaderHorizontalAlign HeaderFormat HeaderPicture FixingInTable ExtendedTooltip ChildItems'
+	'CommandBar' = 'Enabled Visible EnableContentChange Title ToolTip ToolTipRepresentation Width Height HorizontalStretch VerticalStretch GroupHorizontalAlign GroupVerticalAlign HorizontalLocation CommandSource ExtendedTooltip ChildItems'
+	'FormattedDocumentField' = 'DataPath DefaultItem Enabled ReadOnly SkipOnInput Title TitleLocation CommandSet Font ToolTip EditMode Width AutoMaxWidth Height AutoMaxHeight BorderColor HorizontalStretch MaxWidth ContextMenu ExtendedTooltip Events'
+	'GanttChartField' = 'DataPath DefaultItem TitleLocation Width Height HorizontalStretch VerticalStretch ContextMenu ExtendedTooltip Table Events'
+	'GraphicalSchemaField' = 'DataPath DefaultItem ReadOnly Title TitleLocation WarningOnEditRepresentation Width Height Edit ContextMenu ExtendedTooltip Events'
+	'HTMLDocumentField' = 'DataPath DefaultItem Enabled ReadOnly SkipOnInput Title TitleTextColor TitleFont TitleLocation ToolTipRepresentation Visible WarningOnEditRepresentation Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch Output BorderColor ContextMenu ExtendedTooltip Events'
+	'InputField' = 'DataPath Visible UserVisible DefaultItem Enabled ReadOnly SkipOnInput Title TitleBackColor TitleTextColor TitleFont TitleLocation TitleHeight ToolTip ToolTipRepresentation WarningOnEditRepresentation WarningOnEdit Shortcut HorizontalAlign VerticalAlign GroupHorizontalAlign GroupVerticalAlign EditMode CellHyperlink FixingInTable AutoCellHeight ShowInHeader HeaderHorizontalAlign HeaderPicture ShowInFooter FooterDataPath FooterText FooterTextColor FooterFont FooterHorizontalAlign FooterPicture Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch AllowInputEmptyMultipleValues MultipleValuesFont MultipleValuesTextColor MultipleValuesBackColor VerticalStretch Wrap MarkNegatives PasswordMode MultiLine ExtendedEdit DropListButton ChoiceButton ChoiceButtonRepresentation ClearButton SpinButton OpenButton CreateButton Mask ListChoiceMode ExtendedEditMultipleValues AutoChoiceIncomplete Format MultipleValuePictureShape QuickChoice ChoiceFoldersAndItems EditFormat AutoMarkIncomplete ChooseType AutoShowOpenButtonMode IncompleteChoiceMode ShowCheckBoxesInDropList MultipleValueDataPath MultipleValuePictureDataPath MultipleValuePresentDataPath SpellCheckingOnTextInput TypeDomainEnabled TextEdit AvailableTypes ChoiceForm ChoiceParameterLinks ChoiceParameters EditTextUpdate MinValue ChoiceButtonPicture MaxValue ChoiceList AutoCorrectionOnTextInput AutoShowClearButtonMode ChoiceListButton ChoiceListHeight DropListWidth TextColor BackColor BorderColor Font HeightControlVariant SpecialTextInputMode InputHint ChoiceHistoryOnInput TypeLink ContextMenu ExtendedTooltip Events'
+	'LabelDecoration' = 'UserVisible Visible Enabled Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch SkipOnInput TextColor Font Shortcut Title ToolTip ToolTipRepresentation GroupHorizontalAlign GroupVerticalAlign Hyperlink HorizontalAlign VerticalAlign BackColor BorderColor Border TitleHeight ContextMenu ExtendedTooltip Events'
+	'LabelField' = 'DataPath Visible Enabled UserVisible DefaultItem ReadOnly SkipOnInput Title TitleTextColor TitleFont TitleLocation TitleHeight ToolTip ToolTipRepresentation HorizontalAlign VerticalAlign GroupHorizontalAlign GroupVerticalAlign WarningOnEditRepresentation WarningOnEdit EditMode FixingInTable CellHyperlink AutoCellHeight FooterText ShowInHeader HeaderHorizontalAlign FooterDataPath HeaderPicture ShowInFooter FooterHorizontalAlign Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch MarkNegatives VerticalStretch Format Border BorderColor Hiperlink PasswordMode TextColor BackColor Font ContextMenu ExtendedTooltip Events'
+	'Page' = 'Visible Enabled ReadOnly EnableContentChange UserVisible Title GroupVerticalAlign Shortcut TitleTextColor TitleFont ToolTip ToolTipRepresentation Width Height HorizontalStretch VerticalStretch ChildrenAlign Picture Format Group ChildItemsWidth HorizontalSpacing VerticalSpacing HorizontalAlign VerticalAlign ShowTitle BackColor TitleDataPath ScrollOnCompress ExtendedTooltip ChildItems'
+	'Pages' = 'Enabled ReadOnly EnableContentChange UserVisible Visible Title TitleFont ToolTip ToolTipRepresentation Width Height HorizontalStretch VerticalStretch GroupHorizontalAlign GroupVerticalAlign PagesRepresentation CurrentRowUse ExtendedTooltip Events ChildItems'
+	'PeriodField' = 'DataPath TitleLocation ContextMenu ExtendedTooltip'
+	'PictureDecoration' = 'Enabled Visible Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch SkipOnInput TextColor Font Title ToolTip ToolTipRepresentation GroupHorizontalAlign GroupVerticalAlign Hyperlink PictureSize Zoomable ImageScale NonselectedPictureText EnableStartDrag EnableDrag Picture BorderColor Border FileDragMode ContextMenu ExtendedTooltip Events'
+	'PictureField' = 'DataPath TitleBackColor UserVisible Visible Enabled ReadOnly SkipOnInput Title TitleTextColor TitleLocation TitleHeight ToolTip GroupHorizontalAlign GroupVerticalAlign Shortcut ToolTipRepresentation HorizontalAlign WarningOnEditRepresentation EditMode AutoCellHeight FixingInTable CellHyperlink ShowInHeader FooterDataPath HeaderPicture FooterText HeaderHorizontalAlign ShowInFooter FooterHorizontalAlign Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch PictureSize Zoomable Hyperlink NonselectedPictureText EnableDrag TextColor ValuesPicture BorderColor Border Font FileDragMode ContextMenu ExtendedTooltip Events'
+	'PlannerField' = 'DataPath TitleLocation ContextMenu ExtendedTooltip Events'
+	'Popup' = 'UserVisible Visible EnableContentChange Title Shape TitleTextColor TitleFont ToolTip ToolTipRepresentation VerticalStretch Width HorizontalStretch Picture CommandSource Representation BackColor ShapeRepresentation BorderColor ExtendedTooltip ChildItems'
+	'ProgressBarField' = 'DataPath Title Visible ReadOnly TitleLocation ToolTip ToolTipRepresentation Width AutoMaxHeight AutoMaxWidth HorizontalStretch MaxValue ShowPercent ContextMenu ExtendedTooltip'
+	'RadioButtonField' = 'DataPath DefaultItem Enabled SkipOnInput UserVisible Visible ReadOnly Title TitleTextColor TitleFont TitleLocation FooterHorizontalAlign TitleHeight ToolTip ToolTipRepresentation EditMode GroupHorizontalAlign Shortcut VerticalAlign GroupVerticalAlign WarningOnEditRepresentation WarningOnEdit RadioButtonType ItemHeight ItemTitleHeight ItemWidth ColumnsCount EqualColumnsWidth ChoiceList Font TextColor ContextMenu ExtendedTooltip Events'
+	'SpreadSheetDocumentField' = 'DataPath Enabled ReadOnly SkipOnInput UserVisible Visible DefaultItem Title TitleLocation DrawingSelectionShowMode FooterHorizontalAlign GroupHorizontalAlign ToolTip ToolTipRepresentation CommandSet Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch ShowGrid ShowHeaders VerticalScrollBar HorizontalScrollBar Protection SelectionShowMode Edit Output PointerType ShowGroups EnableStartDrag EnableDrag BorderColor ShowCellNames ShowRowAndColumnNames ViewScalingMode ContextMenu ExtendedTooltip Events'
+	'Table' = 'Representation Visible UserVisible TitleLocation CommandBarLocation Autofill Enabled TitleHeight ReadOnly SkipOnInput DefaultItem ChangeRowSet ChangeRowOrder Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HeightInTableRows HeightControlVariant AutoMaxRowsCount MaxRowsCount ChoiceMode MultipleChoice RowInputMode SelectionMode RowSelectionMode Header FooterHeight HeaderHeight Footer HorizontalScrollBar VerticalScrollBar HorizontalLines VerticalLines UseAlternationRowColor AutoInsertNewRow AutoAddIncomplete AutoMarkIncomplete SearchOnInput InitialListView InitialTreeView HorizontalStretch Output VerticalStretch EnableStartDrag EnableDrag FileDragMode DataPath Font RowPictureDataPath RowsPicture BackColor BorderColor TextColor Title BehaviorOnHorizontalCompression GroupVerticalAlign Shortcut TitleTextColor TitleFont CommandSet ToolTip ToolTipRepresentation SearchStringLocation ViewStatusLocation SearchControlLocation GroupHorizontalAlign CurrentRowUse RefreshRequest AutoRefresh AutoRefreshPeriod Period ChoiceFoldersAndItems RestoreCurrentRow RowFilter TopLevelParent ShowRoot AllowRootChoice UpdateOnDataChange UserSettingsGroup AllowGettingCurrentRowURL ViewMode SettingsNamedItemDetailedRepresentation ContextMenu AutoCommandBar ExtendedTooltip SearchStringAddition ViewStatusAddition SearchControlAddition Events ChildItems'
+	'TextDocumentField' = 'DataPath DefaultItem ReadOnly Title TitleFont TitleLocation EditMode ToolTip Width AutoMaxWidth Font MaxWidth Height AutoMaxHeight ContextMenu ExtendedTooltip Events'
+	'TrackBarField' = 'DataPath Title TitleLocation HorizontalAlign ToolTip ToolTipRepresentation Width AutoMaxWidth HorizontalStretch MaxWidth Height AutoMaxHeight MinValue MarkingAppearance MaxValue LargeStep Step MarkingStep ContextMenu ExtendedTooltip Events'
+	'UsualGroup' = 'UserVisible Visible Enabled ReadOnly EnableContentChange Title TitleTextColor TitleFont ToolTip ToolTipRepresentation Shortcut Width Height HorizontalStretch VerticalStretch GroupHorizontalAlign GroupVerticalAlign Group ChildrenAlign HorizontalSpacing VerticalSpacing HorizontalAlign VerticalAlign Behavior CollapsedRepresentationTitle Collapsed ControlRepresentation Representation CurrentRowUse Format ShowLeftMargin United ChildItemsWidth ShowTitle BackColor ThroughAlign TitleDataPath ExtendedTooltip ChildItems'
+}
+$script:childRank = @{}
+foreach ($t in $script:childTagOrder.Keys) {
+	$idx = @{}; $i = 0
+	foreach ($c in ($script:childTagOrder[$t] -split ' ')) { $idx[$c] = $i; $i++ }
+	$script:childRank[$t] = $idx
+}
 
-$addedElems = @()
+function Get-ChildRank([string]$parentTag, [string]$childTag) {
+	$idx = $script:childRank[$parentTag]
+	if ($idx -and $idx.ContainsKey($childTag)) { return $idx[$childTag] }
+	return -1
+}
+
+# === 9c. Помощники операций над деревом элементов ===
+
+function Fail([string]$msg) {
+	Write-Host "[ERROR] $msg"
+	exit 1
+}
+
+function Same($a, $b) { return [object]::ReferenceEquals($a, $b) }
+
+function Test-IsWs($n) {
+	return ($null -ne $n -and ($n.NodeType -eq 'Whitespace' -or $n.NodeType -eq 'SignificantWhitespace'))
+}
+
+function Get-NextElementSibling($n) {
+	$s = $n.NextSibling
+	while ($null -ne $s -and $s.NodeType -ne 'Element') { $s = $s.NextSibling }
+	return $s
+}
+
+function Get-FirstElementChild($n) {
+	foreach ($c in $n.ChildNodes) { if ($c.NodeType -eq 'Element') { return $c } }
+	return $null
+}
+
+function Get-ContainerLabel($c) {
+	if (Same $c $root) { return "корень формы" }
+	return $c.GetAttribute("name")
+}
+
+# Вставка узла в контейнер: перед $ref или в конец. Перевод строки с отступом идёт перед каждым
+# дочерним узлом, у пустого контейнера — ещё и закрывающий с отступом родителя.
+function Insert-NodeAt($container, $node, $ref, [string]$indent) {
+	if ($null -ne $ref) {
+		$container.InsertBefore($node, $ref) | Out-Null
+		$container.InsertBefore($xmlDoc.CreateWhitespace("`r`n$indent"), $ref) | Out-Null
+		return
+	}
+	$trailing = $container.LastChild
+	if (Test-IsWs $trailing) {
+		$container.InsertBefore($xmlDoc.CreateWhitespace("`r`n$indent"), $trailing) | Out-Null
+		$container.InsertBefore($node, $trailing) | Out-Null
+	} else {
+		$container.AppendChild($xmlDoc.CreateWhitespace("`r`n$indent")) | Out-Null
+		$container.AppendChild($node) | Out-Null
+		$parentIndent = if ($indent.Length -gt 0) { $indent.Substring(0, $indent.Length - 1) } else { "" }
+		$container.AppendChild($xmlDoc.CreateWhitespace("`r`n$parentIndent")) | Out-Null
+	}
+}
+
+# Дочерний узел элемента — на его каноническое место (см. 9b). Неизвестный тег — в конец.
+function Insert-ChildCanonical($parent, $child) {
+	$rank = Get-ChildRank $parent.LocalName $child.LocalName
+	$ref = $null
+	if ($rank -ge 0) {
+		foreach ($c in $parent.ChildNodes) {
+			if ($c.NodeType -ne 'Element') { continue }
+			if ((Get-ChildRank $parent.LocalName $c.LocalName) -gt $rank) { $ref = $c; break }
+		}
+	}
+	Insert-NodeAt $parent $child $ref (Get-ChildIndent $parent)
+}
+
+# Узел вместе с переводом строки перед ним.
+function Remove-NodeWithWs($node) {
+	$parent = $node.ParentNode
+	$prev = $node.PreviousSibling
+	if (Test-IsWs $prev) { $parent.RemoveChild($prev) | Out-Null }
+	$parent.RemoveChild($node) | Out-Null
+}
+
+# Пустой ChildItems платформа не пишет никогда: у группы без элементов тега просто нет.
+function Remove-IfEmptyChildItems($ci) {
+	if (Same $ci $script:rootCI) { return }
+	if ($null -ne (Get-FirstElementChild $ci)) { return }
+	Remove-NodeWithWs $ci
+}
+
+$script:rootAfterChildItems = @('Attributes','Parameters','Commands','CommandInterface','ConditionalAppearance','BaseForm')
+
+function Get-OrCreateChildItems($container) {
+	$ci = $container.SelectSingleNode("f:ChildItems", $nsMgr)
+	if ($null -ne $ci) { return $ci }
+	$ci = $xmlDoc.CreateElement("ChildItems", $formNs)
+	if (Same $container $root) {
+		# ChildItems формы — после Events или AutoCommandBar, иначе перед первой из следующих секций
+		$insertAfter = $root.SelectSingleNode("f:Events", $nsMgr)
+		if ($null -eq $insertAfter) { $insertAfter = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr) }
+		$ref = $null
+		if ($null -ne $insertAfter) {
+			$ref = Get-NextElementSibling $insertAfter
+		} else {
+			foreach ($c in $root.ChildNodes) {
+				if ($c.NodeType -eq 'Element' -and $script:rootAfterChildItems -contains $c.LocalName) { $ref = $c; break }
+			}
+		}
+		Insert-NodeAt $root $ci $ref "`t"
+		$script:rootCI = $ci
+	} else {
+		Insert-ChildCanonical $container $ci
+	}
+	return $ci
+}
+
+function Get-NodeIndent($node) {
+	$prev = $node.PreviousSibling
+	if ((Test-IsWs $prev) -and $prev.Value -match '\n(\t*)$') { return $Matches[1] }
+	return ""
+}
+
+# Сдвиг отступов поддерева при смене глубины: каждый перевод строки внутри узла начинается с отступа
+# старого места — меняем этот префикс на новый.
+function Set-SubtreeIndent($node, [string]$oldIndent, [string]$newIndent) {
+	if ($oldIndent -eq $newIndent) { return }
+	foreach ($c in $node.ChildNodes) {
+		if (Test-IsWs $c) {
+			if ($c.Value -match '^(\r?\n)(\t*)$' -and $Matches[2].StartsWith($oldIndent)) {
+				$c.Value = $Matches[1] + $newIndent + $Matches[2].Substring($oldIndent.Length)
+			}
+		} elseif ($c.NodeType -eq 'Element') {
+			Set-SubtreeIndent $c $oldIndent $newIndent
+		}
+	}
+}
+
+# Элемент формы по имени: дерево ChildItems и командная панель формы (с кнопками). BaseForm,
+# реквизиты и команды не просматриваются. Имена в 1С регистронезависимы.
+function Find-FormElement([string]$name) {
+	$scopes = @()
+	if ($null -ne $script:rootCI) { $scopes += $script:rootCI }
+	$acb = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr)
+	if ($null -ne $acb) {
+		if ($acb.GetAttribute("name") -eq $name) { return $acb }
+		$scopes += $acb
+	}
+	# Элементы — узлы ChildItems и служебные узлы элемента (для внятного отказа); <Event name=…> и
+	# прочие именованные свойства — не элементы.
+	foreach ($s in $scopes) {
+		foreach ($n in $s.SelectNodes(".//*[@name]")) {
+			if ($n.NamespaceURI -ne $formNs -or $n.GetAttribute("name") -ne $name) { continue }
+			if ($n.ParentNode.LocalName -eq 'ChildItems' -or $script:companionTags -contains $n.LocalName) { return $n }
+		}
+	}
+	return $null
+}
+
+function Get-NearestTable($node, [bool]$inclusive) {
+	$cur = if ($inclusive) { $node } else { $node.ParentNode }
+	while ($null -ne $cur -and $cur.NodeType -eq 'Element') {
+		if ($cur.LocalName -eq 'Table') { return $cur }
+		$cur = $cur.ParentNode
+	}
+	return $null
+}
+
+function Test-IsInside($node, $anc) {
+	$cur = $node
+	while ($null -ne $cur -and $cur.NodeType -eq 'Element') {
+		if (Same $cur $anc) { return $true }
+		$cur = $cur.ParentNode
+	}
+	return $false
+}
+
+# Позиция операции: контейнер + узел, перед которым вставлять ($null — в конец).
+# after/before — контейнер якоря; into — в конец (first — в начало); first без into — начало формы.
+function Resolve-Position($op, [string]$ctx, [bool]$required) {
+	$after = $op.after; $before = $op.before; $into = $op.into
+	if ($null -ne $op.PSObject.Properties['first'] -and -not ($op.first -is [bool])) { Fail "${ctx}: first — true или false" }
+	$first = ($op.first -is [bool] -and $op.first)
+	if ($after -and $before) { Fail "${ctx}: укажи что-то одно — after или before" }
+	$anchorName = if ($after) { "$after" } elseif ($before) { "$before" } else { $null }
+	if ($first -and $anchorName) { Fail "${ctx}: first — это начало контейнера, вместе с after/before не задаётся" }
+	$intoEl = $null
+	if ($into) {
+		$intoEl = Find-FormElement "$into"
+		if ($null -eq $intoEl) { Fail "${ctx}: контейнер '$into' не найден в форме" }
+	}
+	if ($anchorName) {
+		$anchor = Find-FormElement $anchorName
+		if ($null -eq $anchor) { Fail "${ctx}: элемент '$anchorName' не найден в форме" }
+		$ci = $anchor.ParentNode
+		if ($ci.LocalName -ne 'ChildItems') { Fail "${ctx}: '$anchorName' — служебный узел ($($anchor.LocalName)), рядом с ним ставить нельзя" }
+		$container = $ci.ParentNode
+		if ($null -ne $intoEl -and -not (Same $intoEl $container)) {
+			Fail "${ctx}: '$anchorName' лежит в '$(Get-ContainerLabel $container)', а не в '$into'"
+		}
+		if ($after) {
+			return @{ Container = $container; Ref = (Get-NextElementSibling $anchor); Anchor = $anchor; Desc = "$(Get-ContainerLabel $container), после $anchorName" }
+		}
+		return @{ Container = $container; Ref = $anchor; Anchor = $anchor; Desc = "$(Get-ContainerLabel $container), перед $anchorName" }
+	}
+	if ($null -eq $intoEl -and $first) { $intoEl = $root }
+	if ($null -ne $intoEl) {
+		$ref = $null
+		if ($first) {
+			$ci = $intoEl.SelectSingleNode("f:ChildItems", $nsMgr)
+			if ($null -ne $ci) { $ref = Get-FirstElementChild $ci }
+		}
+		$where = if ($first) { "первым" } else { "в конец" }
+		return @{ Container = $intoEl; Ref = $ref; Anchor = $null; Desc = "$(Get-ContainerLabel $intoEl), $where" }
+	}
+	if ($required) { Fail "${ctx}: не указано, куда — нужен after, before или into" }
+	return $null
+}
+
+$script:containerTags = @('UsualGroup','Page','Pages','Table','ColumnGroup','CommandBar','AutoCommandBar','ButtonGroup','Popup','ContextMenu')
+$script:barTags = @('CommandBar','AutoCommandBar','ButtonGroup','Popup','ContextMenu')
+$script:barItemTags = @('Button','ButtonGroup','Popup')
+$script:tableItemTags = @('InputField','CheckBoxField','LabelField','PictureField','ColumnGroup')
+$script:companionTags = @('ContextMenu','ExtendedTooltip','AutoCommandBar','SearchStringAddition','ViewStatusAddition','SearchControlAddition')
+$script:dslTagMap = @{
+	"group"="UsualGroup"; "input"="InputField"; "check"="CheckBoxField"; "label"="LabelDecoration"
+	"labelField"="LabelField"; "table"="Table"; "pages"="Pages"; "page"="Page"; "button"="Button"
+	"picture"="PictureDecoration"; "picField"="PictureField"; "calendar"="CalendarField"; "cmdBar"="CommandBar"; "popup"="Popup"
+}
+
+# Может ли элемент типа $nt лечь в $container. $node — переносимый узел (у добавления $null).
+function Assert-Placement([string]$nt, [string]$name, $node, $container, [string]$ctx) {
+	$isRoot = Same $container $root
+	$ct = if ($isRoot) { "Form" } else { $container.LocalName }
+	$cl = Get-ContainerLabel $container
+	if (-not $isRoot -and $script:containerTags -notcontains $ct) { Fail "${ctx}: '$cl' ($ct) не контейнер — в него нельзя положить элемент" }
+	if ($null -ne $node -and (Test-IsInside $container $node)) { Fail "${ctx}: '$name' нельзя перенести внутрь самого себя — '$cl' лежит внутри '$name'" }
+	if ($nt -eq 'Page' -and $ct -ne 'Pages') { Fail "${ctx}: страница '$name' может лежать только в группе страниц (Pages), а '$cl' — $ct" }
+	if ($ct -eq 'Pages' -and $nt -ne 'Page') { Fail "${ctx}: в группе страниц '$cl' лежат только страницы (Page), а '$name' — $nt" }
+	if ($script:barTags -contains $ct -and $script:barItemTags -notcontains $nt) { Fail "${ctx}: в командной панели '$cl' лежат только кнопки, группы кнопок и подменю, а '$name' — $nt" }
+	if ($nt -eq 'ColumnGroup' -and $null -eq (Get-NearestTable $container $true)) { Fail "${ctx}: группа колонок '$name' может лежать только внутри таблицы" }
+	# Колонки таблицы — только поля и группы колонок (по корпусу других типов там нет);
+	# командная панель и контекстное меню таблицы — свои правила выше.
+	$inTable = if ($isRoot) { $null } else { Get-NearestTable $container $true }
+	if ($null -ne $inTable -and $script:barTags -notcontains $ct -and $script:tableItemTags -notcontains $nt) {
+		Fail "${ctx}: в таблице '$($inTable.GetAttribute('name'))' лежат только колонки (поля и группы колонок), а '$name' — $nt"
+	}
+	# Граница таблицы: колонки и поля табличной части привязаны к своей таблице. Кнопки — нет
+	# (стандартная команда таблицы законно стоит и в командной панели формы).
+	if ($null -ne $node -and $script:barItemTags -notcontains $nt) {
+		$from = Get-NearestTable $node $false
+		$to = if ($isRoot) { $null } else { Get-NearestTable $container $true }
+		if (-not (Same $from $to)) {
+			if ($null -ne $from) { Fail "${ctx}: '$name' принадлежит таблице '$($from.GetAttribute('name'))' — вынести его за её пределы или в другую таблицу нельзя" }
+			Fail "${ctx}: '$name' не принадлежит таблице — внутрь таблицы '$($to.GetAttribute('name'))' его перенести нельзя"
+		}
+	}
+}
+
+function Assert-OpKeys($op, [string[]]$allowed, [string]$ctx) {
+	foreach ($p in $op.PSObject.Properties) {
+		if ($allowed -notcontains $p.Name) { Fail "${ctx}: неизвестный ключ '$($p.Name)'; допустимы: $($allowed -join ', ')" }
+	}
+}
+
+# --- Добавление ---
+
+$script:chainNode = $null
+$script:defaultPos = $null
+
+function Invoke-Add($op, [string]$typeKey, [int]$idx) {
+	$name = Get-ElementName -el $op -typeKey $typeKey
+	$ctx = "elements[$idx] $typeKey '$name'"
+	$pos = Resolve-Position $op $ctx $false
+	if ($null -eq $pos) {
+		# Без своей позиции — как раньше: верхние into/after, следующие встают за предыдущим.
+		if ($null -ne $script:chainNode) {
+			$c = $script:chainNode.ParentNode.ParentNode
+			$pos = @{ Container = $c; Ref = (Get-NextElementSibling $script:chainNode); Anchor = $null; Desc = "$(Get-ContainerLabel $c), после $($script:chainNode.GetAttribute('name'))" }
+		} else {
+			if ($null -eq $script:defaultPos) {
+				$script:defaultPos = Resolve-Position $def "elements (верхние into/after)" $false
+				if ($null -eq $script:defaultPos) { $script:defaultPos = @{ Container = $root; Ref = $null; Anchor = $null; Desc = "корень формы, в конец" } }
+			}
+			$pos = $script:defaultPos
+		}
+		$chained = $true
+	} else {
+		$chained = $false
+	}
+	Assert-Placement $script:dslTagMap[$typeKey] $name $null $pos.Container $ctx
+
+	$ci = Get-OrCreateChildItems $pos.Container
+	$indent = Get-ChildIndent $ci
+	$script:xml = New-Object System.Text.StringBuilder 4096
+	X "<_F $allNsDecl>"
+	Emit-Element -el $op -indent $indent
+	X "</_F>"
+	$node = @(Import-ElementNodes (Parse-Fragment $script:xml.ToString()))[0]
+	Insert-NodeAt $ci $node $pos.Ref $indent
+	if ($chained) { $script:chainNode = $node }
+
+	$pathStr = if ($op.path) { " -> $($op.path)" } else { "" }
+	$evtStr = if ($op.on) { " {$((@($op.on) | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.event } }) -join ', ')}" } else { "" }
+	$script:opLog += "  + [$($node.LocalName)] $name$pathStr$evtStr → $($pos.Desc)"
+	$script:addedCount++
+}
+
+# --- Перенос ---
+
+function Invoke-Move($op, [int]$idx) {
+	$ctx = "elements[$idx] move"
+	Assert-OpKeys $op @('move','after','before','into','first') $ctx
+	$names = @(@($op.move) | ForEach-Object { "$_" } | Where-Object { $_ })
+	if ($names.Count -eq 0) { Fail "${ctx}: укажи имя элемента или список имён" }
+	$nodes = @()
+	$seen = @{}
+	foreach ($n in $names) {
+		if ($seen.ContainsKey($n)) { Fail "${ctx}: '$n' указан дважды" }
+		$seen[$n] = $true
+		$node = Find-FormElement $n
+		if ($null -eq $node) { Fail "${ctx}: элемент '$n' не найден в форме" }
+		if ($node.ParentNode.LocalName -ne 'ChildItems' -or $script:companionTags -contains $node.LocalName) {
+			Fail "${ctx}: '$n' — служебный узел ($($node.LocalName)) своего элемента, переносится только вместе с ним"
+		}
+		$nodes += $node
+	}
+	$pos = Resolve-Position $op $ctx $true
+	foreach ($node in $nodes) {
+		if (Same $node $pos.Anchor) { Fail "${ctx}: '$($node.GetAttribute('name'))' не может быть якорем собственного переноса" }
+		Assert-Placement $node.LocalName $node.GetAttribute('name') $node $pos.Container $ctx
+	}
+
+	$ref = $pos.Ref
+	$desc = $pos.Desc
+	$prev = $null
+	foreach ($node in $nodes) {
+		$name = $node.GetAttribute('name')
+		if ($null -ne $prev) {
+			$ref = Get-NextElementSibling $prev
+			$desc = "$(Get-ContainerLabel $pos.Container), после $($prev.GetAttribute('name'))"
+		}
+		$fromCI = $node.ParentNode
+		$targetCI = $pos.Container.SelectSingleNode("f:ChildItems", $nsMgr)
+		if ((Same $fromCI $targetCI) -and ((Same $ref $node) -or (Same $ref (Get-NextElementSibling $node)))) {
+			$script:opLog += "  = ${name}: уже на месте ($desc)"
+			$prev = $node
+			continue
+		}
+		$fromLabel = Get-ContainerLabel $fromCI.ParentNode
+		# Отступ цели — до отцепления: если узел был в ней единственным, после отцепления
+		# первым пробельным узлом окажется закрывающий с отступом родителя.
+		$newIndent = if ($null -ne $targetCI) { Get-ChildIndent $targetCI } else { $null }
+		$oldIndent = Get-NodeIndent $node
+		Remove-NodeWithWs $node
+		$ci = Get-OrCreateChildItems $pos.Container
+		if ($null -eq $newIndent) { $newIndent = Get-ChildIndent $ci }
+		Insert-NodeAt $ci $node $ref $newIndent
+		Set-SubtreeIndent $node $oldIndent $newIndent
+		if (-not (Same $fromCI $ci)) { Remove-IfEmptyChildItems $fromCI }
+		$script:opLog += "  ~ ${name}: $fromLabel → $desc"
+		$script:movedCount++
+		$prev = $node
+	}
+}
+
+# --- Изменение свойств ---
+
+# Умолчания платформы: в корпусе эти теги встречаются только с противоположным значением —
+# значение по умолчанию платформа не пишет, и set его не пишет, а убирает тег.
+$script:tagDefaults = @{
+	'Visible'='true'; 'Enabled'='true'; 'ReadOnly'='false'; 'ShowTitle'='true'; 'United'='true'; 'Collapsed'='false'
+	'AutoMaxWidth'='true'; 'AutoMaxHeight'='true'; 'Hyperlink'='false'; 'Hiperlink'='false'
+}
+# Умолчания перечислений зависят от типа элемента: значение из области, которого в корпусе нет ни
+# разу у этого типа (у таблицы TitleLocation=Auto пишется явно — там правило не действует).
+$script:enumDefaults = @{
+	'UsualGroup/Group'='HorizontalIfPossible'; 'Page/Group'='Vertical'; 'ColumnGroup/Group'='Vertical'
+	'UsualGroup/Representation'='WeakSeparation'; 'Button/Representation'='Auto'; 'Popup/Representation'='Auto'
+}
+
+function Get-TagDefault([string]$nt, [string]$tag) {
+	if ($script:tagDefaults.ContainsKey($tag)) { return $script:tagDefaults[$tag] }
+	if ($script:enumDefaults.ContainsKey("$nt/$tag")) { return $script:enumDefaults["$nt/$tag"] }
+	if ($tag -eq 'TitleLocation' -and $nt -ne 'Table') { return 'Auto' }
+	return $null
+}
+
+# Значение по умолчанию платформа не пишет — и set его не пишет, а убирает тег.
+function Set-ValueTag($node, [string]$tag, [string]$text) {
+	if ((Get-TagDefault $node.LocalName $tag) -ceq $text) {
+		$existing = $node.SelectSingleNode("f:$tag", $nsMgr)
+		if ($null -ne $existing) { Remove-NodeWithWs $existing }
+		return
+	}
+	Set-SimpleTag $node $tag $text
+}
+
+$script:titleLocMap = @{ 'none'='None'; 'left'='Left'; 'right'='Right'; 'top'='Top'; 'bottom'='Bottom'; 'auto'='Auto' }
+# Ключи — словарь form-compile; Tags — кандидаты по типу элемента (у LabelField платформа пишет Hiperlink).
+$script:setProps = [ordered]@{
+	'title'=@{ Tags=@('Title'); Kind='ml' }
+	'tooltip'=@{ Tags=@('ToolTip'); Kind='ml' }
+	'inputHint'=@{ Tags=@('InputHint'); Kind='ml' }
+	'visible'=@{ Tags=@('Visible'); Kind='bool' }
+	'hidden'=@{ Tags=@('Visible'); Kind='bool'; Invert=$true }
+	'enabled'=@{ Tags=@('Enabled'); Kind='bool' }
+	'disabled'=@{ Tags=@('Enabled'); Kind='bool'; Invert=$true }
+	'readOnly'=@{ Tags=@('ReadOnly'); Kind='bool' }
+	'skipOnInput'=@{ Tags=@('SkipOnInput'); Kind='bool' }
+	'titleLocation'=@{ Tags=@('TitleLocation'); Kind='enum'; Map=$script:titleLocMap }
+	'width'=@{ Tags=@('Width'); Kind='num' }
+	'height'=@{ Tags=@('HeightInTableRows','Height'); Kind='num' }
+	'maxWidth'=@{ Tags=@('MaxWidth'); Kind='num' }
+	'maxHeight'=@{ Tags=@('MaxHeight'); Kind='num' }
+	'autoMaxWidth'=@{ Tags=@('AutoMaxWidth'); Kind='bool' }
+	'autoMaxHeight'=@{ Tags=@('AutoMaxHeight'); Kind='bool' }
+	'horizontalStretch'=@{ Tags=@('HorizontalStretch'); Kind='bool' }
+	'verticalStretch'=@{ Tags=@('VerticalStretch'); Kind='bool' }
+	'multiLine'=@{ Tags=@('MultiLine'); Kind='bool' }
+	'passwordMode'=@{ Tags=@('PasswordMode'); Kind='bool' }
+	'choiceButton'=@{ Tags=@('ChoiceButton'); Kind='bool' }
+	'clearButton'=@{ Tags=@('ClearButton'); Kind='bool' }
+	'spinButton'=@{ Tags=@('SpinButton'); Kind='bool' }
+	'dropListButton'=@{ Tags=@('DropListButton'); Kind='bool' }
+	'markIncomplete'=@{ Tags=@('AutoMarkIncomplete'); Kind='bool' }
+	'hyperlink'=@{ Tags=@('Hyperlink','Hiperlink'); Kind='bool' }
+	'group'=@{ Tags=@('Group'); Kind='enum'; Map=@{ 'vertical'='Vertical'; 'horizontal'='Horizontal'; 'horizontalifpossible'='HorizontalIfPossible'; 'alwayshorizontal'='AlwaysHorizontal'; 'alwaysvertical'='AlwaysVertical'; 'incell'='InCell' } }
+	'behavior'=@{ Tags=@('Behavior'); Kind='enum'; Map=@{ 'usual'='Usual'; 'collapsible'='Collapsible'; 'popup'='PopUp' } }
+	'collapsed'=@{ Tags=@('Collapsed'); Kind='bool' }
+	'representation'=@{ Tags=@('Representation'); Kind='repr' }
+	'showTitle'=@{ Tags=@('ShowTitle'); Kind='bool' }
+	'united'=@{ Tags=@('United'); Kind='bool' }
+}
+# Значения Representation — свои у каждого типа (по корпусу); ключи — как в form-compile.
+$script:reprMaps = @{
+	'UsualGroup' = @{ 'none'='None'; 'normal'='NormalSeparation'; 'weak'='WeakSeparation'; 'strong'='StrongSeparation' }
+	'Table' = @{ 'list'='List'; 'tree'='Tree'; 'hierarchicallist'='HierarchicalList' }
+	'Button' = @{ 'auto'='Auto'; 'text'='Text'; 'picture'='Picture'; 'pictureandtext'='PictureAndText' }
+	'Popup' = @{ 'auto'='Auto'; 'text'='Text'; 'picture'='Picture'; 'pictureandtext'='PictureAndText' }
+	'ButtonGroup' = @{ 'usual'='Usual'; 'compact'='Compact' }
+}
+$script:xmlTagToDsl = @{}
+foreach ($k in $script:dslTagMap.Keys) { $script:xmlTagToDsl[$script:dslTagMap[$k]] = $k }
+
+function Get-PropTag($spec, [string]$nt) {
+	foreach ($t in $spec.Tags) { if ((Get-ChildRank $nt $t) -ge 0) { return $t } }
+	return $null
+}
+
+function Get-ApplicableSetKeys([string]$nt) {
+	$keys = @()
+	foreach ($k in $script:setProps.Keys) {
+		if ($k -in @('hidden','disabled')) { continue }
+		if ($null -ne (Get-PropTag $script:setProps[$k] $nt)) { $keys += $k }
+	}
+	if ((Get-ChildRank $nt 'Events') -ge 0) { $keys += 'on' }
+	return $keys
+}
+
+function Set-SimpleTag($node, [string]$tag, [string]$text) {
+	$existing = $node.SelectSingleNode("f:$tag", $nsMgr)
+	if ($null -ne $existing) { $existing.InnerText = $text; return }
+	$el = $xmlDoc.CreateElement($tag, $formNs)
+	$el.InnerText = $text
+	Insert-ChildCanonical $node $el
+}
+
+function Set-MLTag($node, [string]$tag, $value) {
+	$indent = Get-ChildIndent $node
+	$script:xml = New-Object System.Text.StringBuilder 512
+	X "<_F $allNsDecl>"
+	X "$indent<$tag>"
+	if ($value -is [string]) {
+		# Строка меняет только русский текст: переводы на другие языки остаются как были
+		$items = @()
+		$prevEl = $node.SelectSingleNode("f:$tag", $nsMgr)
+		$hasRu = $false
+		if ($null -ne $prevEl) {
+			foreach ($it in $prevEl.SelectNodes("v8:item", $nsMgr)) {
+				$lang = $it.SelectSingleNode("v8:lang", $nsMgr).InnerText
+				if ($lang -eq 'ru') { $items += @{ Lang = 'ru'; Text = $value }; $hasRu = $true }
+				else { $items += @{ Lang = $lang; Text = $it.SelectSingleNode("v8:content", $nsMgr).InnerText } }
+			}
+		}
+		if (-not $hasRu) { $items = @(@{ Lang = 'ru'; Text = $value }) + $items }
+	} else {
+		$items = @($value.PSObject.Properties | ForEach-Object { @{ Lang = $_.Name; Text = "$($_.Value)" } })
+	}
+	foreach ($it in $items) {
+		X "$indent`t<v8:item>"
+		X "$indent`t`t<v8:lang>$($it.Lang)</v8:lang>"
+		X "$indent`t`t<v8:content>$(Esc-XmlText $it.Text)</v8:content>"
+		X "$indent`t</v8:item>"
+	}
+	X "$indent</$tag>"
+	X "</_F>"
+	$newEl = @(Import-ElementNodes (Parse-Fragment $script:xml.ToString()))[0]
+	$existing = $node.SelectSingleNode("f:$tag", $nsMgr)
+	if ($null -ne $existing) {
+		# Атрибуты узла (formatted у заголовка надписи) переживают замену текста
+		foreach ($a in @($existing.Attributes)) { $newEl.SetAttribute($a.LocalName, $a.Value) }
+		$node.ReplaceChild($newEl, $existing) | Out-Null
+		return
+	}
+	if ($tag -eq 'Title' -and $node.LocalName -eq 'LabelDecoration') { $newEl.SetAttribute('formatted', 'false') }
+	Insert-ChildCanonical $node $newEl
+}
+
+function Add-ElementEvents($node, $on, $handlers, [string]$ctx) {
+	$nt = $node.LocalName
+	$name = $node.GetAttribute('name')
+	if ((Get-ChildRank $nt 'Events') -lt 0) { Fail "${ctx}: у $nt '$name' событий нет" }
+	$dsl = $script:xmlTagToDsl[$nt]
+	$allowed = if ($dsl -and $script:knownEvents.ContainsKey($dsl)) { $script:knownEvents[$dsl] } else { @() }
+	$events = $node.SelectSingleNode("f:Events", $nsMgr)
+	foreach ($evt in @($on)) {
+		if ($evt -is [string] -or -not $evt.event) {
+			$evtName = "$evt"; $callType = ""
+			$handler = if ($handlers -and $handlers.$evtName) { "$($handlers.$evtName)" } else { Get-HandlerName -elementName $name -eventName $evtName }
+		} else {
+			$evtName = "$($evt.event)"; $callType = if ($evt.callType) { "$($evt.callType)" } else { "" }
+			$handler = if ($evt.handler) { "$($evt.handler)" } elseif ($handlers -and $handlers.$evtName) { "$($handlers.$evtName)" } else { Get-HandlerName -elementName $name -eventName $evtName }
+		}
+		if ($allowed.Count -gt 0 -and $allowed -notcontains $evtName) {
+			Write-Host "[WARN] Unknown event '$evtName' for $dsl '$name'. Known: $($allowed -join ', ')"
+		}
+		$ctStr = if ($callType) { "[$callType]" } else { "" }
+		if ($null -ne $events) {
+			$dup = $null
+			foreach ($e in $events.SelectNodes("f:Event", $nsMgr)) {
+				if ($e.GetAttribute('name') -eq $evtName -and $e.GetAttribute('callType') -eq $callType) { $dup = $e; break }
+			}
+			if ($null -ne $dup) {
+				if ($dup.InnerText -eq $handler) { $script:opLog += "  = ${name}: событие $evtName$ctStr -> $handler уже есть"; continue }
+				Fail "${ctx}: у '$name' событие $evtName$ctStr уже обрабатывает '$($dup.InnerText)' — второй обработчик не повесить"
+			}
+		}
+		if ($null -eq $events) {
+			$events = $xmlDoc.CreateElement("Events", $formNs)
+			Insert-ChildCanonical $node $events
+		}
+		$ev = $xmlDoc.CreateElement("Event", $formNs)
+		$ev.SetAttribute('name', $evtName)
+		if ($callType) { $ev.SetAttribute('callType', $callType) }
+		$ev.InnerText = $handler
+		Insert-NodeAt $events $ev $null (Get-ChildIndent $events)
+		$script:opLog += "  * ${name}: событие $evtName$ctStr -> $handler"
+	}
+}
+
+function Invoke-Set($op, [int]$idx) {
+	$ctx = "elements[$idx] set"
+	$names = @(@($op.set) | ForEach-Object { "$_" } | Where-Object { $_ })
+	if ($names.Count -eq 0) { Fail "${ctx}: укажи имя элемента или список имён" }
+	$props = @($op.PSObject.Properties | Where-Object { $_.Name -ne 'set' })
+	if ($props.Count -eq 0) { Fail "${ctx}: не указано, что менять" }
+	$forbidden = @('name','path','children','columns')
+	foreach ($n in $names) {
+		$node = Find-FormElement $n
+		if ($null -eq $node) { Fail "${ctx}: элемент '$n' не найден в форме" }
+		$nt = $node.LocalName
+		$c = "$ctx '$n'"
+		foreach ($p in $props) {
+			$key = $p.Name
+			if ($key -eq 'handlers') { if (-not $op.on) { Fail "${c}: handlers задаются вместе с on" }; continue }
+			if ($key -eq 'on') { Add-ElementEvents $node $p.Value $op.handlers $c; continue }
+			if ($forbidden -contains $key -or ($script:dslTagMap.ContainsKey($key) -and $key -ne 'group')) {
+				Fail "${c}: '$key' через set не меняется (имя и привязку не трогаем — на них ссылаются модуль и расширения; состав — через move)"
+			}
+			if (-not $script:setProps.Contains($key)) {
+				Fail "${c}: неизвестное свойство '$key'; у $nt доступно: $((Get-ApplicableSetKeys $nt) -join ', ')"
+			}
+			$spec = $script:setProps[$key]
+			$tag = Get-PropTag $spec $nt
+			if ($null -eq $tag) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ')" }
+			$v = $p.Value
+			if ($null -eq $v) {
+				$existing = $node.SelectSingleNode("f:$tag", $nsMgr)
+				if ($null -ne $existing) { Remove-NodeWithWs $existing }
+				$script:opLog += "  * ${n}: $key сброшено"
+				$script:changedCount++
+				continue
+			}
+			switch ($spec.Kind) {
+				'ml' {
+					$mlOk = ($v -is [string]) -or (($v -is [System.Management.Automation.PSCustomObject]) -and @($v.PSObject.Properties).Count -gt 0 -and -not (@($v.PSObject.Properties) | Where-Object { -not ($_.Value -is [string]) }))
+					if (-not $mlOk) { Fail "${c}: $key — строка или объект {ru, en, ...} со строковыми значениями" }
+					Set-MLTag $node $tag $v
+					$shown = if ($v -is [string]) { $v } else { ($v.PSObject.Properties | ForEach-Object { "$($_.Name):$($_.Value)" }) -join ' ' }
+					$script:opLog += "  * ${n}: $key=`"$shown`""
+				}
+				'bool' {
+					if (-not ($v -is [bool])) { Fail "${c}: $key — true или false" }
+					if ($spec.Invert) { $v = -not $v }
+					$text = if ($v) { 'true' } else { 'false' }
+					Set-ValueTag $node $tag $text
+					$script:opLog += "  * ${n}: $tag=$text"
+				}
+				'num' {
+					if (-not ($v -is [int] -or $v -is [long]) -or $v -lt 0) { Fail "${c}: $key — целое неотрицательное число" }
+					Set-SimpleTag $node $tag "$v"
+					$script:opLog += "  * ${n}: $tag=$v"
+				}
+				'enum' {
+					$mapped = $spec.Map["$v".ToLower()]
+					if (-not $mapped) { Fail "${c}: $key='$v' — допустимо: $(($spec.Map.Keys | Sort-Object) -join ', ')" }
+					Set-ValueTag $node $tag $mapped
+					$script:opLog += "  * ${n}: $tag=$mapped"
+				}
+				'repr' {
+					$rmap = $script:reprMaps[$nt]
+					if ($null -eq $rmap) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ')" }
+					$text = $rmap["$v".ToLower()]
+					if (-not $text) { Fail "${c}: representation='$v' — допустимо: $(($rmap.Keys | Sort-Object) -join ', ')" }
+					Set-ValueTag $node $tag $text
+					$script:opLog += "  * ${n}: $tag=$text"
+				}
+			}
+			$script:changedCount++
+		}
+	}
+}
+
+# === 10. Elements: добавление, перенос, изменение — по порядку ===
+
+$script:opLog = @()
+$script:addedCount = 0
+$script:movedCount = 0
+$script:changedCount = 0
 $companionCount = 0
 
-if ($def.elements -and $def.elements.Count -gt 0) {
-	# Resolve target container
-	$targetCI = $null
-	$intoName = if ($def.into) { "$($def.into)" } else { $null }
-	$afterName = if ($def.after) { "$($def.after)" } else { $null }
+$elemTypeKeys = @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")
 
-	if ($intoName) {
-		$targetGroup = Find-Element $rootCI $intoName
-		if (-not $targetGroup) {
-			Write-Host "[ERROR] Target group '$intoName' not found"
-			exit 1
+if ($def.elements -and @($def.elements).Count -gt 0) {
+	$ops = @($def.elements)
+
+	# Вид каждой операции: ключ типа — добавление, move/set — над существующим элементом.
+	$opKinds = @()
+	for ($i = 0; $i -lt $ops.Count; $i++) {
+		$op = $ops[$i]
+		$kinds = @()
+		foreach ($k in @('move','set')) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k } }
+		# У set ключ типа — свойство (group — ориентация); остальные ключи типа set отвергнет сам.
+		if ($kinds -notcontains 'set') {
+			foreach ($k in $elemTypeKeys) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k; break } }
 		}
-		$targetCI = $targetGroup.SelectSingleNode("f:ChildItems", $nsMgr)
-		if (-not $targetCI) {
-			# Create ChildItems for the group
-			$targetCI = $xmlDoc.CreateElement("ChildItems", $formNs)
-			$targetGroup.AppendChild($targetCI) | Out-Null
-		}
-	} elseif ($afterName) {
-		# Find the after element globally and use its parent as target
-		$afterElem = Find-Element $rootCI $afterName
-		if (-not $afterElem) {
-			Write-Host "[ERROR] Element '$afterName' not found"
-			exit 1
-		}
-		$targetCI = $afterElem.ParentNode
-	} else {
-		$targetCI = $rootCI
+		if ($kinds.Count -eq 0) { Fail "elements[$i]: не понять действие — нужен тип элемента (input, group, …), move или set" }
+		if ($kinds.Count -gt 1) { Fail "elements[$i]: одна запись — одно действие, а здесь $($kinds -join ' и ')" }
+		$opKinds += $kinds[0]
 	}
 
-	if (-not $targetCI) {
-		# Create ChildItems section in form — insert after Events or AutoCommandBar
-		$targetCI = $xmlDoc.CreateElement("ChildItems", $formNs)
-		$insertAfter = $root.SelectSingleNode("f:Events", $nsMgr)
-		if (-not $insertAfter) { $insertAfter = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr) }
-		if ($insertAfter) {
-			$refNode = $insertAfter.NextSibling
-			$ws = $xmlDoc.CreateWhitespace("`r`n`t")
-			$root.InsertBefore($ws, $refNode) | Out-Null
-			$root.InsertBefore($targetCI, $refNode) | Out-Null
-		} else {
-			$root.AppendChild($xmlDoc.CreateWhitespace("`r`n`t")) | Out-Null
-			$root.AppendChild($targetCI) | Out-Null
-		}
-		# Also update $rootCI reference
-		$rootCI = $targetCI
-	}
-
-	# Detect indent level
-	$childIndent = Get-ChildIndent $targetCI
-
-	# Имена элементов уникальны (требование 1С). Сначала — внутри самого JSON-определения
-	# (рекурсивно по children/columns).
-	$elemTypeKeys = @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")
+	# Имена добавляемых элементов уникальны (требование 1С): внутри JSON (рекурсивно по
+	# children/columns) и против уже существующих элементов формы.
 	function Walk-ElemNames($el, [hashtable]$seen) {
 		$tk = $null
 		foreach ($k in $elemTypeKeys) { if ($el.$k -ne $null) { $tk = $k; break } }
@@ -1124,64 +1760,26 @@ if ($def.elements -and $def.elements.Count -gt 0) {
 		if ($el.columns)  { foreach ($c in $el.columns)  { Walk-ElemNames $c $seen } }
 	}
 	$dslElemNames = @{}
-	foreach ($el in $def.elements) { Walk-ElemNames $el $dslElemNames }
-
-	# Затем — против уже существующих элементов формы (дубль = битый XML, форма не откроется)
-	foreach ($el in $def.elements) {
-		$typeKey = $null
-		foreach ($key in $elemTypeKeys) {
-			if ($el.$key -ne $null) { $typeKey = $key; break }
-		}
-		if ($typeKey) {
-			$elName = Get-ElementName -el $el -typeKey $typeKey
-			$existing = Find-Element $rootCI $elName
-			if ($existing) {
-				Write-Host "[ERROR] Element '$elName' already exists in form (id=$($existing.GetAttribute('id'))) — element names must be unique"
-				exit 1
-			}
+	for ($i = 0; $i -lt $ops.Count; $i++) {
+		if ($opKinds[$i] -in @('move','set')) { continue }
+		Walk-ElemNames $ops[$i] $dslElemNames
+		$elName = Get-ElementName -el $ops[$i] -typeKey $opKinds[$i]
+		$existing = Find-FormElement $elName
+		if ($null -ne $existing) {
+			Write-Host "[ERROR] Element '$elName' already exists in form (id=$($existing.GetAttribute('id'))) — element names must be unique"
+			exit 1
 		}
 	}
 
-	# Remember starting element ID for companion counting
 	$startElemId = $script:nextElemId
-
-	# Generate fragment
-	$script:xml = New-Object System.Text.StringBuilder 4096
-	X "<_F $allNsDecl>"
-	foreach ($el in $def.elements) {
-		Emit-Element -el $el -indent $childIndent
-	}
-	X "</_F>"
-
-	$fragDoc = Parse-Fragment $script:xml.ToString()
-	$importedNodes = Import-ElementNodes $fragDoc
-
-	# Count actual elements (non-companion) for reporting
-	foreach ($el in $def.elements) {
-		$typeKey = $null
-		foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")) {
-			if ($el.$key -ne $null) { $typeKey = $key; break }
+	for ($i = 0; $i -lt $ops.Count; $i++) {
+		switch ($opKinds[$i]) {
+			'move' { Invoke-Move $ops[$i] $i }
+			'set'  { Invoke-Set $ops[$i] $i }
+			default { Invoke-Add $ops[$i] $opKinds[$i] $i }
 		}
-		$name = Get-ElementName -el $el -typeKey $typeKey
-		$tagMap = @{
-			"group"="Group"; "input"="Input"; "check"="Check"; "label"="Label"; "labelField"="LabelField"
-			"table"="Table"; "pages"="Pages"; "page"="Page"; "button"="Button"
-			"picture"="Picture"; "picField"="PicField"; "calendar"="Calendar"; "cmdBar"="CmdBar"; "popup"="Popup"
-		}
-		$pathStr = if ($el.path) { " -> $($el.path)" } else { "" }
-		$evtStr = if ($el.on) { " {$($el.on -join ', ')}" } else { "" }
-		$addedElems += "  + [$($tagMap[$typeKey])] $name$pathStr$evtStr"
 	}
-
-	# Insert each imported node
-	foreach ($node in $importedNodes) {
-		Insert-IntoContainer -container $targetCI -newNode $node -afterName $afterName -childIndent $childIndent
-		# Only use afterName for the first insertion; subsequent ones go after the previous
-		$afterName = $node.GetAttribute("name")
-	}
-
-	$totalNewElemIds = $script:nextElemId - $startElemId
-	$companionCount = $totalNewElemIds - $def.elements.Count
+	$companionCount = ($script:nextElemId - $startElemId) - $script:addedCount
 }
 
 # === 11. Add attributes ===
@@ -1522,13 +2120,9 @@ if ($addedElemEvents.Count -gt 0) {
 	Write-Host ""
 }
 
-if ($addedElems.Count -gt 0) {
-	$posStr = ""
-	if ($def.into) { $posStr += "into $($def.into)" }
-	if ($def.after) { if ($posStr) { $posStr += ", " }; $posStr += "after $($def.after)" }
-	if ($posStr) { $posStr = " ($posStr)" }
-	Write-Host "Added elements${posStr}:"
-	foreach ($line in $addedElems) { Write-Host $line }
+if ($script:opLog.Count -gt 0) {
+	Write-Host "Elements:"
+	foreach ($line in $script:opLog) { Write-Host $line }
 	Write-Host ""
 }
 
@@ -1548,10 +2142,12 @@ Write-Host "---"
 $totalParts = @()
 if ($addedFormEvents.Count -gt 0) { $totalParts += "$($addedFormEvents.Count) form event(s)" }
 if ($addedElemEvents.Count -gt 0) { $totalParts += "$($addedElemEvents.Count) element event(s)" }
-if ($addedElems.Count -gt 0) {
+if ($script:addedCount -gt 0) {
 	$compStr = if ($companionCount -gt 0) { " (+$companionCount companions)" } else { "" }
-	$totalParts += "$($addedElems.Count) element(s)$compStr"
+	$totalParts += "$($script:addedCount) element(s)$compStr"
 }
+if ($script:movedCount -gt 0) { $totalParts += "$($script:movedCount) moved" }
+if ($script:changedCount -gt 0) { $totalParts += "$($script:changedCount) property change(s)" }
 if ($addedAttrs.Count -gt 0) { $totalParts += "$($addedAttrs.Count) attribute(s)" }
 if ($addedCmds.Count -gt 0) { $totalParts += "$($addedCmds.Count) command(s)" }
 Write-Host "Total: $($totalParts -join ', ')"

@@ -1,0 +1,20 @@
+{
+  "name": "Добавление группы в таблицу → отказ (колонки — только поля и группы колонок)",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "group": "horizontal",
+        "name": "ГрВТаблице",
+        "into": "Товары"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "лежат только колонки"
+  }
+}

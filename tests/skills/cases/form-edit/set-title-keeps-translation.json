@@ -1,0 +1,22 @@
+{
+  "name": "set: заголовок строкой меняет только ru, перевод остаётся",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Контрагент",
+        "title": {
+          "ru": "Контрагент",
+          "en": "Counterparty"
+        }
+      },
+      {
+        "set": "Контрагент",
+        "title": "Покупатель"
+      }
+    ]
+  }
+}

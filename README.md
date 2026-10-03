@@ -198,7 +198,7 @@ python scripts/switch.py --runtime powershell  # вернуть на PowerShell
 ├── form-info/           # Анализ структуры управляемой формы
 ├── form-compile/        # Компиляция формы из JSON
 ├── form-validate/       # Валидация формы
-├── form-edit/           # Добавление элементов в форму
+├── form-edit/           # Правка формы: добавление, перенос, изменение элементов
 ├── form-patterns/       # Справочник паттернов компоновки форм
 ├── role-info/           # Анализ прав роли
 ├── role-compile/        # Создание роли из JSON DSL

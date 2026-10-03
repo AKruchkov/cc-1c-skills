@@ -1,0 +1,19 @@
+{
+  "name": "move: поле в группу страниц → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "Склад",
+        "into": "Страницы"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "лежат только страницы"
+  }
+}

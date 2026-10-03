@@ -1,0 +1,20 @@
+{
+  "name": "move: смена глубины (отступы поддерева) и опустевший ChildItems убирается",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "Согласован",
+        "into": "ГруппаПодвал",
+        "first": true
+      },
+      {
+        "move": "Комментарий",
+        "into": "СтраницаТовары"
+      }
+    ]
+  }
+}

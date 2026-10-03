@@ -1,0 +1,28 @@
+{
+  "name": "set: заголовок, видимость, расположение заголовка, ширина, свойства группы",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Ответственный",
+        "visible": false,
+        "titleLocation": "top",
+        "width": 30
+      },
+      {
+        "set": "Контрагент",
+        "title": "Покупатель",
+        "markIncomplete": true
+      },
+      {
+        "set": "ГруппаПодвал",
+        "group": "vertical",
+        "representation": "strong",
+        "united": false
+      }
+    ]
+  }
+}

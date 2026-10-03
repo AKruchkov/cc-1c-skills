@@ -1,0 +1,20 @@
+{
+  "name": "move: into и якорь из другой группы → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "Склад",
+        "into": "ГруппаЛево",
+        "after": "Приоритет"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "лежит в 'ГруппаПраво', а не в 'ГруппаЛево'"
+  }
+}

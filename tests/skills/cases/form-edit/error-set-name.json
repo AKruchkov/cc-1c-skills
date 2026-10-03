@@ -1,0 +1,19 @@
+{
+  "name": "set: имя не меняется → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Склад",
+        "name": "Склад2"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "через set не меняется"
+  }
+}

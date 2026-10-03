@@ -1,0 +1,15 @@
+{
+  "name": "move: в другую группу после якоря — контейнер берётся у якоря",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "Организация",
+        "after": "Контрагент"
+      }
+    ]
+  }
+}

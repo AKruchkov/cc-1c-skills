@@ -1,0 +1,19 @@
+{
+  "name": "move: внутрь самого себя → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "ГруппаШапка",
+        "into": "ГруппаЛево"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "внутрь самого себя"
+  }
+}

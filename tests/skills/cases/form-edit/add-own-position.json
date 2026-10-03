@@ -1,0 +1,40 @@
+{
+  "name": "Добавление: своя позиция у элемента и цепочка по верхнему into",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "into": "ГруппаЛево",
+    "attributes": [
+      {
+        "name": "А1",
+        "type": "string(10)"
+      },
+      {
+        "name": "А2",
+        "type": "string(10)"
+      },
+      {
+        "name": "А3",
+        "type": "string(10)"
+      }
+    ],
+    "elements": [
+      {
+        "input": "А1",
+        "path": "А1"
+      },
+      {
+        "input": "А2",
+        "path": "А2"
+      },
+      {
+        "input": "А3",
+        "path": "А3",
+        "into": "ГруппаПраво",
+        "first": true
+      }
+    ]
+  }
+}

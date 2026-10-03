@@ -12,7 +12,7 @@ const GUARDS = [
   ['check-enum-drift.mjs', 'allowlist-и перечислений: meta-compile ↔ meta-validate ↔ meta-edit'],
   ['check-type-synonyms.mjs', 'словари типов: meta-edit не противоречит meta-compile'],
   ['check-uuid-invariant.mjs', 'сохранение uuid объекта и сущностей при правке'],
-  ['check-minimal-diff.mjs', 'правка роли: диф только там, где просили'],
+  ['check-minimal-diff.mjs', 'правка роли и формы: диф только там, где просили'],
   ['check-inline-drift.mjs', 'общие inline-реализации: копии совпадают с эталонами'],
   ['check-ps-define-before-call.mjs', 'порядок в .ps1: функция объявлена выше точки вызова'],
   ['check-type-maps.mjs', 'карты типов метаданных: согласованы со спецификацией'],

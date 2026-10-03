@@ -1,0 +1,22 @@
+{
+  "name": "set: свойство не применимо к типу → отказ со списком",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Склад",
+        "showTitle": false
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "не применимо",
+      "доступно: title"
+    ]
+  }
+}

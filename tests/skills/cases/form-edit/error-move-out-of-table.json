@@ -1,0 +1,19 @@
+{
+  "name": "move: колонка за пределы таблицы → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "ТоварыЦена",
+        "into": "ГруппаПодвал"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "принадлежит таблице 'Товары'"
+  }
+}

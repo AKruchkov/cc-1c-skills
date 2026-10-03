@@ -1,0 +1,27 @@
+{
+  "name": "Ошибка во второй операции — первая не записана (всё или ничего)",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Контрагент",
+        "title": "АТОМАРНОСТЬ"
+      },
+      {
+        "set": "НетТакого",
+        "visible": false
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "'НетТакого' не найден",
+    "fileNotContains": {
+      "file": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml",
+      "text": "АТОМАРНОСТЬ"
+    }
+  }
+}

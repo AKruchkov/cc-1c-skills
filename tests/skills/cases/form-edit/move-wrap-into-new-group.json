@@ -1,0 +1,25 @@
+{
+  "name": "Новая группа + move списка в неё (порядок операций)",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "group": "alwaysHorizontal",
+        "name": "ГруппаНомерДата",
+        "into": "ГруппаШапка",
+        "first": true,
+        "showTitle": false
+      },
+      {
+        "move": [
+          "Номер",
+          "Дата"
+        ],
+        "into": "ГруппаНомерДата"
+      }
+    ]
+  }
+}

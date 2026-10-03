@@ -1,0 +1,23 @@
+{
+  "name": "set: обработчики событий на существующие элементы",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Приоритет",
+        "on": [
+          "OnChange"
+        ]
+      },
+      {
+        "set": "Товары",
+        "on": [
+          "Selection"
+        ]
+      }
+    ]
+  }
+}

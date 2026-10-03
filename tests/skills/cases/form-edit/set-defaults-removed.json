@@ -1,0 +1,24 @@
+{
+  "name": "set: значение по умолчанию платформы и null убирают тег",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Комментарий",
+        "multiLine": null,
+        "autoMaxWidth": true
+      },
+      {
+        "set": "ГруппаШапка",
+        "group": "horizontalIfPossible"
+      },
+      {
+        "set": "Согласован",
+        "titleLocation": "auto"
+      }
+    ]
+  }
+}

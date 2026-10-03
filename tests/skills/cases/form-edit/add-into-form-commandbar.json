@@ -1,0 +1,35 @@
+{
+  "name": "Кнопка в командную панель формы, где уже есть кнопка — id не повторяются",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "form-edit/scripts/form-edit",
+      "input": {
+        "elements": [
+          {
+            "button": "КнопкаА",
+            "stdCommand": "Close",
+            "into": "ФормаКоманднаяПанель"
+          }
+        ]
+      },
+      "args": {
+        "-FormPath": "{workDir}/Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml",
+        "-JsonPath": "{inputFile}"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "button": "КнопкаБ",
+        "stdCommand": "Help",
+        "into": "ФормаКоманднаяПанель",
+        "first": true
+      }
+    ]
+  }
+}

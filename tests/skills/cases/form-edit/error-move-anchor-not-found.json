@@ -1,0 +1,19 @@
+{
+  "name": "move: якорь не найден → отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "Склад",
+        "after": "НетТакого"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "'НетТакого' не найден"
+  }
+}

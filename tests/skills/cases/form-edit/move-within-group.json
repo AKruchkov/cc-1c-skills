@@ -1,0 +1,15 @@
+{
+  "name": "move: перестановка внутри своей группы",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": "Приоритет",
+        "before": "Склад"
+      }
+    ]
+  }
+}

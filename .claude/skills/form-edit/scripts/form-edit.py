@@ -1,4 +1,4 @@
-# form-edit v1.19 — Edit 1C managed form elements (Python port)
+# form-edit v1.20 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -420,11 +420,13 @@ if root_ci is not None:
         if v > next_elem_id:
             next_elem_id = v
 
+# Командная панель формы: сама (id=-1) и её кнопки — из того же пула, что и элементы
 acb = root.find("f:AutoCommandBar", NS)
 if acb is not None:
-    v = _scan_id(acb)
-    if v > next_elem_id:
-        next_elem_id = v
+    for elem in acb.iter():
+        v = _scan_id(elem)
+        if v > next_elem_id:
+            next_elem_id = v
 
 # Scan attribute IDs (including column IDs - same pool)
 for attr_el in root.findall("f:Attributes/f:Attribute", NS):
@@ -1133,6 +1135,7 @@ KNOWN_KEYS = {
     "commandBarLocation", "searchStringLocation", "pagesRepresentation",
     "type", "command", "stdCommand", "defaultButton", "locationInCommandBar",
     "src", "autofill",
+    "into", "after", "before", "first",
 }
 
 EMITTER_MAP = {
@@ -1286,54 +1289,803 @@ def import_element_nodes(frag_root):
     return nodes
 
 
-# ── 10. Add elements ────────────────────────────────────────
+# ── 9b. Канонический порядок дочерних тегов элемента ────────
+# В каком порядке платформа пишет свойства и вложенные узлы элемента формы. Построено по корпусу
+# выгрузок (БП и ERP, 8.3.24, 17036 форм): для каждого типа элемента — граф «тег A раньше тега B»,
+# противоречий нет. По нему новое свойство (set), новый ChildItems или Events встают туда, где их
+# пишет платформа, — иначе первая же выгрузка из базы переставит их обратно.
+CHILD_TAG_ORDER = {
+    "AutoCommandBar": "HorizontalAlign Autofill ChildItems",
+    "Button": "Type Visible TitleHeight UserVisible Representation DefaultButton SkipOnInput Enabled DefaultItem Width AutoMaxWidth MaxWidth Height AutoMaxHeight HorizontalStretch MaxHeight VerticalStretch GroupHorizontalAlign Check GroupVerticalAlign CommandName Parameter DataPath TextColor BackColor BorderColor Font Picture Title Shape ToolTipRepresentation RepresentationInContextMenu ShapeRepresentation PictureLocation LocationInCommandBar CommandUniqueness ExtendedTooltip",
+    "ButtonGroup": "EnableContentChange Visible Title GroupVerticalAlign ToolTip HorizontalStretch GroupHorizontalAlign ToolTipRepresentation CommandSource Representation VerticalStretch ExtendedTooltip ChildItems",
+    "CalendarField": "DataPath SkipOnInput Title TitleLocation ToolTip ToolTipRepresentation Width AutoMaxWidth Height HorizontalStretch SelectionMode ShowCurrentDate ShowMonthsPanel WidthInMonths HeightInMonths ContextMenu ExtendedTooltip Events",
+    "ChartField": "DataPath Enabled Title TitleFont Visible TitleLocation GroupHorizontalAlign Width AutoMaxWidth MaxHeight MaxWidth Height AutoMaxHeight HorizontalStretch VerticalStretch ContextMenu ExtendedTooltip Events",
+    "CheckBoxField": "DataPath Visible Enabled UserVisible DefaultItem ReadOnly SkipOnInput Title TitleTextColor TitleFont TitleLocation TitleHeight ToolTip FooterHorizontalAlign HorizontalAlign ToolTipRepresentation Shortcut GroupHorizontalAlign VerticalAlign GroupVerticalAlign WarningOnEditRepresentation WarningOnEdit EditMode AutoCellHeight CellHyperlink FixingInTable ShowInHeader FooterDataPath HeaderPicture HeaderHorizontalAlign ShowInFooter CheckBoxType EditFormat ItemHeight ItemTitleHeight ItemWidth EqualItemsWidth ThreeState ContextMenu ExtendedTooltip Events",
+    "ColumnGroup": "Visible Enabled ReadOnly UserVisible EnableContentChange Title GroupVerticalAlign TitleFont TitleTextColor ToolTip ToolTipRepresentation Width Height HorizontalStretch GroupHorizontalAlign VerticalStretch Group ShowTitle ShowInHeader HeaderDataPath HeaderHorizontalAlign HeaderFormat HeaderPicture FixingInTable ExtendedTooltip ChildItems",
+    "CommandBar": "Enabled Visible EnableContentChange Title ToolTip ToolTipRepresentation Width Height HorizontalStretch VerticalStretch GroupHorizontalAlign GroupVerticalAlign HorizontalLocation CommandSource ExtendedTooltip ChildItems",
+    "FormattedDocumentField": "DataPath DefaultItem Enabled ReadOnly SkipOnInput Title TitleLocation CommandSet Font ToolTip EditMode Width AutoMaxWidth Height AutoMaxHeight BorderColor HorizontalStretch MaxWidth ContextMenu ExtendedTooltip Events",
+    "GanttChartField": "DataPath DefaultItem TitleLocation Width Height HorizontalStretch VerticalStretch ContextMenu ExtendedTooltip Table Events",
+    "GraphicalSchemaField": "DataPath DefaultItem ReadOnly Title TitleLocation WarningOnEditRepresentation Width Height Edit ContextMenu ExtendedTooltip Events",
+    "HTMLDocumentField": "DataPath DefaultItem Enabled ReadOnly SkipOnInput Title TitleTextColor TitleFont TitleLocation ToolTipRepresentation Visible WarningOnEditRepresentation Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch Output BorderColor ContextMenu ExtendedTooltip Events",
+    "InputField": "DataPath Visible UserVisible DefaultItem Enabled ReadOnly SkipOnInput Title TitleBackColor TitleTextColor TitleFont TitleLocation TitleHeight ToolTip ToolTipRepresentation WarningOnEditRepresentation WarningOnEdit Shortcut HorizontalAlign VerticalAlign GroupHorizontalAlign GroupVerticalAlign EditMode CellHyperlink FixingInTable AutoCellHeight ShowInHeader HeaderHorizontalAlign HeaderPicture ShowInFooter FooterDataPath FooterText FooterTextColor FooterFont FooterHorizontalAlign FooterPicture Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch AllowInputEmptyMultipleValues MultipleValuesFont MultipleValuesTextColor MultipleValuesBackColor VerticalStretch Wrap MarkNegatives PasswordMode MultiLine ExtendedEdit DropListButton ChoiceButton ChoiceButtonRepresentation ClearButton SpinButton OpenButton CreateButton Mask ListChoiceMode ExtendedEditMultipleValues AutoChoiceIncomplete Format MultipleValuePictureShape QuickChoice ChoiceFoldersAndItems EditFormat AutoMarkIncomplete ChooseType AutoShowOpenButtonMode IncompleteChoiceMode ShowCheckBoxesInDropList MultipleValueDataPath MultipleValuePictureDataPath MultipleValuePresentDataPath SpellCheckingOnTextInput TypeDomainEnabled TextEdit AvailableTypes ChoiceForm ChoiceParameterLinks ChoiceParameters EditTextUpdate MinValue ChoiceButtonPicture MaxValue ChoiceList AutoCorrectionOnTextInput AutoShowClearButtonMode ChoiceListButton ChoiceListHeight DropListWidth TextColor BackColor BorderColor Font HeightControlVariant SpecialTextInputMode InputHint ChoiceHistoryOnInput TypeLink ContextMenu ExtendedTooltip Events",
+    "LabelDecoration": "UserVisible Visible Enabled Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch SkipOnInput TextColor Font Shortcut Title ToolTip ToolTipRepresentation GroupHorizontalAlign GroupVerticalAlign Hyperlink HorizontalAlign VerticalAlign BackColor BorderColor Border TitleHeight ContextMenu ExtendedTooltip Events",
+    "LabelField": "DataPath Visible Enabled UserVisible DefaultItem ReadOnly SkipOnInput Title TitleTextColor TitleFont TitleLocation TitleHeight ToolTip ToolTipRepresentation HorizontalAlign VerticalAlign GroupHorizontalAlign GroupVerticalAlign WarningOnEditRepresentation WarningOnEdit EditMode FixingInTable CellHyperlink AutoCellHeight FooterText ShowInHeader HeaderHorizontalAlign FooterDataPath HeaderPicture ShowInFooter FooterHorizontalAlign Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch MarkNegatives VerticalStretch Format Border BorderColor Hiperlink PasswordMode TextColor BackColor Font ContextMenu ExtendedTooltip Events",
+    "Page": "Visible Enabled ReadOnly EnableContentChange UserVisible Title GroupVerticalAlign Shortcut TitleTextColor TitleFont ToolTip ToolTipRepresentation Width Height HorizontalStretch VerticalStretch ChildrenAlign Picture Format Group ChildItemsWidth HorizontalSpacing VerticalSpacing HorizontalAlign VerticalAlign ShowTitle BackColor TitleDataPath ScrollOnCompress ExtendedTooltip ChildItems",
+    "Pages": "Enabled ReadOnly EnableContentChange UserVisible Visible Title TitleFont ToolTip ToolTipRepresentation Width Height HorizontalStretch VerticalStretch GroupHorizontalAlign GroupVerticalAlign PagesRepresentation CurrentRowUse ExtendedTooltip Events ChildItems",
+    "PeriodField": "DataPath TitleLocation ContextMenu ExtendedTooltip",
+    "PictureDecoration": "Enabled Visible Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch SkipOnInput TextColor Font Title ToolTip ToolTipRepresentation GroupHorizontalAlign GroupVerticalAlign Hyperlink PictureSize Zoomable ImageScale NonselectedPictureText EnableStartDrag EnableDrag Picture BorderColor Border FileDragMode ContextMenu ExtendedTooltip Events",
+    "PictureField": "DataPath TitleBackColor UserVisible Visible Enabled ReadOnly SkipOnInput Title TitleTextColor TitleLocation TitleHeight ToolTip GroupHorizontalAlign GroupVerticalAlign Shortcut ToolTipRepresentation HorizontalAlign WarningOnEditRepresentation EditMode AutoCellHeight FixingInTable CellHyperlink ShowInHeader FooterDataPath HeaderPicture FooterText HeaderHorizontalAlign ShowInFooter FooterHorizontalAlign Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch PictureSize Zoomable Hyperlink NonselectedPictureText EnableDrag TextColor ValuesPicture BorderColor Border Font FileDragMode ContextMenu ExtendedTooltip Events",
+    "PlannerField": "DataPath TitleLocation ContextMenu ExtendedTooltip Events",
+    "Popup": "UserVisible Visible EnableContentChange Title Shape TitleTextColor TitleFont ToolTip ToolTipRepresentation VerticalStretch Width HorizontalStretch Picture CommandSource Representation BackColor ShapeRepresentation BorderColor ExtendedTooltip ChildItems",
+    "ProgressBarField": "DataPath Title Visible ReadOnly TitleLocation ToolTip ToolTipRepresentation Width AutoMaxHeight AutoMaxWidth HorizontalStretch MaxValue ShowPercent ContextMenu ExtendedTooltip",
+    "RadioButtonField": "DataPath DefaultItem Enabled SkipOnInput UserVisible Visible ReadOnly Title TitleTextColor TitleFont TitleLocation FooterHorizontalAlign TitleHeight ToolTip ToolTipRepresentation EditMode GroupHorizontalAlign Shortcut VerticalAlign GroupVerticalAlign WarningOnEditRepresentation WarningOnEdit RadioButtonType ItemHeight ItemTitleHeight ItemWidth ColumnsCount EqualColumnsWidth ChoiceList Font TextColor ContextMenu ExtendedTooltip Events",
+    "SpreadSheetDocumentField": "DataPath Enabled ReadOnly SkipOnInput UserVisible Visible DefaultItem Title TitleLocation DrawingSelectionShowMode FooterHorizontalAlign GroupHorizontalAlign ToolTip ToolTipRepresentation CommandSet Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HorizontalStretch VerticalStretch ShowGrid ShowHeaders VerticalScrollBar HorizontalScrollBar Protection SelectionShowMode Edit Output PointerType ShowGroups EnableStartDrag EnableDrag BorderColor ShowCellNames ShowRowAndColumnNames ViewScalingMode ContextMenu ExtendedTooltip Events",
+    "Table": "Representation Visible UserVisible TitleLocation CommandBarLocation Autofill Enabled TitleHeight ReadOnly SkipOnInput DefaultItem ChangeRowSet ChangeRowOrder Width AutoMaxWidth MaxWidth Height AutoMaxHeight MaxHeight HeightInTableRows HeightControlVariant AutoMaxRowsCount MaxRowsCount ChoiceMode MultipleChoice RowInputMode SelectionMode RowSelectionMode Header FooterHeight HeaderHeight Footer HorizontalScrollBar VerticalScrollBar HorizontalLines VerticalLines UseAlternationRowColor AutoInsertNewRow AutoAddIncomplete AutoMarkIncomplete SearchOnInput InitialListView InitialTreeView HorizontalStretch Output VerticalStretch EnableStartDrag EnableDrag FileDragMode DataPath Font RowPictureDataPath RowsPicture BackColor BorderColor TextColor Title BehaviorOnHorizontalCompression GroupVerticalAlign Shortcut TitleTextColor TitleFont CommandSet ToolTip ToolTipRepresentation SearchStringLocation ViewStatusLocation SearchControlLocation GroupHorizontalAlign CurrentRowUse RefreshRequest AutoRefresh AutoRefreshPeriod Period ChoiceFoldersAndItems RestoreCurrentRow RowFilter TopLevelParent ShowRoot AllowRootChoice UpdateOnDataChange UserSettingsGroup AllowGettingCurrentRowURL ViewMode SettingsNamedItemDetailedRepresentation ContextMenu AutoCommandBar ExtendedTooltip SearchStringAddition ViewStatusAddition SearchControlAddition Events ChildItems",
+    "TextDocumentField": "DataPath DefaultItem ReadOnly Title TitleFont TitleLocation EditMode ToolTip Width AutoMaxWidth Font MaxWidth Height AutoMaxHeight ContextMenu ExtendedTooltip Events",
+    "TrackBarField": "DataPath Title TitleLocation HorizontalAlign ToolTip ToolTipRepresentation Width AutoMaxWidth HorizontalStretch MaxWidth Height AutoMaxHeight MinValue MarkingAppearance MaxValue LargeStep Step MarkingStep ContextMenu ExtendedTooltip Events",
+    "UsualGroup": "UserVisible Visible Enabled ReadOnly EnableContentChange Title TitleTextColor TitleFont ToolTip ToolTipRepresentation Shortcut Width Height HorizontalStretch VerticalStretch GroupHorizontalAlign GroupVerticalAlign Group ChildrenAlign HorizontalSpacing VerticalSpacing HorizontalAlign VerticalAlign Behavior CollapsedRepresentationTitle Collapsed ControlRepresentation Representation CurrentRowUse Format ShowLeftMargin United ChildItemsWidth ShowTitle BackColor ThroughAlign TitleDataPath ExtendedTooltip ChildItems",
+}
+CHILD_RANK = {t: {c: i for i, c in enumerate(v.split(" "))} for t, v in CHILD_TAG_ORDER.items()}
 
-added_elems = []
-companion_count = 0
 
-elements_list = defn.get("elements") or []
-if elements_list:
-    # Resolve target container
-    target_ci = None
-    into_name = defn.get("into")
-    after_name = defn.get("after")
+def get_child_rank(parent_tag, child_tag):
+    return CHILD_RANK.get(parent_tag, {}).get(child_tag, -1)
 
-    if into_name:
-        target_group = find_element(root_ci, into_name)
-        if target_group is None:
-            print(f"[ERROR] Target group '{into_name}' not found")
-            sys.exit(1)
-        target_ci = target_group.find("f:ChildItems", NS)
-        if target_ci is None:
-            # Create ChildItems for the group
-            target_ci = etree.SubElement(target_group, f"{{{FORM_NS}}}ChildItems")
-    elif after_name:
-        after_elem = find_element(root_ci, after_name)
-        if after_elem is None:
-            print(f"[ERROR] Element '{after_name}' not found")
-            sys.exit(1)
-        target_ci = after_elem.getparent()
+
+# ── 9c. Помощники операций над деревом элементов ────────────
+
+def fail(msg):
+    print(f"[ERROR] {msg}")
+    sys.exit(1)
+
+
+def _is_el(n):
+    return isinstance(n.tag, str)
+
+
+def _el_children(n):
+    return [c for c in n if _is_el(c)]
+
+
+def get_next_element_sibling(n):
+    s = n.getnext()
+    while s is not None and not _is_el(s):
+        s = s.getnext()
+    return s
+
+
+def get_first_element_child(n):
+    for c in n:
+        if _is_el(c):
+            return c
+    return None
+
+
+def get_container_label(c):
+    if c is root:
+        return "корень формы"
+    return c.get("name")
+
+
+def _ws_before(node):
+    """Пробельный текст перед узлом: tail предыдущего соседа или text родителя."""
+    prev = node.getprevious()
+    return prev.tail if prev is not None else node.getparent().text
+
+
+def _set_ws_before(node, value):
+    prev = node.getprevious()
+    if prev is not None:
+        prev.tail = value
     else:
-        target_ci = root_ci
+        node.getparent().text = value
 
-    if target_ci is None:
-        # Create ChildItems section in form — insert after Events or AutoCommandBar
-        target_ci = etree.Element(f"{{{FORM_NS}}}ChildItems")
+
+def _is_ws(s):
+    return s is not None and s.strip() == "" and "\n" in s
+
+
+# Вставка узла в контейнер: перед ref или в конец. Перевод строки с отступом идёт перед каждым
+# дочерним узлом, у пустого контейнера — ещё и закрывающий с отступом родителя.
+def insert_node_at(container, node, ref, indent):
+    if ref is not None:
+        node.tail = "\n" + indent
+        ref.addprevious(node)
+        return
+    kids = list(container)
+    last = kids[-1] if kids else None
+    closing = last.tail if last is not None else container.text
+    if _is_ws(closing):
+        if last is not None:
+            last.tail = "\n" + indent
+        else:
+            container.text = "\n" + indent
+        container.append(node)
+        node.tail = closing
+    else:
+        if last is not None:
+            last.tail = "\n" + indent
+        else:
+            container.text = "\n" + indent
+        container.append(node)
+        parent_indent = indent[:-1] if len(indent) > 0 else ""
+        node.tail = "\n" + parent_indent
+
+
+# Дочерний узел элемента — на его каноническое место (см. 9b). Неизвестный тег — в конец.
+def insert_child_canonical(parent, child):
+    rank = get_child_rank(local_name(parent), local_name(child))
+    ref = None
+    if rank >= 0:
+        for c in parent:
+            if not _is_el(c):
+                continue
+            if get_child_rank(local_name(parent), local_name(c)) > rank:
+                ref = c
+                break
+    insert_node_at(parent, child, ref, get_child_indent(parent))
+
+
+# Узел вместе с переводом строки перед ним (как в PS: остаётся перевод строки после узла).
+def remove_node_with_ws(node):
+    parent = node.getparent()
+    _set_ws_before(node, node.tail)
+    node.tail = None
+    parent.remove(node)
+
+
+# Пустой ChildItems платформа не пишет никогда: у группы без элементов тега просто нет.
+def remove_if_empty_child_items(ci):
+    if ci is root_ci:
+        return
+    if get_first_element_child(ci) is not None:
+        return
+    remove_node_with_ws(ci)
+
+
+ROOT_AFTER_CHILD_ITEMS = ['Attributes', 'Parameters', 'Commands', 'CommandInterface', 'ConditionalAppearance', 'BaseForm']
+
+
+def get_or_create_child_items(container):
+    global root_ci
+    ci = container.find("f:ChildItems", NS)
+    if ci is not None:
+        return ci
+    ci = etree.Element(f"{{{FORM_NS}}}ChildItems")
+    if container is root:
+        # ChildItems формы — после Events или AutoCommandBar, иначе перед первой из следующих секций
         insert_after = root.find("f:Events", NS)
         if insert_after is None:
             insert_after = root.find("f:AutoCommandBar", NS)
+        ref = None
         if insert_after is not None:
-            idx = list(root).index(insert_after) + 1
-            root.insert(idx, target_ci)
+            ref = get_next_element_sibling(insert_after)
         else:
-            root.append(target_ci)
-        root_ci = target_ci
+            for c in root:
+                if _is_el(c) and local_name(c) in ROOT_AFTER_CHILD_ITEMS:
+                    ref = c
+                    break
+        insert_node_at(root, ci, ref, "\t")
+        root_ci = ci
+    else:
+        insert_child_canonical(container, ci)
+    return ci
 
-    # Detect indent level
-    child_indent = get_child_indent(target_ci)
 
-    # Имена элементов уникальны (требование 1С). Сначала — внутри самого JSON-определения
-    # (рекурсивно по children/columns).
+def get_node_indent(node):
+    ws = _ws_before(node)
+    if _is_ws(ws):
+        m = re.search(r'\n(\t*)$', ws)
+        if m:
+            return m.group(1)
+    return ""
+
+
+# Сдвиг отступов поддерева при смене глубины: каждый перевод строки внутри узла начинается с отступа
+# старого места — меняем этот префикс на новый.
+def set_subtree_indent(node, old_indent, new_indent):
+    if old_indent == new_indent:
+        return
+
+    def fix(s):
+        if s is None:
+            return s
+        m = re.match(r'^(\r?\n)(\t*)$', s)
+        if m and m.group(2).startswith(old_indent):
+            return m.group(1) + new_indent + m.group(2)[len(old_indent):]
+        return s
+
+    node.text = fix(node.text)
+    for d in node.iterdescendants():
+        d.tail = fix(d.tail)
+        if _is_el(d):
+            d.text = fix(d.text)
+
+
+# Элемент формы по имени: дерево ChildItems и командная панель формы (с кнопками). BaseForm,
+# реквизиты и команды не просматриваются. Имена в 1С регистронезависимы.
+def find_form_element(name):
+    target = name.lower()
+    scopes = []
+    if root_ci is not None:
+        scopes.append(root_ci)
+    acb_node = root.find("f:AutoCommandBar", NS)
+    if acb_node is not None:
+        if (acb_node.get("name") or "").lower() == target:
+            return acb_node
+        scopes.append(acb_node)
+    # Элементы — узлы ChildItems и служебные узлы элемента (для внятного отказа); <Event name=…> и
+    # прочие именованные свойства — не элементы.
+    for s in scopes:
+        for n in s.iterdescendants():
+            if not _is_el(n) or n.get("name") is None:
+                continue
+            if etree.QName(n.tag).namespace != FORM_NS or n.get("name").lower() != target:
+                continue
+            if local_name(n.getparent()) == 'ChildItems' or local_name(n) in COMPANION_TAGS:
+                return n
+    return None
+
+
+def get_nearest_table(node, inclusive):
+    cur = node if inclusive else node.getparent()
+    while cur is not None:
+        if local_name(cur) == "Table":
+            return cur
+        cur = cur.getparent()
+    return None
+
+
+def is_inside(node, anc):
+    cur = node
+    while cur is not None:
+        if cur is anc:
+            return True
+        cur = cur.getparent()
+    return False
+
+
+# Позиция операции: контейнер + узел, перед которым вставлять (None — в конец).
+# after/before — контейнер якоря; into — в конец (first — в начало); first без into — начало формы.
+def resolve_position(op, ctx, required):
+    after = op.get("after")
+    before = op.get("before")
+    into = op.get("into")
+    if "first" in op and not isinstance(op.get("first"), bool):
+        fail(f"{ctx}: first — true или false")
+    first = op.get("first") is True
+    if after and before:
+        fail(f"{ctx}: укажи что-то одно — after или before")
+    anchor_name = str(after) if after else (str(before) if before else None)
+    if first and anchor_name:
+        fail(f"{ctx}: first — это начало контейнера, вместе с after/before не задаётся")
+    into_el = None
+    if into:
+        into_el = find_form_element(str(into))
+        if into_el is None:
+            fail(f"{ctx}: контейнер '{into}' не найден в форме")
+    if anchor_name:
+        anchor = find_form_element(anchor_name)
+        if anchor is None:
+            fail(f"{ctx}: элемент '{anchor_name}' не найден в форме")
+        ci = anchor.getparent()
+        if local_name(ci) != "ChildItems":
+            fail(f"{ctx}: '{anchor_name}' — служебный узел ({local_name(anchor)}), рядом с ним ставить нельзя")
+        container = ci.getparent()
+        if into_el is not None and into_el is not container:
+            fail(f"{ctx}: '{anchor_name}' лежит в '{get_container_label(container)}', а не в '{into}'")
+        if after:
+            return {"Container": container, "Ref": get_next_element_sibling(anchor), "Anchor": anchor,
+                    "Desc": f"{get_container_label(container)}, после {anchor_name}"}
+        return {"Container": container, "Ref": anchor, "Anchor": anchor,
+                "Desc": f"{get_container_label(container)}, перед {anchor_name}"}
+    if into_el is None and first:
+        into_el = root
+    if into_el is not None:
+        ref = None
+        if first:
+            ci = into_el.find("f:ChildItems", NS)
+            if ci is not None:
+                ref = get_first_element_child(ci)
+        where = "первым" if first else "в конец"
+        return {"Container": into_el, "Ref": ref, "Anchor": None, "Desc": f"{get_container_label(into_el)}, {where}"}
+    if required:
+        fail(f"{ctx}: не указано, куда — нужен after, before или into")
+    return None
+
+
+CONTAINER_TAGS = ['UsualGroup', 'Page', 'Pages', 'Table', 'ColumnGroup', 'CommandBar', 'AutoCommandBar', 'ButtonGroup', 'Popup', 'ContextMenu']
+BAR_TAGS = ['CommandBar', 'AutoCommandBar', 'ButtonGroup', 'Popup', 'ContextMenu']
+BAR_ITEM_TAGS = ['Button', 'ButtonGroup', 'Popup']
+TABLE_ITEM_TAGS = ['InputField', 'CheckBoxField', 'LabelField', 'PictureField', 'ColumnGroup']
+COMPANION_TAGS = ['ContextMenu', 'ExtendedTooltip', 'AutoCommandBar', 'SearchStringAddition', 'ViewStatusAddition', 'SearchControlAddition']
+DSL_TAG_MAP = {
+    "group": "UsualGroup", "input": "InputField", "check": "CheckBoxField", "label": "LabelDecoration",
+    "labelField": "LabelField", "table": "Table", "pages": "Pages", "page": "Page", "button": "Button",
+    "picture": "PictureDecoration", "picField": "PictureField", "calendar": "CalendarField", "cmdBar": "CommandBar", "popup": "Popup",
+}
+DSL_TAG_MAP_LC = {k.lower(): v for k, v in DSL_TAG_MAP.items()}
+
+
+# Может ли элемент типа nt лечь в container. node — переносимый узел (у добавления None).
+def assert_placement(nt, name, node, container, ctx):
+    is_root = container is root
+    ct = "Form" if is_root else local_name(container)
+    cl = get_container_label(container)
+    if not is_root and ct not in CONTAINER_TAGS:
+        fail(f"{ctx}: '{cl}' ({ct}) не контейнер — в него нельзя положить элемент")
+    if node is not None and is_inside(container, node):
+        fail(f"{ctx}: '{name}' нельзя перенести внутрь самого себя — '{cl}' лежит внутри '{name}'")
+    if nt == 'Page' and ct != 'Pages':
+        fail(f"{ctx}: страница '{name}' может лежать только в группе страниц (Pages), а '{cl}' — {ct}")
+    if ct == 'Pages' and nt != 'Page':
+        fail(f"{ctx}: в группе страниц '{cl}' лежат только страницы (Page), а '{name}' — {nt}")
+    if ct in BAR_TAGS and nt not in BAR_ITEM_TAGS:
+        fail(f"{ctx}: в командной панели '{cl}' лежат только кнопки, группы кнопок и подменю, а '{name}' — {nt}")
+    if nt == 'ColumnGroup' and get_nearest_table(container, True) is None:
+        fail(f"{ctx}: группа колонок '{name}' может лежать только внутри таблицы")
+    # Колонки таблицы — только поля и группы колонок (по корпусу других типов там нет);
+    # командная панель и контекстное меню таблицы — свои правила выше.
+    in_table = None if is_root else get_nearest_table(container, True)
+    if in_table is not None and ct not in BAR_TAGS and nt not in TABLE_ITEM_TAGS:
+        fail(f"{ctx}: в таблице '{in_table.get('name')}' лежат только колонки (поля и группы колонок), а '{name}' — {nt}")
+    # Граница таблицы: колонки и поля табличной части привязаны к своей таблице. Кнопки — нет
+    # (стандартная команда таблицы законно стоит и в командной панели формы).
+    if node is not None and nt not in BAR_ITEM_TAGS:
+        frm = get_nearest_table(node, False)
+        to = None if is_root else get_nearest_table(container, True)
+        if frm is not to:
+            if frm is not None:
+                fail(f"{ctx}: '{name}' принадлежит таблице '{frm.get('name')}' — вынести его за её пределы или в другую таблицу нельзя")
+            fail(f"{ctx}: '{name}' не принадлежит таблице — внутрь таблицы '{to.get('name')}' его перенести нельзя")
+
+
+def assert_op_keys(op, allowed, ctx):
+    allowed_lc = [a.lower() for a in allowed]
+    for k in op:
+        if k.lower() not in allowed_lc:
+            fail(f"{ctx}: неизвестный ключ '{k}'; допустимы: {', '.join(allowed)}")
+
+
+def _names_of(v):
+    items = v if isinstance(v, list) else [v]
+    return [str(x) for x in items if x is not None and str(x) != ""]
+
+
+# --- Добавление ---
+
+chain_node = None
+default_pos = None
+op_log = []
+added_count = 0
+moved_count = 0
+changed_count = 0
+
+
+def invoke_add(op, type_key, idx):
+    global chain_node, default_pos, added_count
+    name = get_element_name(op, type_key)
+    ctx = f"elements[{idx}] {type_key} '{name}'"
+    pos = resolve_position(op, ctx, False)
+    if pos is None:
+        # Без своей позиции — как раньше: верхние into/after, следующие встают за предыдущим.
+        if chain_node is not None:
+            c = chain_node.getparent().getparent()
+            pos = {"Container": c, "Ref": get_next_element_sibling(chain_node), "Anchor": None,
+                   "Desc": f"{get_container_label(c)}, после {chain_node.get('name')}"}
+        else:
+            if default_pos is None:
+                default_pos = resolve_position(defn, "elements (верхние into/after)", False)
+                if default_pos is None:
+                    default_pos = {"Container": root, "Ref": None, "Anchor": None, "Desc": "корень формы, в конец"}
+            pos = default_pos
+        chained = True
+    else:
+        chained = False
+    assert_placement(DSL_TAG_MAP[type_key], name, None, pos["Container"], ctx)
+
+    ci = get_or_create_child_items(pos["Container"])
+    indent = get_child_indent(ci)
+    xml_lines.clear()
+    X(f"<_F {ALL_NS_DECL}>")
+    emit_element(op, indent)
+    X("</_F>")
+    node = import_element_nodes(parse_fragment("\n".join(xml_lines)))[0]
+    insert_node_at(ci, node, pos["Ref"], indent)
+    if chained:
+        chain_node = node
+
+    path_str = f" -> {op['path']}" if op.get("path") else ""
+    on_list = op.get("on")
+    if on_list:
+        evts = [e if isinstance(e, str) else str(e.get("event")) for e in (on_list if isinstance(on_list, list) else [on_list])]
+        evt_str = " {" + ", ".join(evts) + "}"
+    else:
+        evt_str = ""
+    op_log.append(f"  + [{local_name(node)}] {name}{path_str}{evt_str} → {pos['Desc']}")
+    added_count += 1
+
+
+# --- Перенос ---
+
+def invoke_move(op, idx):
+    global moved_count
+    ctx = f"elements[{idx}] move"
+    assert_op_keys(op, ['move', 'after', 'before', 'into', 'first'], ctx)
+    names = _names_of(op.get("move"))
+    if not names:
+        fail(f"{ctx}: укажи имя элемента или список имён")
+    nodes = []
+    seen = set()
+    for n in names:
+        if n.lower() in seen:
+            fail(f"{ctx}: '{n}' указан дважды")
+        seen.add(n.lower())
+        node = find_form_element(n)
+        if node is None:
+            fail(f"{ctx}: элемент '{n}' не найден в форме")
+        if local_name(node.getparent()) != 'ChildItems' or local_name(node) in COMPANION_TAGS:
+            fail(f"{ctx}: '{n}' — служебный узел ({local_name(node)}) своего элемента, переносится только вместе с ним")
+        nodes.append(node)
+    pos = resolve_position(op, ctx, True)
+    for node in nodes:
+        if node is pos["Anchor"]:
+            fail(f"{ctx}: '{node.get('name')}' не может быть якорем собственного переноса")
+        assert_placement(local_name(node), node.get('name'), node, pos["Container"], ctx)
+
+    ref = pos["Ref"]
+    desc = pos["Desc"]
+    prev = None
+    for node in nodes:
+        name = node.get('name')
+        if prev is not None:
+            ref = get_next_element_sibling(prev)
+            desc = f"{get_container_label(pos['Container'])}, после {prev.get('name')}"
+        from_ci = node.getparent()
+        target_ci = pos["Container"].find("f:ChildItems", NS)
+        if from_ci is target_ci and (ref is node or ref is get_next_element_sibling(node)):
+            op_log.append(f"  = {name}: уже на месте ({desc})")
+            prev = node
+            continue
+        from_label = get_container_label(from_ci.getparent())
+        # Отступ цели — до отцепления: если узел был в ней единственным, после отцепления
+        # первым пробельным узлом окажется закрывающий с отступом родителя.
+        new_indent = get_child_indent(target_ci) if target_ci is not None else None
+        old_indent = get_node_indent(node)
+        remove_node_with_ws(node)
+        ci = get_or_create_child_items(pos["Container"])
+        if new_indent is None:
+            new_indent = get_child_indent(ci)
+        insert_node_at(ci, node, ref, new_indent)
+        set_subtree_indent(node, old_indent, new_indent)
+        if from_ci is not ci:
+            remove_if_empty_child_items(from_ci)
+        op_log.append(f"  ~ {name}: {from_label} → {desc}")
+        moved_count += 1
+        prev = node
+
+
+# --- Изменение свойств ---
+
+# Умолчания платформы: в корпусе эти теги встречаются только с противоположным значением —
+# значение по умолчанию платформа не пишет, и set его не пишет, а убирает тег.
+TAG_DEFAULTS = {
+    'Visible': 'true', 'Enabled': 'true', 'ReadOnly': 'false', 'ShowTitle': 'true', 'United': 'true', 'Collapsed': 'false',
+    'AutoMaxWidth': 'true', 'AutoMaxHeight': 'true', 'Hyperlink': 'false', 'Hiperlink': 'false',
+}
+# Умолчания перечислений зависят от типа элемента: значение из области, которого в корпусе нет ни
+# разу у этого типа (у таблицы TitleLocation=Auto пишется явно — там правило не действует).
+ENUM_DEFAULTS = {
+    'UsualGroup/Group': 'HorizontalIfPossible', 'Page/Group': 'Vertical', 'ColumnGroup/Group': 'Vertical',
+    'UsualGroup/Representation': 'WeakSeparation', 'Button/Representation': 'Auto', 'Popup/Representation': 'Auto',
+}
+
+
+def get_tag_default(nt, tag):
+    if tag in TAG_DEFAULTS:
+        return TAG_DEFAULTS[tag]
+    if f"{nt}/{tag}" in ENUM_DEFAULTS:
+        return ENUM_DEFAULTS[f"{nt}/{tag}"]
+    if tag == 'TitleLocation' and nt != 'Table':
+        return 'Auto'
+    return None
+
+
+TITLE_LOC_MAP = {'none': 'None', 'left': 'Left', 'right': 'Right', 'top': 'Top', 'bottom': 'Bottom', 'auto': 'Auto'}
+# Ключи — словарь form-compile; Tags — кандидаты по типу элемента (у LabelField платформа пишет Hiperlink).
+SET_PROPS = {
+    'title': {'Tags': ['Title'], 'Kind': 'ml'},
+    'tooltip': {'Tags': ['ToolTip'], 'Kind': 'ml'},
+    'inputHint': {'Tags': ['InputHint'], 'Kind': 'ml'},
+    'visible': {'Tags': ['Visible'], 'Kind': 'bool'},
+    'hidden': {'Tags': ['Visible'], 'Kind': 'bool', 'Invert': True},
+    'enabled': {'Tags': ['Enabled'], 'Kind': 'bool'},
+    'disabled': {'Tags': ['Enabled'], 'Kind': 'bool', 'Invert': True},
+    'readOnly': {'Tags': ['ReadOnly'], 'Kind': 'bool'},
+    'skipOnInput': {'Tags': ['SkipOnInput'], 'Kind': 'bool'},
+    'titleLocation': {'Tags': ['TitleLocation'], 'Kind': 'enum', 'Map': TITLE_LOC_MAP},
+    'width': {'Tags': ['Width'], 'Kind': 'num'},
+    'height': {'Tags': ['HeightInTableRows', 'Height'], 'Kind': 'num'},
+    'maxWidth': {'Tags': ['MaxWidth'], 'Kind': 'num'},
+    'maxHeight': {'Tags': ['MaxHeight'], 'Kind': 'num'},
+    'autoMaxWidth': {'Tags': ['AutoMaxWidth'], 'Kind': 'bool'},
+    'autoMaxHeight': {'Tags': ['AutoMaxHeight'], 'Kind': 'bool'},
+    'horizontalStretch': {'Tags': ['HorizontalStretch'], 'Kind': 'bool'},
+    'verticalStretch': {'Tags': ['VerticalStretch'], 'Kind': 'bool'},
+    'multiLine': {'Tags': ['MultiLine'], 'Kind': 'bool'},
+    'passwordMode': {'Tags': ['PasswordMode'], 'Kind': 'bool'},
+    'choiceButton': {'Tags': ['ChoiceButton'], 'Kind': 'bool'},
+    'clearButton': {'Tags': ['ClearButton'], 'Kind': 'bool'},
+    'spinButton': {'Tags': ['SpinButton'], 'Kind': 'bool'},
+    'dropListButton': {'Tags': ['DropListButton'], 'Kind': 'bool'},
+    'markIncomplete': {'Tags': ['AutoMarkIncomplete'], 'Kind': 'bool'},
+    'hyperlink': {'Tags': ['Hyperlink', 'Hiperlink'], 'Kind': 'bool'},
+    'group': {'Tags': ['Group'], 'Kind': 'enum', 'Map': {'vertical': 'Vertical', 'horizontal': 'Horizontal', 'horizontalifpossible': 'HorizontalIfPossible', 'alwayshorizontal': 'AlwaysHorizontal', 'alwaysvertical': 'AlwaysVertical', 'incell': 'InCell'}},
+    'behavior': {'Tags': ['Behavior'], 'Kind': 'enum', 'Map': {'usual': 'Usual', 'collapsible': 'Collapsible', 'popup': 'PopUp'}},
+    'collapsed': {'Tags': ['Collapsed'], 'Kind': 'bool'},
+    'representation': {'Tags': ['Representation'], 'Kind': 'repr'},
+    'showTitle': {'Tags': ['ShowTitle'], 'Kind': 'bool'},
+    'united': {'Tags': ['United'], 'Kind': 'bool'},
+}
+SET_PROPS_LC = {k.lower(): v for k, v in SET_PROPS.items()}
+# Значения Representation — свои у каждого типа (по корпусу); ключи — как в form-compile.
+REPR_MAPS = {
+    'UsualGroup': {'none': 'None', 'normal': 'NormalSeparation', 'weak': 'WeakSeparation', 'strong': 'StrongSeparation'},
+    'Table': {'list': 'List', 'tree': 'Tree', 'hierarchicallist': 'HierarchicalList'},
+    'Button': {'auto': 'Auto', 'text': 'Text', 'picture': 'Picture', 'pictureandtext': 'PictureAndText'},
+    'Popup': {'auto': 'Auto', 'text': 'Text', 'picture': 'Picture', 'pictureandtext': 'PictureAndText'},
+    'ButtonGroup': {'usual': 'Usual', 'compact': 'Compact'},
+}
+XML_TAG_TO_DSL = {v: k for k, v in DSL_TAG_MAP.items()}
+
+
+def get_prop_tag(spec, nt):
+    for t in spec['Tags']:
+        if get_child_rank(nt, t) >= 0:
+            return t
+    return None
+
+
+def get_applicable_set_keys(nt):
+    keys = []
+    for k, spec in SET_PROPS.items():
+        if k in ('hidden', 'disabled'):
+            continue
+        if get_prop_tag(spec, nt) is not None:
+            keys.append(k)
+    if get_child_rank(nt, 'Events') >= 0:
+        keys.append('on')
+    return keys
+
+
+def set_simple_tag(node, tag, text):
+    existing = node.find(f"f:{tag}", NS)
+    if existing is not None:
+        existing.text = text
+        return
+    el = etree.Element(f"{{{FORM_NS}}}{tag}")
+    el.text = text
+    insert_child_canonical(node, el)
+
+
+# Значение по умолчанию платформа не пишет — и set его не пишет, а убирает тег.
+def set_value_tag(node, tag, text):
+    if get_tag_default(local_name(node), tag) == text:
+        existing = node.find(f"f:{tag}", NS)
+        if existing is not None:
+            remove_node_with_ws(existing)
+        return
+    set_simple_tag(node, tag, text)
+
+
+def set_ml_tag(node, tag, value):
+    indent = get_child_indent(node)
+    xml_lines.clear()
+    X(f"<_F {ALL_NS_DECL}>")
+    X(f"{indent}<{tag}>")
+    if isinstance(value, str):
+        # Строка меняет только русский текст: переводы на другие языки остаются как были
+        items = []
+        prev_el = node.find(f"f:{tag}", NS)
+        has_ru = False
+        if prev_el is not None:
+            for it in prev_el.findall("v8:item", NS):
+                lang_el = it.find("v8:lang", NS)
+                lang = (lang_el.text or "") if lang_el is not None else ""
+                if lang == 'ru':
+                    items.append(("ru", value))
+                    has_ru = True
+                else:
+                    content_el = it.find("v8:content", NS)
+                    items.append((lang, (content_el.text or "") if content_el is not None else ""))
+        if not has_ru:
+            items = [("ru", value)] + items
+    else:
+        items = [(k, str(v)) for k, v in value.items()]
+    for lang, text in items:
+        X(f"{indent}\t<v8:item>")
+        X(f"{indent}\t\t<v8:lang>{lang}</v8:lang>")
+        X(f"{indent}\t\t<v8:content>{esc_xml_text(text)}</v8:content>")
+        X(f"{indent}\t</v8:item>")
+    X(f"{indent}</{tag}>")
+    X("</_F>")
+    new_el = import_element_nodes(parse_fragment("\n".join(xml_lines)))[0]
+    existing = node.find(f"f:{tag}", NS)
+    if existing is not None:
+        # Атрибуты узла (formatted у заголовка надписи) переживают замену текста
+        for k, v in existing.attrib.items():
+            new_el.set(k, v)
+        new_el.tail = existing.tail
+        node.replace(existing, new_el)
+        return
+    if tag == 'Title' and local_name(node) == 'LabelDecoration':
+        new_el.set('formatted', 'false')
+    insert_child_canonical(node, new_el)
+
+
+def add_element_events(node, on, handlers, ctx):
+    nt = local_name(node)
+    name = node.get('name')
+    if get_child_rank(nt, 'Events') < 0:
+        fail(f"{ctx}: у {nt} '{name}' событий нет")
+    dsl = XML_TAG_TO_DSL.get(nt)
+    allowed = known_events.get(dsl, []) if dsl else []
+    events = node.find("f:Events", NS)
+    for evt in (on if isinstance(on, list) else [on]):
+        if isinstance(evt, str) or not (isinstance(evt, dict) and evt.get("event")):
+            evt_name = str(evt)
+            call_type = ""
+            handler = str(handlers.get(evt_name)) if handlers and handlers.get(evt_name) else get_handler_name(name, evt_name)
+        else:
+            evt_name = str(evt.get("event"))
+            call_type = str(evt.get("callType")) if evt.get("callType") else ""
+            if evt.get("handler"):
+                handler = str(evt.get("handler"))
+            elif handlers and handlers.get(evt_name):
+                handler = str(handlers.get(evt_name))
+            else:
+                handler = get_handler_name(name, evt_name)
+        if allowed and evt_name not in allowed:
+            print(f"[WARN] Unknown event '{evt_name}' for {dsl} '{name}'. Known: {', '.join(allowed)}")
+        ct_str = f"[{call_type}]" if call_type else ""
+        if events is not None:
+            dup = None
+            for e in events.findall("f:Event", NS):
+                if (e.get('name') or "").lower() == evt_name.lower() and (e.get('callType') or "").lower() == call_type.lower():
+                    dup = e
+                    break
+            if dup is not None:
+                if (dup.text or "").lower() == handler.lower():
+                    op_log.append(f"  = {name}: событие {evt_name}{ct_str} -> {handler} уже есть")
+                    continue
+                fail(f"{ctx}: у '{name}' событие {evt_name}{ct_str} уже обрабатывает '{dup.text}' — второй обработчик не повесить")
+        if events is None:
+            events = etree.Element(f"{{{FORM_NS}}}Events")
+            insert_child_canonical(node, events)
+        ev = etree.Element(f"{{{FORM_NS}}}Event")
+        ev.set('name', evt_name)
+        if call_type:
+            ev.set('callType', call_type)
+        ev.text = handler
+        insert_node_at(events, ev, None, get_child_indent(events))
+        op_log.append(f"  * {name}: событие {evt_name}{ct_str} -> {handler}")
+
+
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def invoke_set(op, idx):
+    global changed_count
+    ctx = f"elements[{idx}] set"
+    names = _names_of(op.get("set"))
+    if not names:
+        fail(f"{ctx}: укажи имя элемента или список имён")
+    props = [(k, op[k]) for k in op if k.lower() != 'set']
+    if not props:
+        fail(f"{ctx}: не указано, что менять")
+    forbidden = ['name', 'path', 'children', 'columns']
+    for n in names:
+        node = find_form_element(n)
+        if node is None:
+            fail(f"{ctx}: элемент '{n}' не найден в форме")
+        nt = local_name(node)
+        c = f"{ctx} '{n}'"
+        for key, v in props:
+            kl = key.lower()
+            if kl == 'handlers':
+                if not op.get("on"):
+                    fail(f"{c}: handlers задаются вместе с on")
+                continue
+            if kl == 'on':
+                add_element_events(node, v, op.get("handlers"), c)
+                continue
+            if kl in forbidden or (kl in DSL_TAG_MAP_LC and kl != 'group'):
+                fail(f"{c}: '{key}' через set не меняется (имя и привязку не трогаем — на них ссылаются модуль и расширения; состав — через move)")
+            if kl not in SET_PROPS_LC:
+                fail(f"{c}: неизвестное свойство '{key}'; у {nt} доступно: {', '.join(get_applicable_set_keys(nt))}")
+            spec = SET_PROPS_LC[kl]
+            tag = get_prop_tag(spec, nt)
+            if tag is None:
+                fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))}")
+            if v is None:
+                existing = node.find(f"f:{tag}", NS)
+                if existing is not None:
+                    remove_node_with_ws(existing)
+                op_log.append(f"  * {n}: {key} сброшено")
+                changed_count += 1
+                continue
+            kind = spec['Kind']
+            if kind == 'ml':
+                ml_ok = isinstance(v, str) or (isinstance(v, dict) and len(v) > 0 and all(isinstance(x, str) for x in v.values()))
+                if not ml_ok:
+                    fail(f"{c}: {key} — строка или объект {{ru, en, ...}} со строковыми значениями")
+                set_ml_tag(node, tag, v)
+                shown = v if isinstance(v, str) else " ".join(f"{k2}:{v2}" for k2, v2 in v.items())
+                op_log.append(f"  * {n}: {key}=\"{shown}\"")
+            elif kind == 'bool':
+                if not isinstance(v, bool):
+                    fail(f"{c}: {key} — true или false")
+                if spec.get('Invert'):
+                    v = not v
+                text = 'true' if v else 'false'
+                set_value_tag(node, tag, text)
+                op_log.append(f"  * {n}: {tag}={text}")
+            elif kind == 'num':
+                if not _is_num(v) or isinstance(v, float) or v < 0:
+                    fail(f"{c}: {key} — целое неотрицательное число")
+                set_simple_tag(node, tag, str(v))
+                op_log.append(f"  * {n}: {tag}={v}")
+            elif kind == 'enum':
+                mapped = spec['Map'].get(str(v).lower())
+                if not mapped:
+                    fail(f"{c}: {key}='{v}' — допустимо: {', '.join(sorted(spec['Map'].keys()))}")
+                set_value_tag(node, tag, mapped)
+                op_log.append(f"  * {n}: {tag}={mapped}")
+            elif kind == 'repr':
+                rmap = REPR_MAPS.get(nt)
+                if rmap is None:
+                    fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))}")
+                text = rmap.get(str(v).lower())
+                if not text:
+                    fail(f"{c}: representation='{v}' — допустимо: {', '.join(sorted(rmap.keys()))}")
+                set_value_tag(node, tag, text)
+                op_log.append(f"  * {n}: {tag}={text}")
+            changed_count += 1
+
+
+# ── 10. Elements: добавление, перенос, изменение — по порядку ──
+
+companion_count = 0
+
+elements_list = defn.get("elements") or []
+if not isinstance(elements_list, list):
+    elements_list = [elements_list]
+if elements_list:
+    ops = elements_list
+
+    # Вид каждой операции: ключ типа — добавление, move/set — над существующим элементом.
+    op_kinds = []
+    for i, op in enumerate(ops):
+        kinds = []
+        if isinstance(op, dict):
+            for k in ('move', 'set'):
+                if k in op:
+                    kinds.append(k)
+            # У set ключ типа — свойство (group — ориентация); остальные ключи типа set отвергнет сам.
+            if 'set' not in kinds:
+                for k in ELEMENT_KEYS:
+                    if k in op:
+                        kinds.append(k)
+                        break
+        if not kinds:
+            fail(f"elements[{i}]: не понять действие — нужен тип элемента (input, group, …), move или set")
+        if len(kinds) > 1:
+            fail(f"elements[{i}]: одна запись — одно действие, а здесь {' и '.join(kinds)}")
+        op_kinds.append(kinds[0])
+
+    # Имена добавляемых элементов уникальны (требование 1С): внутри JSON (рекурсивно по
+    # children/columns) и против уже существующих элементов формы.
     def _walk_elem_names(el, seen):
         tk = None
         for key in ELEMENT_KEYS:
@@ -1342,68 +2094,31 @@ if elements_list:
                 break
         if tk:
             _assert_edit_unique(get_element_name(el, tk), seen, "element name")
-        for c in el.get("children", []):
+        for c in el.get("children", []) or []:
             _walk_elem_names(c, seen)
-        for c in el.get("columns", []):
+        for c in el.get("columns", []) or []:
             _walk_elem_names(c, seen)
 
     dsl_elem_names = set()
-    for el in elements_list:
-        _walk_elem_names(el, dsl_elem_names)
+    for i, op in enumerate(ops):
+        if op_kinds[i] in ('move', 'set'):
+            continue
+        _walk_elem_names(op, dsl_elem_names)
+        el_name = get_element_name(op, op_kinds[i])
+        existing = find_form_element(el_name)
+        if existing is not None:
+            print(f"[ERROR] Element '{el_name}' already exists in form (id={existing.get('id')}) — element names must be unique")
+            sys.exit(1)
 
-    # Затем — против уже существующих элементов формы (дубль = битый XML, форма не откроется).
-    for el in elements_list:
-        type_key = None
-        for key in ELEMENT_KEYS:
-            if key in el and el[key] is not None:
-                type_key = key
-                break
-        if type_key:
-            el_name = get_element_name(el, type_key)
-            existing = find_element(root_ci, el_name) if root_ci is not None else None
-            if existing is not None:
-                print(f"[ERROR] Element '{el_name}' already exists in form (id={existing.get('id')}) — element names must be unique")
-                sys.exit(1)
-
-    # Remember starting element ID for companion counting
     start_elem_id = next_elem_id
-
-    # Generate fragment
-    xml_lines.clear()
-    X(f"<_F {ALL_NS_DECL}>")
-    for el in elements_list:
-        emit_element(el, child_indent)
-    X("</_F>")
-
-    frag_text = "\n".join(xml_lines)
-    frag_root = parse_fragment(frag_text)
-    imported_nodes = import_element_nodes(frag_root)
-
-    # Count actual elements for reporting
-    tag_map = {
-        "group": "Group", "input": "Input", "check": "Check", "label": "Label", "labelField": "LabelField",
-        "table": "Table", "pages": "Pages", "page": "Page", "button": "Button",
-        "picture": "Picture", "picField": "PicField", "calendar": "Calendar", "cmdBar": "CmdBar", "popup": "Popup",
-    }
-    for el in elements_list:
-        type_key = None
-        for key in ELEMENT_KEYS:
-            if key in el and el[key] is not None:
-                type_key = key
-                break
-        name = get_element_name(el, type_key)
-        path_str = f" -> {el['path']}" if el.get("path") else ""
-        on_list = el.get("on")
-        evt_str = f" {{{', '.join(str(e) for e in on_list)}}}" if on_list else ""
-        added_elems.append(f"  + [{tag_map.get(type_key, type_key)}] {name}{path_str}{evt_str}")
-
-    # Insert each imported node
-    for node in imported_nodes:
-        insert_into_container(target_ci, node, after_name, child_indent)
-        after_name = node.get("name")
-
-    total_new_elem_ids = next_elem_id - start_elem_id
-    companion_count = total_new_elem_ids - len(elements_list)
+    for i, op in enumerate(ops):
+        if op_kinds[i] == 'move':
+            invoke_move(op, i)
+        elif op_kinds[i] == 'set':
+            invoke_set(op, i)
+        else:
+            invoke_add(op, op_kinds[i], i)
+    companion_count = (next_elem_id - start_elem_id) - added_count
 
 # ── 11. Add attributes ──────────────────────────────────────
 
@@ -1673,7 +2388,7 @@ with open(resolved_form_path, "wb") as f:
 # ── 14. Summary ─────────────────────────────────────────────
 
 if is_extension:
-    print("[EXTENSION] BaseForm detected -- IDs start at 1000000+")
+    print("[EXTENSION] BaseForm detected — IDs start at 1000000+")
     print()
 
 if added_form_events:
@@ -1688,18 +2403,9 @@ if added_elem_events:
         print(line)
     print()
 
-if added_elems:
-    pos_str = ""
-    if defn.get("into"):
-        pos_str += f"into {defn['into']}"
-    if defn.get("after"):
-        if pos_str:
-            pos_str += ", "
-        pos_str += f"after {defn['after']}"
-    if pos_str:
-        pos_str = f" ({pos_str})"
-    print(f"Added elements{pos_str}:")
-    for line in added_elems:
+if op_log:
+    print("Elements:")
+    for line in op_log:
         print(line)
     print()
 
@@ -1721,9 +2427,13 @@ if added_form_events:
     total_parts.append(f"{len(added_form_events)} form event(s)")
 if added_elem_events:
     total_parts.append(f"{len(added_elem_events)} element event(s)")
-if added_elems:
+if added_count > 0:
     comp_str = f" (+{companion_count} companions)" if companion_count > 0 else ""
-    total_parts.append(f"{len(added_elems)} element(s){comp_str}")
+    total_parts.append(f"{added_count} element(s){comp_str}")
+if moved_count > 0:
+    total_parts.append(f"{moved_count} moved")
+if changed_count > 0:
+    total_parts.append(f"{changed_count} property change(s)")
 if added_attrs:
     total_parts.append(f"{len(added_attrs)} attribute(s)")
 if added_cmds:
