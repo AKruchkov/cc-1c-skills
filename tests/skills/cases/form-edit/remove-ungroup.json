@@ -1,0 +1,23 @@
+{
+  "name": "Разгруппировка: move полей из группы, затем remove пустой группы",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "move": [
+          "Номер",
+          "Дата",
+          "Контрагент"
+        ],
+        "into": "ГруппаПраво",
+        "first": true
+      },
+      {
+        "remove": "ГруппаЛево"
+      }
+    ]
+  }
+}

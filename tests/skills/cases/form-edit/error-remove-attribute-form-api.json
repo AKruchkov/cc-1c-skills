@@ -1,0 +1,26 @@
+{
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "name": "remove реквизита: РеквизитФормыВЗначение(\"X\") — ссылка → отказ",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form/Module.bsl",
+        "content": "&НаСервере\nПроцедура П()\n\tТ = РеквизитФормыВЗначение(\"Склад\");\nКонецПроцедуры\n"
+      }
+    }
+  ],
+  "input": {
+    "attributes": [
+      {
+        "remove": "Склад"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "к реквизиту 'Склад' обращается модуль формы"
+  }
+}

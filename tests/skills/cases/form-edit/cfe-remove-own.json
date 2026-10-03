@@ -1,0 +1,33 @@
+{
+  "name": "Extension-форма: собственный элемент расширения удаляется",
+  "setup": "fixture:move-cfe",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Перенос_Срочно"
+      }
+    ]
+  },
+  "preRun": [
+    {
+      "script": "form-edit/scripts/form-edit",
+      "input": {
+        "elements": [
+          {
+            "input": "Перенос_Срочно",
+            "path": "Объект.Согласован",
+            "after": "Склад"
+          }
+        ]
+      },
+      "args": {
+        "-FormPath": "{workDir}/Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml",
+        "-JsonPath": "{inputFile}"
+      }
+    }
+  ],
+  "skipPlatformVerify": "фикстура — расширение без базовой конфигурации; удаление собственного элемента проверено загрузкой на стенде"
+}

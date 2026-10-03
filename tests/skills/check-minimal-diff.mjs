@@ -77,6 +77,8 @@ const FORM_STEPS = [
     why: 'многоязычный заголовок — 6 строк' },
   { json: { elements: [{ set: 'ГруппаПодвал', group: 'vertical' }] }, plus: 1, minus: 1,
     why: 'замена значения Group' },
+  { json: { elements: [{ remove: 'Номер' }] }, plus: 0, minus: 5,
+    why: 'удаление поля — ровно его 5 строк' },
 ];
 
 function countDiff(before, after) {
@@ -125,7 +127,7 @@ for (const runtime of runtimes) {
       writeFileSync(jsonPath, JSON.stringify(step.json), 'utf8');
       skill(runtime, 'form-edit', ['-FormPath', join(fwork, FORM), '-JsonPath', jsonPath], fwork);
       const e = step.json.elements[0];
-      check(runtime, e.move ? `move ${e.move}` : `set ${e.set}`, step, before, readFileSync(join(fwork, FORM), 'utf8'));
+      check(runtime, e.move ? `move ${e.move}` : e.set ? `set ${e.set}` : `remove ${e.remove}`, step, before, readFileSync(join(fwork, FORM), 'utf8'));
     }
   } finally {
     removePathSync(fwork);

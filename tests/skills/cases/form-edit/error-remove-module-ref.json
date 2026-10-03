@@ -1,0 +1,21 @@
+{
+  "name": "remove: на элемент ссылается модуль → отказ со строкой модуля",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Приоритет"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "ссылается модуль формы",
+      "Module.bsl:3:"
+    ]
+  }
+}

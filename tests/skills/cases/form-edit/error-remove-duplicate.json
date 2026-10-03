@@ -1,0 +1,21 @@
+{
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "name": "remove: одно имя дважды → отказ",
+  "input": {
+    "elements": [
+      {
+        "remove": [
+          "Комментарий",
+          "комментарий"
+        ]
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "указан дважды"
+  }
+}

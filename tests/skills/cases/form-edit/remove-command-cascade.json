@@ -1,0 +1,21 @@
+{
+  "name": "remove команды: её кнопка уходит каскадом, обработчик остаётся в модуле и попадает в отчёт",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "commands": [
+      {
+        "remove": "Рассчитать"
+      }
+    ]
+  },
+  "expect": {
+    "stdoutContains": [
+      "кнопка удалённой команды Рассчитать",
+      "Handlers left in module",
+      "РассчитатьКоманда"
+    ]
+  }
+}

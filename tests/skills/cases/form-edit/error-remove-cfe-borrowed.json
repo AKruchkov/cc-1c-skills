@@ -1,0 +1,18 @@
+{
+  "name": "Extension-форма: заимствованный элемент не удаляется → отказ с подсказкой",
+  "setup": "fixture:move-cfe",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Склад"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "заимствованный элемент"
+  }
+}

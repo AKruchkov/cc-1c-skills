@@ -1,0 +1,19 @@
+{
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "name": "remove и добавление элемента с тем же именем в одном вызове (по порядку)",
+  "input": {
+    "elements": [
+      {
+        "remove": "Контрагент"
+      },
+      {
+        "input": "Контрагент",
+        "path": "Объект.Контрагент",
+        "into": "ГруппаПраво"
+      }
+    ]
+  }
+}

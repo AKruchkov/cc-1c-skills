@@ -1,0 +1,26 @@
+{
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "name": "remove: обращение через ПодчиненныеЭлементы — ссылка → отказ",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form/Module.bsl",
+        "content": "&НаКлиенте\nАсинх Процедура СкладПриИзменении(Элемент)\n\tЭлементы.ГруппаПраво.ПодчиненныеЭлементы.Склад.Видимость = Ложь;\nКонецПроцедуры\n"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "remove": "Склад"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "ПодчиненныеЭлементы.Склад"
+  }
+}

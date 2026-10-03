@@ -1,0 +1,20 @@
+{
+  "name": "remove: таблица вместе с привязанным полем; кнопка её стандартной команды уходит каскадом",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": [
+          "Товары",
+          "ТекущаяСумма"
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "stdoutContains": "ФормаДобавитьТовар [Button] — зависел от удалённого Товары"
+  }
+}

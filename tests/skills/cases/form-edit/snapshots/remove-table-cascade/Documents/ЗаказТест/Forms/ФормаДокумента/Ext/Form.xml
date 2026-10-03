@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Form xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.17">
+	<Title>
+		<v8:item>
+			<v8:lang>ru</v8:lang>
+			<v8:content>Заказ (тест переноса)</v8:content>
+		</v8:item>
+	</Title>
+	<AutoTitle>false</AutoTitle>
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">
+		<ChildItems>
+			<Button name="ФормаРассчитать" id="3">
+				<Type>CommandBarButton</Type>
+				<CommandName>Form.Command.Рассчитать</CommandName>
+				<ExtendedTooltip name="ФормаРассчитатьРасширеннаяПодсказка" id="4"/>
+			</Button>
+		</ChildItems>
+	</AutoCommandBar>
+	<ChildItems>
+		<UsualGroup name="ГруппаШапка" id="5">
+			<Group>AlwaysHorizontal</Group>
+			<ExtendedTooltip name="ГруппаШапкаРасширеннаяПодсказка" id="6"/>
+			<ChildItems>
+				<UsualGroup name="ГруппаЛево" id="7">
+					<Group>Vertical</Group>
+					<ExtendedTooltip name="ГруппаЛевоРасширеннаяПодсказка" id="8"/>
+					<ChildItems>
+						<InputField name="Номер" id="9">
+							<DataPath>Объект.Number</DataPath>
+							<ContextMenu name="НомерКонтекстноеМеню" id="10"/>
+							<ExtendedTooltip name="НомерРасширеннаяПодсказка" id="11"/>
+						</InputField>
+						<InputField name="Дата" id="12">
+							<DataPath>Объект.Date</DataPath>
+							<ContextMenu name="ДатаКонтекстноеМеню" id="13"/>
+							<ExtendedTooltip name="ДатаРасширеннаяПодсказка" id="14"/>
+						</InputField>
+						<InputField name="Контрагент" id="15">
+							<DataPath>Объект.Контрагент</DataPath>
+							<ContextMenu name="КонтрагентКонтекстноеМеню" id="16"/>
+							<ExtendedTooltip name="КонтрагентРасширеннаяПодсказка" id="17"/>
+						</InputField>
+					</ChildItems>
+				</UsualGroup>
+				<UsualGroup name="ГруппаПраво" id="18">
+					<Group>Vertical</Group>
+					<ExtendedTooltip name="ГруппаПравоРасширеннаяПодсказка" id="19"/>
+					<ChildItems>
+						<InputField name="Склад" id="20">
+							<DataPath>Объект.Склад</DataPath>
+							<ContextMenu name="СкладКонтекстноеМеню" id="21"/>
+							<ExtendedTooltip name="СкладРасширеннаяПодсказка" id="22"/>
+							<Events>
+								<Event name="OnChange">СкладПриИзменении</Event>
+							</Events>
+						</InputField>
+						<InputField name="Организация" id="23">
+							<DataPath>Объект.Организация</DataPath>
+							<ContextMenu name="ОрганизацияКонтекстноеМеню" id="24"/>
+							<ExtendedTooltip name="ОрганизацияРасширеннаяПодсказка" id="25"/>
+						</InputField>
+						<InputField name="Приоритет" id="26">
+							<DataPath>Объект.Приоритет</DataPath>
+							<ContextMenu name="ПриоритетКонтекстноеМеню" id="27"/>
+							<ExtendedTooltip name="ПриоритетРасширеннаяПодсказка" id="28"/>
+						</InputField>
+					</ChildItems>
+				</UsualGroup>
+			</ChildItems>
+		</UsualGroup>
+		<Pages name="Страницы" id="29">
+			<ExtendedTooltip name="СтраницыРасширеннаяПодсказка" id="30"/>
+			<ChildItems>
+				<Page name="СтраницаТовары" id="31">
+					<Title>
+						<v8:item>
+							<v8:lang>ru</v8:lang>
+							<v8:content>Товары</v8:content>
+						</v8:item>
+					</Title>
+					<ExtendedTooltip name="СтраницаТоварыРасширеннаяПодсказка" id="32"/>
+				</Page>
+				<Page name="СтраницаДополнительно" id="61">
+					<Title>
+						<v8:item>
+							<v8:lang>ru</v8:lang>
+							<v8:content>Дополнительно</v8:content>
+						</v8:item>
+					</Title>
+					<ExtendedTooltip name="СтраницаДополнительноРасширеннаяПодсказка" id="62"/>
+					<ChildItems>
+						<InputField name="Ответственный" id="63">
+							<DataPath>Объект.Ответственный</DataPath>
+							<ContextMenu name="ОтветственныйКонтекстноеМеню" id="64"/>
+							<ExtendedTooltip name="ОтветственныйРасширеннаяПодсказка" id="65"/>
+						</InputField>
+						<CheckBoxField name="Согласован" id="66">
+							<DataPath>Объект.Согласован</DataPath>
+							<CheckBoxType>Auto</CheckBoxType>
+							<TitleLocation>Right</TitleLocation>
+							<ContextMenu name="СогласованКонтекстноеМеню" id="67"/>
+							<ExtendedTooltip name="СогласованРасширеннаяПодсказка" id="68"/>
+						</CheckBoxField>
+					</ChildItems>
+				</Page>
+			</ChildItems>
+		</Pages>
+		<UsualGroup name="ГруппаПодвал" id="69">
+			<Group>AlwaysHorizontal</Group>
+			<ExtendedTooltip name="ГруппаПодвалРасширеннаяПодсказка" id="70"/>
+			<ChildItems>
+				<InputField name="Комментарий" id="71">
+					<DataPath>Объект.Комментарий</DataPath>
+					<MultiLine>true</MultiLine>
+					<AutoMaxWidth>false</AutoMaxWidth>
+					<ContextMenu name="КомментарийКонтекстноеМеню" id="72"/>
+					<ExtendedTooltip name="КомментарийРасширеннаяПодсказка" id="73"/>
+				</InputField>
+				<InputField name="Срочно" id="74">
+					<DataPath>Срочно</DataPath>
+					<ContextMenu name="СрочноКонтекстноеМеню" id="75"/>
+					<ExtendedTooltip name="СрочноРасширеннаяПодсказка" id="76"/>
+				</InputField>
+			</ChildItems>
+		</UsualGroup>
+	</ChildItems>
+	<Attributes>
+		<Attribute name="Объект" id="77">
+			<Type>
+				<v8:Type>cfg:DocumentObject.ЗаказТест</v8:Type>
+			</Type>
+			<MainAttribute>true</MainAttribute>
+			<SavedData>true</SavedData>
+		</Attribute>
+		<Attribute name="Срочно" id="78">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Срочно</v8:content>
+				</v8:item>
+			</Title>
+			<Type>
+				<v8:Type>xs:boolean</v8:Type>
+			</Type>
+		</Attribute>
+		<Attribute name="Пометка" id="79">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Пометка</v8:content>
+				</v8:item>
+			</Title>
+			<Type>
+				<v8:Type>xs:boolean</v8:Type>
+			</Type>
+		</Attribute>
+		<Attribute name="Склад" id="80">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Склад</v8:content>
+				</v8:item>
+			</Title>
+			<Type>
+				<v8:Type>xs:string</v8:Type>
+				<v8:StringQualifiers>
+					<v8:Length>10</v8:Length>
+					<v8:AllowedLength>Variable</v8:AllowedLength>
+				</v8:StringQualifiers>
+			</Type>
+		</Attribute>
+		<Attribute name="Флаг" id="81">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Флаг</v8:content>
+				</v8:item>
+			</Title>
+			<Type>
+				<v8:Type>xs:boolean</v8:Type>
+			</Type>
+		</Attribute>
+		<ConditionalAppearance>
+			<dcsset:item>
+				<dcsset:selection>
+					<dcsset:item>
+						<dcsset:field>Комментарий</dcsset:field>
+					</dcsset:item>
+					<dcsset:item>
+						<dcsset:field>Срочно</dcsset:field>
+					</dcsset:item>
+				</dcsset:selection>
+				<dcsset:filter>
+					<dcsset:item xsi:type="dcsset:FilterItemComparison">
+						<dcsset:left xsi:type="dcscor:Field">Пометка</dcsset:left>
+						<dcsset:comparisonType>Equal</dcsset:comparisonType>
+						<dcsset:right xsi:type="xs:boolean">true</dcsset:right>
+					</dcsset:item>
+				</dcsset:filter>
+				<dcsset:appearance>
+					<dcscor:item xsi:type="dcsset:SettingsParameterValue">
+						<dcscor:parameter>ЦветТекста</dcscor:parameter>
+						<dcscor:value xsi:type="v8ui:Color">web:Red</dcscor:value>
+					</dcscor:item>
+				</dcsset:appearance>
+			</dcsset:item>
+			<dcsset:item>
+				<dcsset:selection>
+					<dcsset:item>
+						<dcsset:field>Ответственный</dcsset:field>
+					</dcsset:item>
+				</dcsset:selection>
+				<dcsset:filter>
+					<dcsset:item xsi:type="dcsset:FilterItemComparison">
+						<dcsset:left xsi:type="dcscor:Field">Объект.Согласован</dcsset:left>
+						<dcsset:comparisonType>Equal</dcsset:comparisonType>
+						<dcsset:right xsi:type="xs:boolean">true</dcsset:right>
+					</dcsset:item>
+				</dcsset:filter>
+				<dcsset:appearance>
+					<dcscor:item xsi:type="dcsset:SettingsParameterValue">
+						<dcscor:parameter>ЦветТекста</dcscor:parameter>
+						<dcscor:value xsi:type="v8ui:Color">web:Gray</dcscor:value>
+					</dcscor:item>
+				</dcsset:appearance>
+			</dcsset:item>
+		</ConditionalAppearance>
+	</Attributes>
+	<Commands>
+		<Command name="Рассчитать" id="82">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Рассчитать</v8:content>
+				</v8:item>
+			</Title>
+			<Action>РассчитатьКоманда</Action>
+		</Command>
+		<Command name="Очистить" id="83">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Очистить</v8:content>
+				</v8:item>
+			</Title>
+			<Action>ОчиститьКоманда</Action>
+		</Command>
+	</Commands>
+</Form>

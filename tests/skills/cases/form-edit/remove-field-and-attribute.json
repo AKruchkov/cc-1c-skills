@@ -1,0 +1,19 @@
+{
+  "name": "remove поля и его реквизита в одном вызове (elements выполняются до attributes)",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Срочно"
+      }
+    ],
+    "attributes": [
+      {
+        "remove": "Срочно"
+      }
+    ]
+  }
+}

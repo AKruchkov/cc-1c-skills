@@ -1,0 +1,42 @@
+{
+  "name": "remove: таблица, группа, реквизиты и команды за один вызов; опустевшая командная панель — пустым тегом",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": [
+          "Товары",
+          "ТекущаяСумма"
+        ]
+      },
+      {
+        "remove": "ГруппаПодвал"
+      }
+    ],
+    "attributes": [
+      {
+        "remove": "Срочно"
+      },
+      {
+        "remove": "Пометка"
+      }
+    ],
+    "commands": [
+      {
+        "remove": "Рассчитать"
+      },
+      {
+        "remove": "Очистить"
+      }
+    ]
+  },
+  "expect": {
+    "fileContains": {
+      "file": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml",
+      "text": "<AutoCommandBar name=\"ФормаКоманднаяПанель\" id=\"-1\"/>"
+    }
+  }
+}

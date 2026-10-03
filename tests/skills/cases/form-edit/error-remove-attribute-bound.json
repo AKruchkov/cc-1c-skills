@@ -1,0 +1,18 @@
+{
+  "name": "remove реквизита, к которому привязано поле → отказ",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "attributes": [
+      {
+        "remove": "Срочно"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "привязаны: Срочно (DataPath)"
+  }
+}

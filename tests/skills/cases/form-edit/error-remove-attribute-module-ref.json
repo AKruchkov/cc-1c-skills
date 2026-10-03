@@ -1,0 +1,18 @@
+{
+  "name": "remove реквизита: обращение по имени в модуле → отказ (комментарий и текст строки не считаются)",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "attributes": [
+      {
+        "remove": "Флаг"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "к реквизиту 'Флаг' обращается модуль формы"
+  }
+}

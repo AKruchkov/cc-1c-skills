@@ -1,0 +1,14 @@
+{
+  "name": "remove: поле",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Контрагент"
+      }
+    ]
+  }
+}

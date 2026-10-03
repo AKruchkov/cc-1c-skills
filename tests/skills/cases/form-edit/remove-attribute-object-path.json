@@ -1,0 +1,14 @@
+{
+  "name": "remove реквизита Склад: Объект.Склад в модуле — не обращение к реквизиту формы",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "attributes": [
+      {
+        "remove": "Склад"
+      }
+    ]
+  }
+}

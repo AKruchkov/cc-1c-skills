@@ -1184,9 +1184,9 @@ function Remove-NodeWithWs($node) {
 
 # Пустой ChildItems платформа не пишет никогда: у группы без элементов тега просто нет.
 function Remove-IfEmptyChildItems($ci) {
-	if (Same $ci $script:rootCI) { return }
 	if ($null -ne (Get-FirstElementChild $ci)) { return }
 	Remove-NodeWithWs $ci
+	if (Same $ci $script:rootCI) { $script:rootCI = $null }
 }
 
 $script:rootAfterChildItems = @('Attributes','Parameters','Commands','CommandInterface','ConditionalAppearance','BaseForm')
@@ -1371,6 +1371,12 @@ $script:defaultPos = $null
 function Invoke-Add($op, [string]$typeKey, [int]$idx) {
 	$name = Get-ElementName -el $op -typeKey $typeKey
 	$ctx = "elements[$idx] $typeKey '$name'"
+	# Имя уже есть в форме — на момент этой операции (удалённое раньше в списке — свободно)
+	$existing = Find-FormElement $name
+	if ($null -ne $existing) {
+		Write-Host "[ERROR] Element '$name' already exists in form (id=$($existing.GetAttribute('id'))) — element names must be unique"
+		exit 1
+	}
 	$pos = Resolve-Position $op $ctx $false
 	if ($null -eq $pos) {
 		# Без своей позиции — как раньше: верхние into/after, следующие встают за предыдущим.
@@ -1722,7 +1728,439 @@ function Invoke-Set($op, [int]$idx) {
 	}
 }
 
-# === 10. Elements: добавление, перенос, изменение — по порядку ===
+# --- Удаление ---
+
+$dcsSetNs = "http://v8.1c.ru/8.1/data-composition-system/settings"
+$nsMgr.AddNamespace("dcsset", $dcsSetNs)
+$script:removeLog = @()
+$script:removedCount = 0
+$script:leftHandlers = @()
+$script:moduleScan = $null
+
+# Модуль формы — рядом с Form.xml: <...>/Ext/Form/Module.bsl. Сканер BSL: строковые литералы (с "" и
+# многострочными продолжениями «|») и комментарии // отделяются от кода, номера строк сохраняются.
+function Get-ModuleScan {
+	if ($null -ne $script:moduleScan) { return $script:moduleScan }
+	$scan = @{ Exists = $false; Raw = ""; Lines = @(); Code = @(); Literals = @() }
+	$path = Join-Path ([System.IO.Path]::GetDirectoryName($resolvedFormPath)) "Form/Module.bsl"
+	if (Test-Path -LiteralPath $path) {
+		$scan.Exists = $true
+		$scan.Raw = [System.IO.File]::ReadAllText($path)
+		$lines = $scan.Raw -replace "`r", "" -split "`n"
+		$code = New-Object System.Collections.ArrayList
+		$lits = New-Object System.Collections.ArrayList
+		$inStr = $false; $cur = $null; $curLine = 0; $curPrefix = ""
+		for ($i = 0; $i -lt $lines.Count; $i++) {
+			$line = $lines[$i]
+			$sb = New-Object System.Text.StringBuilder
+			$j = 0
+			if ($inStr) {
+				# продолжение многострочного литерала: пробелы, затем «|»
+				while ($j -lt $line.Length -and ($line[$j] -eq ' ' -or $line[$j] -eq "`t")) { $j++ }
+				if ($j -lt $line.Length -and $line[$j] -eq '|') { $j++ }
+				$cur += "`n"
+			}
+			while ($j -lt $line.Length) {
+				$c = $line[$j]
+				if ($inStr) {
+					if ($c -eq '"') {
+						if ($j + 1 -lt $line.Length -and $line[$j + 1] -eq '"') { $cur += '"'; $j += 2; continue }
+						$inStr = $false
+						[void]$lits.Add(@{ Line = $curLine; Text = $cur; Prefix = $curPrefix })
+						[void]$sb.Append('""')
+						$j++
+						continue
+					}
+					$cur += $c; $j++; continue
+				}
+				if ($c -eq '/' -and $j + 1 -lt $line.Length -and $line[$j + 1] -eq '/') { break }
+				if ($c -eq '"') { $inStr = $true; $cur = ""; $curLine = $i + 1; $curPrefix = $sb.ToString(); $j++; continue }
+				[void]$sb.Append($c); $j++
+			}
+			[void]$code.Add($sb.ToString())
+		}
+		$scan.Lines = $lines
+		$scan.Code = $code.ToArray()
+		$scan.Literals = $lits.ToArray()
+	}
+	$script:moduleScan = $scan
+	return $scan
+}
+
+# Где имя элемента/команды передают строкой: Найти("X"), ПолеКомпоновкиДанных("X"), ПутьКДанным = "X",
+# УстановитьСвойствоЭлементаФормы(Элементы, "X", …); реквизита — ещё РеквизитФормыВЗначение("X") и
+# ЗначениеВРеквизитФормы(…, "X").
+$script:itemLiteralContext = '((?<!\w)(Найти|Find|ПолеКомпоновкиДанных|DataCompositionField)\s*\(\s*|(?<!\w)(ПутьКДанным|DataPath)\s*=\s*|(?<!\w)(Элементы|Items)\s*,\s*)$'
+$script:attrLiteralContext = '((?<!\w)(ПолеКомпоновкиДанных|DataCompositionField|РеквизитФормыВЗначение|FormAttributeToValue)\s*\(\s*|(?<!\w)(ЗначениеВРеквизитФормы|ValueToFormAttribute)\s*\(.*,\s*|(?<!\w)(ПутьКДанным|DataPath)\s*=\s*)$'
+
+# Номера строк модуля, где есть ссылка на имя. Kind: element | command | attribute.
+function Find-ModuleRefs([string]$name, [string]$kind) {
+	$scan = Get-ModuleScan
+	$hits = New-Object System.Collections.Generic.SortedSet[int]
+	if (-not $scan.Exists) { return @() }
+	$n = [regex]::Escape($name)
+	$opt = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+	for ($i = 0; $i -lt $scan.Code.Count; $i++) {
+		$code = $scan.Code[$i]
+		if ($kind -eq 'element') {
+			if ([regex]::IsMatch($code, "(?<!\w)(Элементы|Items|ПодчиненныеЭлементы|ChildItems)\s*\.\s*$n(?!\w)", $opt)) { [void]$hits.Add($i + 1) }
+		} elseif ($kind -eq 'command') {
+			if ([regex]::IsMatch($code, "(?<!\w)(Команды|Commands)\s*\.\s*$n(?!\w)", $opt)) { [void]$hits.Add($i + 1) }
+		} else {
+			# Реквизит формы: имя целым словом не после точки; после точки — только ЭтаФорма./ЭтотОбъект.
+			foreach ($m in [regex]::Matches($code, "(?<!\w)$n(?!\w)", $opt)) {
+				$before = $code.Substring(0, $m.Index)
+				if ($before -match '\.\s*$') {
+					if ([regex]::IsMatch($before, '(?<![\w.])(ЭтаФорма|ЭтотОбъект|ThisForm|ThisObject)\s*\.\s*$', $opt)) { [void]$hits.Add($i + 1) }
+				} else {
+					[void]$hits.Add($i + 1)
+				}
+			}
+		}
+	}
+	# Строкой имя передают только в узком наборе вызовов (по корпусу) — остальные литералы
+	# (параметры запроса, ключи структур) с именем совпадают случайно и ссылкой не считаются.
+	$ctxPat = if ($kind -eq 'attribute') { $script:attrLiteralContext } else { $script:itemLiteralContext }
+	foreach ($lit in $scan.Literals) {
+		$t = $lit.Text
+		$match = ($t -eq $name -or ($kind -eq 'attribute' -and $t.StartsWith("$name.", [System.StringComparison]::OrdinalIgnoreCase)))
+		if ($match -and [regex]::IsMatch($lit.Prefix, $ctxPat, $opt)) { [void]$hits.Add($lit.Line) }
+	}
+	return @($hits)
+}
+
+function Format-ModuleRefs([int[]]$lines) {
+	$scan = Get-ModuleScan
+	$out = @()
+	foreach ($l in ($lines | Select-Object -First 5)) { $out += "  Module.bsl:${l}: $($scan.Lines[$l - 1].Trim())" }
+	if ($lines.Count -gt 5) { $out += "  … и ещё $($lines.Count - 5)" }
+	return ($out -join "`n")
+}
+
+# Обработчики удаляемого, которые есть процедурами в модуле, — в отчёт: мёртвый код, решает автор.
+function Add-LeftHandlers([string[]]$handlers) {
+	$scan = Get-ModuleScan
+	if (-not $scan.Exists) { return }
+	foreach ($h in $handlers) {
+		if (-not $h -or $script:leftHandlers -contains $h) { continue }
+		$pat = "(?im)^\s*((Асинх|Async)\s+)?(Процедура|Функция|Procedure|Function)\s+$([regex]::Escape($h))\s*\("
+		if ([regex]::IsMatch($scan.Raw, $pat)) { $script:leftHandlers += $h }
+	}
+}
+
+function Test-Borrowed([string]$name, [string]$kind) {
+	if (-not $script:isExtension) { return $false }
+	$bf = $root.SelectSingleNode("f:BaseForm", $nsMgr)
+	$xp = switch ($kind) {
+		'element' { ".//*[@name]" }
+		'command' { "f:Commands/f:Command" }
+		'attribute' { "f:Attributes/f:Attribute" }
+	}
+	foreach ($n in $bf.SelectNodes($xp, $nsMgr)) {
+		if ($n.NamespaceURI -eq $formNs -and $n.GetAttribute("name") -eq $name) {
+			if ($kind -ne 'element' -or $n.ParentNode.LocalName -eq 'ChildItems') { return $true }
+		}
+	}
+	return $false
+}
+
+# Ближайший именованный элемент формы, которому принадлежит узел.
+function Get-OwnerElement($node) {
+	$cur = $node
+	while ($null -ne $cur -and $cur.NodeType -eq 'Element') {
+		if ($cur.NamespaceURI -eq $formNs -and $cur.HasAttribute("name") -and ($cur.ParentNode.LocalName -eq 'ChildItems' -or $script:companionTags -contains $cur.LocalName)) { return $cur }
+		$cur = $cur.ParentNode
+	}
+	return $null
+}
+
+function Get-ElementScopes {
+	$scopes = @()
+	if ($null -ne $script:rootCI) { $scopes += $script:rootCI }
+	$acbNode = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr)
+	if ($null -ne $acbNode) { $scopes += $acbNode }
+	return $scopes
+}
+
+function Get-NamedInSubtree($node) {
+	$names = @($node.GetAttribute("name"))
+	foreach ($d in $node.SelectNodes(".//*[@name]")) {
+		if ($d.NamespaceURI -eq $formNs -and ($d.ParentNode.LocalName -eq 'ChildItems' -or $script:companionTags -contains $d.LocalName)) { $names += $d.GetAttribute("name") }
+	}
+	return $names
+}
+
+# Общий удалитель элементов: каскад зависимых кнопок и дополнений поиска, отказ при ссылках из
+# модуля и из привязанных полей, чистка условного оформления. $roots — узлы, $reasons — подпись.
+function Remove-FormElements($roots, [string]$ctx, [string]$reason) {
+	# Вложенные в другие удаляемые — поглощаются
+	$set = New-Object System.Collections.ArrayList
+	foreach ($r in $roots) {
+		$inside = $false
+		foreach ($o in $roots) { if (-not (Same $o $r) -and (Test-IsInside $r $o)) { $inside = $true; break } }
+		if (-not $inside) { [void]$set.Add($r) }
+	}
+	$items = New-Object System.Collections.ArrayList   # @{ Node; Reason }
+	foreach ($r in $set) { [void]$items.Add(@{ Node = $r; Reason = $reason }) }
+	foreach ($r in $set) {
+		foreach ($nm in (Get-NamedInSubtree $r)) {
+			if (Test-Borrowed $nm 'element') { Fail "${ctx}: '$nm' — заимствованный элемент, платформа не даёт удалять его в расширении; чтобы скрыть — {""set"": ""$nm"", ""visible"": false}" }
+		}
+	}
+
+	# Каскад: кнопки, дополнения поиска; отказ: прочие привязки Items.X…
+	$changed = $true
+	while ($changed) {
+		$changed = $false
+		$removedNames = @{}
+		foreach ($it in $items) { foreach ($nm in (Get-NamedInSubtree $it.Node)) { $removedNames[$nm] = $nm } }
+		$blockers = @()
+		foreach ($s in (Get-ElementScopes)) {
+			foreach ($t in $s.SelectNodes(".//*")) {
+				$ln = $t.LocalName
+				if (-not ($ln -eq 'CommandName' -or $ln -eq 'CommandSource' -or $ln.EndsWith('DataPath') -or ($ln -eq 'Item' -and $t.ParentNode.LocalName -eq 'AdditionSource'))) { continue }
+				$txt = $t.InnerText.Trim()
+				$target = $null
+				if ($txt -match '^Form\.Item\.([^.]+)\.') { $target = $Matches[1] }
+				elseif ($ln -eq 'CommandSource' -and $txt -match '^Item\.([^.]+)$') { $target = $Matches[1] }
+				elseif ($txt -match '^Items\.([^.]+)\.') { $target = $Matches[1] }
+				elseif ($ln -eq 'Item') { $target = $txt }
+				if (-not $target -or -not $removedNames.ContainsKey($target)) { continue }
+				$owner = Get-OwnerElement $t
+				if ($null -eq $owner) { continue }
+				$inRemoved = $false
+				foreach ($it in $items) { if (Test-IsInside $owner $it.Node) { $inRemoved = $true; break } }
+				if ($inRemoved) { continue }
+				$ol = $owner.LocalName
+				if ($ol -in @('Button','ButtonGroup','Popup','CommandBar','SearchStringAddition','ViewStatusAddition','SearchControlAddition')) {
+					[void]$items.Add(@{ Node = $owner; Reason = "зависел от удалённого $($removedNames[$target])" })
+					$changed = $true
+					break
+				}
+				$blockers += "$($owner.GetAttribute('name')) ($ol, $ln = $txt)"
+			}
+			if ($changed) { break }
+		}
+	}
+	if ($blockers.Count -gt 0) {
+		Fail "${ctx}: на удаляемое ссылаются элементы, которые остаются: $(($blockers | Select-Object -Unique) -join '; ') — удали их в том же remove или перепривяжи"
+	}
+
+	# Заимствованное и ссылки из модуля — по всем удаляемым именам
+	$allNames = @()
+	foreach ($it in $items) { $allNames += Get-NamedInSubtree $it.Node }
+	$allNames = @($allNames | Select-Object -Unique)
+	foreach ($nm in $allNames) {
+		if (Test-Borrowed $nm 'element') { Fail "${ctx}: '$nm' — заимствованный элемент, платформа не даёт удалять его в расширении; чтобы скрыть — {""set"": ""$nm"", ""visible"": false}" }
+	}
+	foreach ($nm in $allNames) {
+		$refs = Find-ModuleRefs $nm 'element'
+		if ($refs.Count -gt 0) { Fail "${ctx}: на элемент '$nm' ссылается модуль формы — сначала убери обращения из кода:`n$(Format-ModuleRefs $refs)" }
+	}
+
+	# Командный интерфейс формы: пункт с параметром из текущей строки удаляемого — каскадом
+	$cif = $root.SelectSingleNode("f:CommandInterface", $nsMgr)
+	if ($null -ne $cif) {
+		$lowerNames = @{}; foreach ($nm in $allNames) { $lowerNames[$nm.ToLower()] = $true }
+		foreach ($a in @($cif.SelectNodes(".//f:Item/f:Attribute", $nsMgr))) {
+			if ($a.InnerText.Trim() -match '^~?Items\.([^.]+)(\.|$)' -and $lowerNames.ContainsKey($Matches[1].ToLower())) {
+				$item = $a.ParentNode
+				$parent = $item.ParentNode
+				Remove-NodeWithWs $item
+				while (-not (Same $parent $root) -and $null -eq (Get-FirstElementChild $parent)) {
+					$up = $parent.ParentNode
+					Remove-NodeWithWs $parent
+					$parent = $up
+				}
+				$script:removeLog += "  - командный интерфейс: пункт с параметром $($a.InnerText.Trim())"
+			}
+		}
+	}
+
+	# Обработчики событий удаляемого
+	$handlers = @()
+	foreach ($it in $items) {
+		foreach ($ev in $it.Node.SelectNodes(".//f:Event", $nsMgr)) { $handlers += $ev.InnerText.Trim() }
+	}
+	Add-LeftHandlers $handlers
+
+	# Условное оформление: поле удаляемого элемента — из списка оформляемых; пустой список
+	# означал бы «вся форма», поэтому такое правило уходит целиком.
+	$ca = $root.SelectSingleNode("f:Attributes/f:ConditionalAppearance", $nsMgr)
+	if ($null -ne $ca) {
+		$lower = @{}; foreach ($nm in $allNames) { $lower[$nm.ToLower()] = $true }
+		foreach ($rule in @($ca.SelectNodes("dcsset:item", $nsMgr))) {
+			$sel = $rule.SelectSingleNode("dcsset:selection", $nsMgr)
+			if ($null -eq $sel) { continue }
+			$hit = $false
+			foreach ($si in @($sel.SelectNodes("dcsset:item", $nsMgr))) {
+				$f = $si.SelectSingleNode("dcsset:field", $nsMgr)
+				if ($null -ne $f -and $lower.ContainsKey($f.InnerText.Trim().ToLower())) {
+					$script:removeLog += "  - условное оформление: поле $($f.InnerText.Trim()) убрано из правила"
+					Remove-NodeWithWs $si
+					$hit = $true
+				}
+			}
+			if ($hit -and $null -eq (Get-FirstElementChild $sel)) {
+				Remove-NodeWithWs $rule
+				$script:removeLog += "  - условное оформление: правило без оформляемых полей удалено"
+			}
+		}
+		if ($null -eq (Get-FirstElementChild $ca)) { Remove-NodeWithWs $ca }
+	}
+
+	foreach ($it in $items) {
+		$node = $it.Node
+		$name = $node.GetAttribute("name")
+		# вложенные элементы для отчёта — без служебных узлов
+		$shown = @()
+		foreach ($d in $node.SelectNodes(".//*[@name]")) {
+			if ($d.NamespaceURI -eq $formNs -and $d.ParentNode.LocalName -eq 'ChildItems') { $shown += $d.GetAttribute("name") }
+		}
+		$tail = ""
+		if ($shown.Count -gt 0) {
+			$list = ($shown | Select-Object -First 10) -join ', '
+			if ($shown.Count -gt 10) { $list += ", … и ещё $($shown.Count - 10)" }
+			$tail = " (+ $list)"
+		}
+		$why = if ($it.Reason) { " — $($it.Reason)" } else { "" }
+		$ci = $node.ParentNode
+		$holder = $ci.ParentNode
+		Remove-NodeWithWs $node
+		Remove-IfEmptyChildItems $ci
+		# Опустевшая командная панель или меню — пустым тегом, как пишет платформа
+		if ($null -ne $holder -and $script:companionTags -contains $holder.LocalName -and $null -eq (Get-FirstElementChild $holder)) {
+			while ($holder.HasChildNodes) { $holder.RemoveChild($holder.FirstChild) | Out-Null }
+			$holder.IsEmpty = $true
+		}
+		$script:removeLog += "  - $name [$($node.LocalName)]$tail$why"
+		$script:removedCount++
+	}
+}
+
+function Invoke-Remove($op, [int]$idx) {
+	$ctx = "elements[$idx] remove"
+	Assert-OpKeys $op @('remove') $ctx
+	$names = @(@($op.remove) | ForEach-Object { "$_" } | Where-Object { $_ })
+	if ($names.Count -eq 0) { Fail "${ctx}: укажи имя элемента или список имён" }
+	$nodes = @()
+	$seen = @{}
+	foreach ($n in $names) {
+		if ($seen.ContainsKey($n)) { Fail "${ctx}: '$n' указан дважды" }
+		$seen[$n] = $true
+		$node = Find-FormElement $n
+		if ($null -eq $node) { Fail "${ctx}: элемент '$n' не найден в форме" }
+		if ($node.ParentNode.LocalName -ne 'ChildItems' -or $script:companionTags -contains $node.LocalName) {
+			Fail "${ctx}: '$n' — служебный узел ($($node.LocalName)) своего элемента, удаляется только вместе с ним"
+		}
+		$nodes += $node
+	}
+	Remove-FormElements $nodes $ctx ""
+}
+
+function Remove-FormCommand($op, [int]$idx) {
+	$ctx = "commands[$idx] remove"
+	Assert-OpKeys $op @('remove') $ctx
+	$name = "$($op.remove)"
+	$sec = $root.SelectSingleNode("f:Commands", $nsMgr)
+	$cmd = $null
+	if ($null -ne $sec) { foreach ($c in $sec.SelectNodes("f:Command", $nsMgr)) { if ($c.GetAttribute("name") -eq $name) { $cmd = $c; break } } }
+	if ($null -eq $cmd) { Fail "${ctx}: команда '$name' не найдена в форме" }
+	$name = $cmd.GetAttribute("name")
+	if (Test-Borrowed $name 'command') { Fail "${ctx}: '$name' — заимствованная команда, платформа не даёт удалять её в расширении" }
+	$refs = Find-ModuleRefs $name 'command'
+	if ($refs.Count -gt 0) { Fail "${ctx}: на команду '$name' ссылается модуль формы — сначала убери обращения из кода:`n$(Format-ModuleRefs $refs)" }
+
+	# Кнопки команды — через общий удалитель (их имена тоже проверяются по модулю)
+	$buttons = @()
+	foreach ($s in (Get-ElementScopes)) {
+		foreach ($cn in $s.SelectNodes(".//f:CommandName", $nsMgr)) {
+			if ($cn.InnerText.Trim() -eq "Form.Command.$name") {
+				$b = Get-OwnerElement $cn
+				if ($null -ne $b) { $buttons += $b }
+			}
+		}
+	}
+	if ($buttons.Count -gt 0) { Remove-FormElements $buttons $ctx "кнопка удалённой команды $name" }
+
+	# Пункты командного интерфейса формы
+	$ci = $root.SelectSingleNode("f:CommandInterface", $nsMgr)
+	if ($null -ne $ci) {
+		foreach ($c in @($ci.SelectNodes(".//f:Item/f:Command", $nsMgr))) {
+			if ($c.InnerText.Trim() -ne "Form.Command.$name") { continue }
+			$item = $c.ParentNode
+			$parent = $item.ParentNode
+			Remove-NodeWithWs $item
+			while (-not (Same $parent $root) -and $null -eq (Get-FirstElementChild $parent)) {
+				$up = $parent.ParentNode
+				Remove-NodeWithWs $parent
+				$parent = $up
+			}
+			$script:removeLog += "  - командный интерфейс: пункт команды $name"
+		}
+	}
+
+	Add-LeftHandlers @($cmd.SelectNodes("f:Action", $nsMgr) | ForEach-Object { $_.InnerText.Trim() })
+	Remove-NodeWithWs $cmd
+	if ($null -eq (Get-FirstElementChild $sec)) { Remove-NodeWithWs $sec }
+	$script:removeLog += "  - команда $name"
+	$script:removedCount++
+}
+
+function Remove-FormAttribute($op, [int]$idx) {
+	$ctx = "attributes[$idx] remove"
+	Assert-OpKeys $op @('remove') $ctx
+	$name = "$($op.remove)"
+	$sec = $root.SelectSingleNode("f:Attributes", $nsMgr)
+	$attr = $null
+	if ($null -ne $sec) { foreach ($a in $sec.SelectNodes("f:Attribute", $nsMgr)) { if ($a.GetAttribute("name") -eq $name) { $attr = $a; break } } }
+	if ($null -eq $attr) { Fail "${ctx}: реквизит '$name' не найден в форме" }
+	$name = $attr.GetAttribute("name")
+	$main = $attr.SelectSingleNode("f:MainAttribute", $nsMgr)
+	if ($null -ne $main -and $main.InnerText.Trim() -eq 'true') { Fail "${ctx}: '$name' — основной реквизит формы, он не удаляется" }
+	if (Test-Borrowed $name 'attribute') { Fail "${ctx}: '$name' — заимствованный реквизит, платформа не даёт удалять его в расширении" }
+	$refs = Find-ModuleRefs $name 'attribute'
+	if ($refs.Count -gt 0) { Fail "${ctx}: к реквизиту '$name' обращается модуль формы — сначала убери обращения из кода:`n$(Format-ModuleRefs $refs)" }
+
+	# Привязки в форме: пути данных элементов и поля условного оформления
+	$users = @()
+	$isPath = { param($t) $t -eq $name -or $t.StartsWith("$name.", [System.StringComparison]::OrdinalIgnoreCase) }
+	foreach ($s in (Get-ElementScopes)) {
+		foreach ($t in $s.SelectNodes(".//*")) {
+			if (-not $t.LocalName.EndsWith('DataPath')) { continue }
+			if (& $isPath $t.InnerText.Trim()) {
+				$o = Get-OwnerElement $t
+				if ($null -ne $o) { $users += "$($o.GetAttribute('name')) ($($t.LocalName))" }
+			}
+		}
+	}
+	$ca = $root.SelectSingleNode("f:Attributes/f:ConditionalAppearance", $nsMgr)
+	if ($null -ne $ca) {
+		foreach ($t in $ca.SelectNodes(".//dcsset:left | .//dcsset:right", $nsMgr)) {
+			$xt = $t.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
+			if ($xt.EndsWith(':Field') -and (& $isPath $t.InnerText.Trim())) { $users += "условное оформление (отбор по $($t.InnerText.Trim()))" }
+		}
+	}
+	$cif = $root.SelectSingleNode("f:CommandInterface", $nsMgr)
+	if ($null -ne $cif) {
+		foreach ($a in $cif.SelectNodes(".//f:Item/f:Attribute", $nsMgr)) {
+			$at = $a.InnerText.Trim().TrimStart('~')
+			if (& $isPath $at) { $users += "командный интерфейс (параметр $($a.InnerText.Trim()))" }
+		}
+	}
+	if ($users.Count -gt 0) {
+		Fail "${ctx}: к реквизиту '$name' привязаны: $(($users | Select-Object -Unique) -join '; ') — удали или перепривяжи их раньше (elements выполняются до attributes)"
+	}
+	Remove-NodeWithWs $attr
+	if ($null -eq (Get-FirstElementChild $sec)) {
+		while ($sec.HasChildNodes) { $sec.RemoveChild($sec.FirstChild) | Out-Null }
+		$sec.IsEmpty = $true
+	}
+	$script:removeLog += "  - реквизит $name"
+	$script:removedCount++
+}
+
+# === 10. Elements: добавление, перенос, изменение, удаление — по порядку ===
 
 $script:opLog = @()
 $script:addedCount = 0
@@ -1740,12 +2178,12 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 	for ($i = 0; $i -lt $ops.Count; $i++) {
 		$op = $ops[$i]
 		$kinds = @()
-		foreach ($k in @('move','set')) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k } }
+		foreach ($k in @('move','set','remove')) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k } }
 		# У set ключ типа — свойство (group — ориентация); остальные ключи типа set отвергнет сам.
 		if ($kinds -notcontains 'set') {
 			foreach ($k in $elemTypeKeys) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k; break } }
 		}
-		if ($kinds.Count -eq 0) { Fail "elements[$i]: не понять действие — нужен тип элемента (input, group, …), move или set" }
+		if ($kinds.Count -eq 0) { Fail "elements[$i]: не понять действие — нужен тип элемента (input, group, …), move, set или remove" }
 		if ($kinds.Count -gt 1) { Fail "elements[$i]: одна запись — одно действие, а здесь $($kinds -join ' и ')" }
 		$opKinds += $kinds[0]
 	}
@@ -1761,14 +2199,8 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 	}
 	$dslElemNames = @{}
 	for ($i = 0; $i -lt $ops.Count; $i++) {
-		if ($opKinds[$i] -in @('move','set')) { continue }
+		if ($opKinds[$i] -in @('move','set','remove')) { continue }
 		Walk-ElemNames $ops[$i] $dslElemNames
-		$elName = Get-ElementName -el $ops[$i] -typeKey $opKinds[$i]
-		$existing = Find-FormElement $elName
-		if ($null -ne $existing) {
-			Write-Host "[ERROR] Element '$elName' already exists in form (id=$($existing.GetAttribute('id'))) — element names must be unique"
-			exit 1
-		}
 	}
 
 	$startElemId = $script:nextElemId
@@ -1776,6 +2208,7 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 		switch ($opKinds[$i]) {
 			'move' { Invoke-Move $ops[$i] $i }
 			'set'  { Invoke-Set $ops[$i] $i }
+			'remove' { Invoke-Remove $ops[$i] $i }
 			default { Invoke-Add $ops[$i] $opKinds[$i] $i }
 		}
 	}
@@ -1786,7 +2219,19 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 
 $addedAttrs = @()
 
-if ($def.attributes -and $def.attributes.Count -gt 0) {
+# Удаления (запись с ключом remove) — по порядку, до добавлений
+$attrAdds = @()
+if ($def.attributes) {
+	$attrOps = @($def.attributes)
+	for ($i = 0; $i -lt $attrOps.Count; $i++) {
+		if ($null -ne $attrOps[$i].PSObject.Properties['remove']) {
+			Assert-OpKeys $attrOps[$i] @('remove') "attributes[$i] remove"
+			foreach ($rn in @(@($attrOps[$i].remove) | ForEach-Object { "$_" })) { Remove-FormAttribute ([pscustomobject]@{ remove = $rn }) $i }
+		} else { $attrAdds += $attrOps[$i] }
+	}
+}
+
+if ($attrAdds.Count -gt 0) {
 	$attrsSection = $root.SelectSingleNode("f:Attributes", $nsMgr)
 	if (-not $attrsSection) {
 		# Create Attributes section — insert after ChildItems or after Events
@@ -1817,7 +2262,7 @@ if ($def.attributes -and $def.attributes.Count -gt 0) {
 	# Уникальность имён реквизитов: внутри JSON-определения (+ колонки в пределах реквизита) и
 	# против уже существующих реквизитов формы.
 	$dslAttrNames = @{}
-	foreach ($attr in $def.attributes) {
+	foreach ($attr in $attrAdds) {
 		Assert-EditUnique -name "$($attr.name)" -seen $dslAttrNames -ctx 'attribute name'
 		if ($attr.columns) {
 			$dslColNames = @{}
@@ -1833,7 +2278,7 @@ if ($def.attributes -and $def.attributes.Count -gt 0) {
 	# Generate attribute fragments
 	$script:xml = New-Object System.Text.StringBuilder 2048
 	X "<_F $allNsDecl>"
-	foreach ($attr in $def.attributes) {
+	foreach ($attr in $attrAdds) {
 		$attrId = New-AttrId
 		$attrName = "$($attr.name)"
 		X "$attrChildIndent<Attribute name=`"$attrName`" id=`"$attrId`">"
@@ -1876,14 +2321,27 @@ if ($def.attributes -and $def.attributes.Count -gt 0) {
 
 $addedCmds = @()
 
-if ($def.commands -and $def.commands.Count -gt 0) {
+# Удаления (запись с ключом remove) — по порядку, до добавлений
+$cmdAdds = @()
+if ($def.commands) {
+	$cmdOps = @($def.commands)
+	for ($i = 0; $i -lt $cmdOps.Count; $i++) {
+		if ($null -ne $cmdOps[$i].PSObject.Properties['remove']) {
+			Assert-OpKeys $cmdOps[$i] @('remove') "commands[$i] remove"
+			foreach ($rn in @(@($cmdOps[$i].remove) | ForEach-Object { "$_" })) { Remove-FormCommand ([pscustomobject]@{ remove = $rn }) $i }
+		} else { $cmdAdds += $cmdOps[$i] }
+	}
+}
+
+if ($cmdAdds.Count -gt 0) {
 	$cmdsSection = $root.SelectSingleNode("f:Commands", $nsMgr)
 	if (-not $cmdsSection) {
-		# Create Commands section — insert after Parameters or Attributes
+		# Секция команд — после Attributes (порядок платформы: Attributes, Commands, Parameters)
 		$cmdsSection = $xmlDoc.CreateElement("Commands", $formNs)
-		$insertAfter = $root.SelectSingleNode("f:Parameters", $nsMgr)
-		if (-not $insertAfter) { $insertAfter = $root.SelectSingleNode("f:Attributes", $nsMgr) }
+		$insertAfter = $root.SelectSingleNode("f:Attributes", $nsMgr)
 		if (-not $insertAfter) { $insertAfter = $rootCI }
+		if (-not $insertAfter) { $insertAfter = $root.SelectSingleNode("f:Events", $nsMgr) }
+		if (-not $insertAfter) { $insertAfter = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr) }
 		if ($insertAfter) {
 			$refNode = $insertAfter.NextSibling
 			$ws = $xmlDoc.CreateWhitespace("`r`n`t")
@@ -1900,7 +2358,7 @@ if ($def.commands -and $def.commands.Count -gt 0) {
 
 	# Уникальность имён команд: внутри JSON-определения и против существующих команд формы.
 	$dslCmdNames = @{}
-	foreach ($cmd in $def.commands) {
+	foreach ($cmd in $cmdAdds) {
 		Assert-EditUnique -name "$($cmd.name)" -seen $dslCmdNames -ctx 'command name'
 		$existingCmd = $cmdsSection.SelectSingleNode("f:Command[@name='$($cmd.name)']", $nsMgr)
 		if ($existingCmd) {
@@ -1912,7 +2370,7 @@ if ($def.commands -and $def.commands.Count -gt 0) {
 	# Generate command fragments
 	$script:xml = New-Object System.Text.StringBuilder 1024
 	X "<_F $allNsDecl>"
-	foreach ($cmd in $def.commands) {
+	foreach ($cmd in $cmdAdds) {
 		$cmdId = New-CmdId
 		$cmdName = "$($cmd.name)"
 		X "$cmdChildIndent<Command name=`"$cmdName`" id=`"$cmdId`">"
@@ -2126,6 +2584,18 @@ if ($script:opLog.Count -gt 0) {
 	Write-Host ""
 }
 
+if ($script:removeLog.Count -gt 0) {
+	Write-Host "Removed:"
+	foreach ($line in $script:removeLog) { Write-Host $line }
+	Write-Host ""
+}
+
+if ($script:leftHandlers.Count -gt 0) {
+	Write-Host "Handlers left in module (delete if unused):"
+	foreach ($h in $script:leftHandlers) { Write-Host "  $h" }
+	Write-Host ""
+}
+
 if ($addedAttrs.Count -gt 0) {
 	Write-Host "Added attributes:"
 	foreach ($line in $addedAttrs) { Write-Host $line }
@@ -2148,6 +2618,7 @@ if ($script:addedCount -gt 0) {
 }
 if ($script:movedCount -gt 0) { $totalParts += "$($script:movedCount) moved" }
 if ($script:changedCount -gt 0) { $totalParts += "$($script:changedCount) property change(s)" }
+if ($script:removedCount -gt 0) { $totalParts += "$($script:removedCount) removed" }
 if ($addedAttrs.Count -gt 0) { $totalParts += "$($addedAttrs.Count) attribute(s)" }
 if ($addedCmds.Count -gt 0) { $totalParts += "$($addedCmds.Count) command(s)" }
 Write-Host "Total: $($totalParts -join ', ')"

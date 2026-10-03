@@ -1,0 +1,18 @@
+{
+  "name": "remove таблицы, к текущей строке которой привязано поле → отказ",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Товары"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "ТекущаяСумма (LabelField, DataPath = Items.Товары.CurrentData.Сумма)"
+  }
+}

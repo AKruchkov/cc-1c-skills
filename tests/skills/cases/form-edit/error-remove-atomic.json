@@ -1,0 +1,25 @@
+{
+  "name": "Отказ во второй операции — первое удаление не записано",
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "remove": "Контрагент"
+      },
+      {
+        "remove": "Приоритет"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "ссылается модуль формы",
+    "fileContains": {
+      "file": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml",
+      "text": "name=\"Контрагент\""
+    }
+  }
+}

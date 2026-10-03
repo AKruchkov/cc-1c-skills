@@ -1,0 +1,26 @@
+{
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "name": "remove: имя строкой в УстановитьСвойствоЭлементаФормы(Элементы, \"X\") — ссылка → отказ",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form/Module.bsl",
+        "content": "&НаСервере\nПроцедура П()\n\tОбщегоНазначенияКлиентСервер.УстановитьСвойствоЭлементаФормы(Элементы, \"Комментарий\", \"Видимость\", Ложь);\nКонецПроцедуры\n"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "remove": "Комментарий"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "Module.bsl:3:"
+  }
+}

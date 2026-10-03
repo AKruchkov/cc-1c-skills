@@ -1,0 +1,22 @@
+{
+  "setup": "fixture:remove-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "name": "remove: строка с именем в параметре запроса — не ссылка на элемент",
+  "preRun": [
+    {
+      "writeFile": {
+        "path": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form/Module.bsl",
+        "content": "&НаСервере\nПроцедура П()\n\tЗапрос.УстановитьПараметр(\"Комментарий\", Объект.Комментарий);\nКонецПроцедуры\n"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "remove": "Комментарий"
+      }
+    ]
+  }
+}

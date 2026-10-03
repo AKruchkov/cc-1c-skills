@@ -1436,11 +1436,12 @@ def remove_node_with_ws(node):
 
 # Пустой ChildItems платформа не пишет никогда: у группы без элементов тега просто нет.
 def remove_if_empty_child_items(ci):
-    if ci is root_ci:
-        return
+    global root_ci
     if get_first_element_child(ci) is not None:
         return
     remove_node_with_ws(ci)
+    if ci is root_ci:
+        root_ci = None
 
 
 ROOT_AFTER_CHILD_ITEMS = ['Attributes', 'Parameters', 'Commands', 'CommandInterface', 'ConditionalAppearance', 'BaseForm']
@@ -1666,6 +1667,11 @@ def invoke_add(op, type_key, idx):
     global chain_node, default_pos, added_count
     name = get_element_name(op, type_key)
     ctx = f"elements[{idx}] {type_key} '{name}'"
+    # Имя уже есть в форме — на момент этой операции (удалённое раньше в списке — свободно)
+    existing = find_form_element(name)
+    if existing is not None:
+        print(f"[ERROR] Element '{name}' already exists in form (id={existing.get('id')}) — element names must be unique")
+        sys.exit(1)
     pos = resolve_position(op, ctx, False)
     if pos is None:
         # Без своей позиции — как раньше: верхние into/after, следующие встают за предыдущим.
@@ -2054,7 +2060,492 @@ def invoke_set(op, idx):
             changed_count += 1
 
 
-# ── 10. Elements: добавление, перенос, изменение — по порядку ──
+# --- Удаление ---
+
+DCSSET_NS = "http://v8.1c.ru/8.1/data-composition-system/settings"
+XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
+NS["dcsset"] = DCSSET_NS
+remove_log = []
+removed_count = 0
+left_handlers = []
+_module_scan = None
+
+
+# Модуль формы — рядом с Form.xml: <...>/Ext/Form/Module.bsl. Сканер BSL: строковые литералы (с "" и
+# многострочными продолжениями «|») и комментарии // отделяются от кода, номера строк сохраняются.
+def get_module_scan():
+    global _module_scan
+    if _module_scan is not None:
+        return _module_scan
+    scan = {"Exists": False, "Raw": "", "Lines": [], "Code": [], "Literals": []}
+    path = os.path.join(os.path.dirname(resolved_form_path), "Form", "Module.bsl")
+    if os.path.exists(path):
+        scan["Exists"] = True
+        with open(path, encoding="utf-8-sig", newline="") as fh:
+            scan["Raw"] = fh.read()
+        lines = scan["Raw"].replace("\r", "").split("\n")
+        code = []
+        lits = []
+        in_str = False
+        cur = None
+        cur_line = 0
+        cur_prefix = ""
+        for i, line in enumerate(lines):
+            sb = []
+            j = 0
+            if in_str:
+                # продолжение многострочного литерала: пробелы, затем «|»
+                while j < len(line) and line[j] in (' ', '\t'):
+                    j += 1
+                if j < len(line) and line[j] == '|':
+                    j += 1
+                cur += "\n"
+            while j < len(line):
+                c = line[j]
+                if in_str:
+                    if c == '"':
+                        if j + 1 < len(line) and line[j + 1] == '"':
+                            cur += '"'
+                            j += 2
+                            continue
+                        in_str = False
+                        lits.append({"Line": cur_line, "Text": cur, "Prefix": cur_prefix})
+                        sb.append('""')
+                        j += 1
+                        continue
+                    cur += c
+                    j += 1
+                    continue
+                if c == '/' and j + 1 < len(line) and line[j + 1] == '/':
+                    break
+                if c == '"':
+                    in_str = True
+                    cur = ""
+                    cur_line = i + 1
+                    cur_prefix = "".join(sb)
+                    j += 1
+                    continue
+                sb.append(c)
+                j += 1
+            code.append("".join(sb))
+        scan["Lines"] = lines
+        scan["Code"] = code
+        scan["Literals"] = lits
+    _module_scan = scan
+    return scan
+
+
+# Где имя элемента/команды передают строкой: Найти("X"), ПолеКомпоновкиДанных("X"), ПутьКДанным = "X",
+# УстановитьСвойствоЭлементаФормы(Элементы, "X", …); реквизита — ещё РеквизитФормыВЗначение("X") и
+# ЗначениеВРеквизитФормы(…, "X").
+ITEM_LITERAL_CONTEXT = r'((?<!\w)(Найти|Find|ПолеКомпоновкиДанных|DataCompositionField)\s*\(\s*|(?<!\w)(ПутьКДанным|DataPath)\s*=\s*|(?<!\w)(Элементы|Items)\s*,\s*)$'
+ATTR_LITERAL_CONTEXT = r'((?<!\w)(ПолеКомпоновкиДанных|DataCompositionField|РеквизитФормыВЗначение|FormAttributeToValue)\s*\(\s*|(?<!\w)(ЗначениеВРеквизитФормы|ValueToFormAttribute)\s*\(.*,\s*|(?<!\w)(ПутьКДанным|DataPath)\s*=\s*)$'
+
+
+# Номера строк модуля, где есть ссылка на имя. kind: element | command | attribute.
+def find_module_refs(name, kind):
+    scan = get_module_scan()
+    hits = set()
+    if not scan["Exists"]:
+        return []
+    n = re.escape(name)
+    for i, code in enumerate(scan["Code"]):
+        if kind == 'element':
+            if re.search(rf"(?<!\w)(Элементы|Items|ПодчиненныеЭлементы|ChildItems)\s*\.\s*{n}(?!\w)", code, re.I):
+                hits.add(i + 1)
+        elif kind == 'command':
+            if re.search(rf"(?<!\w)(Команды|Commands)\s*\.\s*{n}(?!\w)", code, re.I):
+                hits.add(i + 1)
+        else:
+            # Реквизит формы: имя целым словом не после точки; после точки — только ЭтаФорма./ЭтотОбъект.
+            for m in re.finditer(rf"(?<!\w){n}(?!\w)", code, re.I):
+                before = code[:m.start()]
+                if re.search(r'\.\s*$', before):
+                    if re.search(r'(?<![\w.])(ЭтаФорма|ЭтотОбъект|ThisForm|ThisObject)\s*\.\s*$', before, re.I):
+                        hits.add(i + 1)
+                else:
+                    hits.add(i + 1)
+    # Строкой имя передают только в узком наборе вызовов (по корпусу) — остальные литералы
+    # (параметры запроса, ключи структур) с именем совпадают случайно и ссылкой не считаются.
+    ctx_pat = ATTR_LITERAL_CONTEXT if kind == 'attribute' else ITEM_LITERAL_CONTEXT
+    for lit in scan["Literals"]:
+        t = lit["Text"]
+        match = t.lower() == name.lower() or (kind == 'attribute' and t.lower().startswith(name.lower() + "."))
+        if match and re.search(ctx_pat, lit["Prefix"], re.I):
+            hits.add(lit["Line"])
+    return sorted(hits)
+
+
+def format_module_refs(lines):
+    scan = get_module_scan()
+    out = []
+    for l in lines[:5]:
+        out.append(f"  Module.bsl:{l}: {scan['Lines'][l - 1].strip()}")
+    if len(lines) > 5:
+        out.append(f"  … и ещё {len(lines) - 5}")
+    return "\n".join(out)
+
+
+# Обработчики удаляемого, которые есть процедурами в модуле, — в отчёт: мёртвый код, решает автор.
+def add_left_handlers(handlers):
+    scan = get_module_scan()
+    if not scan["Exists"]:
+        return
+    for h in handlers:
+        if not h or h.lower() in [x.lower() for x in left_handlers]:
+            continue
+        pat = rf"^\s*((Асинх|Async)\s+)?(Процедура|Функция|Procedure|Function)\s+{re.escape(h)}\s*\("
+        if re.search(pat, scan["Raw"], re.I | re.M):
+            left_handlers.append(h)
+
+
+def test_borrowed(name, kind):
+    if not is_extension:
+        return False
+    bf = root.find("f:BaseForm", NS)
+    target = name.lower()
+    if kind == 'element':
+        cands = [n for n in bf.iterdescendants() if _is_el(n) and n.get("name") is not None]
+    elif kind == 'command':
+        cands = bf.findall("f:Commands/f:Command", NS)
+    else:
+        cands = bf.findall("f:Attributes/f:Attribute", NS)
+    for n in cands:
+        if etree.QName(n.tag).namespace == FORM_NS and (n.get("name") or "").lower() == target:
+            if kind != 'element' or local_name(n.getparent()) == 'ChildItems':
+                return True
+    return False
+
+
+# Ближайший именованный элемент формы, которому принадлежит узел.
+def get_owner_element(node):
+    cur = node
+    while cur is not None:
+        if _is_el(cur) and etree.QName(cur.tag).namespace == FORM_NS and cur.get("name") is not None and \
+                (cur.getparent() is not None and local_name(cur.getparent()) == 'ChildItems' or local_name(cur) in COMPANION_TAGS):
+            return cur
+        cur = cur.getparent()
+    return None
+
+
+def get_element_scopes():
+    scopes = []
+    if root_ci is not None:
+        scopes.append(root_ci)
+    acb_node = root.find("f:AutoCommandBar", NS)
+    if acb_node is not None:
+        scopes.append(acb_node)
+    return scopes
+
+
+def get_named_in_subtree(node):
+    names = [node.get("name")]
+    for d in node.iterdescendants():
+        if _is_el(d) and d.get("name") is not None and etree.QName(d.tag).namespace == FORM_NS and \
+                (local_name(d.getparent()) == 'ChildItems' or local_name(d) in COMPANION_TAGS):
+            names.append(d.get("name"))
+    return names
+
+
+def _text(t):
+    return "".join(t.itertext()).strip()
+
+
+def _uniq(seq):
+    out = []
+    for x in seq:
+        if x not in out:
+            out.append(x)
+    return out
+
+
+def _form_ca():
+    return root.find("f:Attributes/f:ConditionalAppearance", NS)
+
+
+# Общий удалитель элементов: каскад зависимых кнопок и дополнений поиска, отказ при ссылках из
+# модуля и из привязанных полей, чистка условного оформления.
+def remove_form_elements(roots, ctx, reason):
+    global removed_count
+    # Вложенные в другие удаляемые — поглощаются
+    items = []
+    for r in roots:
+        if not any(o is not r and is_inside(r, o) for o in roots):
+            items.append({"Node": r, "Reason": reason})
+    for it in list(items):
+        for nm in get_named_in_subtree(it["Node"]):
+            if test_borrowed(nm, 'element'):
+                fail(f"{ctx}: '{nm}' — заимствованный элемент, платформа не даёт удалять его в расширении; чтобы скрыть — {{\"set\": \"{nm}\", \"visible\": false}}")
+
+    # Каскад: кнопки, дополнения поиска; отказ: прочие привязки Items.X…
+    changed = True
+    blockers = []
+    while changed:
+        changed = False
+        removed_names = {}
+        for it in items:
+            for nm in get_named_in_subtree(it["Node"]):
+                removed_names[nm.lower()] = nm
+        blockers = []
+        for s in get_element_scopes():
+            for t in s.iterdescendants():
+                if not _is_el(t):
+                    continue
+                ln = local_name(t)
+                if not (ln == 'CommandName' or ln == 'CommandSource' or ln.endswith('DataPath') or (ln == 'Item' and local_name(t.getparent()) == 'AdditionSource')):
+                    continue
+                txt = _text(t)
+                target = None
+                m = re.match(r'^Form\.Item\.([^.]+)\.', txt, re.I)
+                if m:
+                    target = m.group(1)
+                elif ln == 'CommandSource' and re.match(r'^Item\.([^.]+)$', txt, re.I):
+                    target = re.match(r'^Item\.([^.]+)$', txt, re.I).group(1)
+                elif re.match(r'^Items\.([^.]+)\.', txt, re.I):
+                    target = re.match(r'^Items\.([^.]+)\.', txt, re.I).group(1)
+                elif ln == 'Item':
+                    target = txt
+                if not target or target.lower() not in removed_names:
+                    continue
+                owner = get_owner_element(t)
+                if owner is None:
+                    continue
+                if any(is_inside(owner, it["Node"]) for it in items):
+                    continue
+                ol = local_name(owner)
+                if ol in ('Button', 'ButtonGroup', 'Popup', 'CommandBar', 'SearchStringAddition', 'ViewStatusAddition', 'SearchControlAddition'):
+                    items.append({"Node": owner, "Reason": f"зависел от удалённого {removed_names[target.lower()]}"})
+                    changed = True
+                    break
+                blockers.append(f"{owner.get('name')} ({ol}, {ln} = {txt})")
+            if changed:
+                break
+    if blockers:
+        fail(f"{ctx}: на удаляемое ссылаются элементы, которые остаются: {'; '.join(_uniq(blockers))} — удали их в том же remove или перепривяжи")
+
+    # Заимствованное и ссылки из модуля — по всем удаляемым именам
+    all_names = []
+    for it in items:
+        all_names += get_named_in_subtree(it["Node"])
+    all_names = _uniq(all_names)
+    for nm in all_names:
+        if test_borrowed(nm, 'element'):
+            fail(f"{ctx}: '{nm}' — заимствованный элемент, платформа не даёт удалять его в расширении; чтобы скрыть — {{\"set\": \"{nm}\", \"visible\": false}}")
+    for nm in all_names:
+        refs = find_module_refs(nm, 'element')
+        if refs:
+            fail(f"{ctx}: на элемент '{nm}' ссылается модуль формы — сначала убери обращения из кода:\n{format_module_refs(refs)}")
+
+    # Командный интерфейс формы: пункт с параметром из текущей строки удаляемого — каскадом
+    cif = root.find("f:CommandInterface", NS)
+    if cif is not None:
+        lower_names = {nm.lower() for nm in all_names}
+        for a in list(cif.findall(".//f:Item/f:Attribute", NS)):
+            m = re.match(r'^~?Items\.([^.]+)(\.|$)', _text(a), re.I)
+            if m and m.group(1).lower() in lower_names:
+                item = a.getparent()
+                parent = item.getparent()
+                remove_node_with_ws(item)
+                while parent is not root and get_first_element_child(parent) is None:
+                    up = parent.getparent()
+                    remove_node_with_ws(parent)
+                    parent = up
+                remove_log.append(f"  - командный интерфейс: пункт с параметром {_text(a)}")
+
+    # Обработчики событий удаляемого
+    handlers = []
+    for it in items:
+        for ev in it["Node"].iter(f"{{{FORM_NS}}}Event"):
+            handlers.append(_text(ev))
+    add_left_handlers(handlers)
+
+    # Условное оформление: поле удаляемого элемента — из списка оформляемых; пустой список
+    # означал бы «вся форма», поэтому такое правило уходит целиком.
+    ca = _form_ca()
+    if ca is not None:
+        lower = {nm.lower() for nm in all_names}
+        for rule in list(ca.findall("dcsset:item", NS)):
+            sel = rule.find("dcsset:selection", NS)
+            if sel is None:
+                continue
+            hit = False
+            for si in list(sel.findall("dcsset:item", NS)):
+                f = si.find("dcsset:field", NS)
+                if f is not None and _text(f).lower() in lower:
+                    remove_log.append(f"  - условное оформление: поле {_text(f)} убрано из правила")
+                    remove_node_with_ws(si)
+                    hit = True
+            if hit and get_first_element_child(sel) is None:
+                remove_node_with_ws(rule)
+                remove_log.append("  - условное оформление: правило без оформляемых полей удалено")
+        if get_first_element_child(ca) is None:
+            remove_node_with_ws(ca)
+
+    for it in items:
+        node = it["Node"]
+        name = node.get("name")
+        # вложенные элементы для отчёта — без служебных узлов
+        shown = [d.get("name") for d in node.iterdescendants()
+                 if _is_el(d) and d.get("name") is not None and etree.QName(d.tag).namespace == FORM_NS and local_name(d.getparent()) == 'ChildItems']
+        tail = ""
+        if shown:
+            lst = ", ".join(shown[:10])
+            if len(shown) > 10:
+                lst += f", … и ещё {len(shown) - 10}"
+            tail = f" (+ {lst})"
+        why = f" — {it['Reason']}" if it["Reason"] else ""
+        ci = node.getparent()
+        holder = ci.getparent()
+        remove_node_with_ws(node)
+        remove_if_empty_child_items(ci)
+        # Опустевшая командная панель или меню — пустым тегом, как пишет платформа
+        if holder is not None and local_name(holder) in COMPANION_TAGS and get_first_element_child(holder) is None:
+            for c in list(holder):
+                holder.remove(c)
+            holder.text = None
+        remove_log.append(f"  - {name} [{local_name(node)}]{tail}{why}")
+        removed_count += 1
+
+
+def invoke_remove(op, idx):
+    ctx = f"elements[{idx}] remove"
+    assert_op_keys(op, ['remove'], ctx)
+    names = _names_of(op.get("remove"))
+    if not names:
+        fail(f"{ctx}: укажи имя элемента или список имён")
+    nodes = []
+    seen = set()
+    for n in names:
+        if n.lower() in seen:
+            fail(f"{ctx}: '{n}' указан дважды")
+        seen.add(n.lower())
+        node = find_form_element(n)
+        if node is None:
+            fail(f"{ctx}: элемент '{n}' не найден в форме")
+        if local_name(node.getparent()) != 'ChildItems' or local_name(node) in COMPANION_TAGS:
+            fail(f"{ctx}: '{n}' — служебный узел ({local_name(node)}) своего элемента, удаляется только вместе с ним")
+        nodes.append(node)
+    remove_form_elements(nodes, ctx, "")
+
+
+def remove_form_command(op, idx):
+    global removed_count
+    ctx = f"commands[{idx}] remove"
+    assert_op_keys(op, ['remove'], ctx)
+    name = str(op.get("remove"))
+    sec = root.find("f:Commands", NS)
+    cmd = None
+    if sec is not None:
+        for c in sec.findall("f:Command", NS):
+            if (c.get("name") or "").lower() == name.lower():
+                cmd = c
+                break
+    if cmd is None:
+        fail(f"{ctx}: команда '{name}' не найдена в форме")
+    name = cmd.get("name")
+    if test_borrowed(name, 'command'):
+        fail(f"{ctx}: '{name}' — заимствованная команда, платформа не даёт удалять её в расширении")
+    refs = find_module_refs(name, 'command')
+    if refs:
+        fail(f"{ctx}: на команду '{name}' ссылается модуль формы — сначала убери обращения из кода:\n{format_module_refs(refs)}")
+
+    # Кнопки команды — через общий удалитель (их имена тоже проверяются по модулю)
+    buttons = []
+    for s in get_element_scopes():
+        for cn in s.iter(f"{{{FORM_NS}}}CommandName"):
+            if _text(cn).lower() == f"form.command.{name}".lower():
+                b = get_owner_element(cn)
+                if b is not None:
+                    buttons.append(b)
+    if buttons:
+        remove_form_elements(buttons, ctx, f"кнопка удалённой команды {name}")
+
+    # Пункты командного интерфейса формы
+    ci = root.find("f:CommandInterface", NS)
+    if ci is not None:
+        for c in list(ci.findall(".//f:Item/f:Command", NS)):
+            if _text(c).lower() != f"form.command.{name}".lower():
+                continue
+            item = c.getparent()
+            parent = item.getparent()
+            remove_node_with_ws(item)
+            while parent is not root and get_first_element_child(parent) is None:
+                up = parent.getparent()
+                remove_node_with_ws(parent)
+                parent = up
+            remove_log.append(f"  - командный интерфейс: пункт команды {name}")
+
+    add_left_handlers([_text(a) for a in cmd.findall("f:Action", NS)])
+    remove_node_with_ws(cmd)
+    if get_first_element_child(sec) is None:
+        remove_node_with_ws(sec)
+    remove_log.append(f"  - команда {name}")
+    removed_count += 1
+
+
+def remove_form_attribute(op, idx):
+    global removed_count
+    ctx = f"attributes[{idx}] remove"
+    assert_op_keys(op, ['remove'], ctx)
+    name = str(op.get("remove"))
+    sec = root.find("f:Attributes", NS)
+    attr = None
+    if sec is not None:
+        for a in sec.findall("f:Attribute", NS):
+            if (a.get("name") or "").lower() == name.lower():
+                attr = a
+                break
+    if attr is None:
+        fail(f"{ctx}: реквизит '{name}' не найден в форме")
+    name = attr.get("name")
+    main = attr.find("f:MainAttribute", NS)
+    if main is not None and _text(main) == 'true':
+        fail(f"{ctx}: '{name}' — основной реквизит формы, он не удаляется")
+    if test_borrowed(name, 'attribute'):
+        fail(f"{ctx}: '{name}' — заимствованный реквизит, платформа не даёт удалять его в расширении")
+    refs = find_module_refs(name, 'attribute')
+    if refs:
+        fail(f"{ctx}: к реквизиту '{name}' обращается модуль формы — сначала убери обращения из кода:\n{format_module_refs(refs)}")
+
+    # Привязки в форме: пути данных элементов и поля условного оформления
+    def is_path(t):
+        return t.lower() == name.lower() or t.lower().startswith(name.lower() + ".")
+
+    users = []
+    for s in get_element_scopes():
+        for t in s.iterdescendants():
+            if not _is_el(t) or not local_name(t).endswith('DataPath'):
+                continue
+            if is_path(_text(t)):
+                o = get_owner_element(t)
+                if o is not None:
+                    users.append(f"{o.get('name')} ({local_name(t)})")
+    ca = _form_ca()
+    if ca is not None:
+        for t in ca.iterdescendants():
+            if not _is_el(t) or etree.QName(t.tag).namespace != DCSSET_NS or local_name(t) not in ('left', 'right'):
+                continue
+            xt = t.get(f"{{{XSI_NS}}}type") or ""
+            if xt.endswith(':Field') and is_path(_text(t)):
+                users.append(f"условное оформление (отбор по {_text(t)})")
+    cif = root.find("f:CommandInterface", NS)
+    if cif is not None:
+        for a in cif.findall(".//f:Item/f:Attribute", NS):
+            at = _text(a).lstrip('~')
+            if is_path(at):
+                users.append(f"командный интерфейс (параметр {_text(a)})")
+    if users:
+        fail(f"{ctx}: к реквизиту '{name}' привязаны: {'; '.join(_uniq(users))} — удали или перепривяжи их раньше (elements выполняются до attributes)")
+    remove_node_with_ws(attr)
+    if get_first_element_child(sec) is None:
+        for c in list(sec):
+            sec.remove(c)
+        sec.text = None
+    remove_log.append(f"  - реквизит {name}")
+    removed_count += 1
+
+
+# ── 10. Elements: добавление, перенос, изменение, удаление — по порядку ──
 
 companion_count = 0
 
@@ -2069,7 +2560,7 @@ if elements_list:
     for i, op in enumerate(ops):
         kinds = []
         if isinstance(op, dict):
-            for k in ('move', 'set'):
+            for k in ('move', 'set', 'remove'):
                 if k in op:
                     kinds.append(k)
             # У set ключ типа — свойство (group — ориентация); остальные ключи типа set отвергнет сам.
@@ -2079,7 +2570,7 @@ if elements_list:
                         kinds.append(k)
                         break
         if not kinds:
-            fail(f"elements[{i}]: не понять действие — нужен тип элемента (input, group, …), move или set")
+            fail(f"elements[{i}]: не понять действие — нужен тип элемента (input, group, …), move, set или remove")
         if len(kinds) > 1:
             fail(f"elements[{i}]: одна запись — одно действие, а здесь {' и '.join(kinds)}")
         op_kinds.append(kinds[0])
@@ -2101,14 +2592,9 @@ if elements_list:
 
     dsl_elem_names = set()
     for i, op in enumerate(ops):
-        if op_kinds[i] in ('move', 'set'):
+        if op_kinds[i] in ('move', 'set', 'remove'):
             continue
         _walk_elem_names(op, dsl_elem_names)
-        el_name = get_element_name(op, op_kinds[i])
-        existing = find_form_element(el_name)
-        if existing is not None:
-            print(f"[ERROR] Element '{el_name}' already exists in form (id={existing.get('id')}) — element names must be unique")
-            sys.exit(1)
 
     start_elem_id = next_elem_id
     for i, op in enumerate(ops):
@@ -2116,6 +2602,8 @@ if elements_list:
             invoke_move(op, i)
         elif op_kinds[i] == 'set':
             invoke_set(op, i)
+        elif op_kinds[i] == 'remove':
+            invoke_remove(op, i)
         else:
             invoke_add(op, op_kinds[i], i)
     companion_count = (next_elem_id - start_elem_id) - added_count
@@ -2124,11 +2612,29 @@ if elements_list:
 
 added_attrs = []
 
-attrs_list = defn.get("attributes") or []
+# Удаления (запись с ключом remove) — по порядку, до добавлений
+attrs_list = []
+_attr_ops = defn.get("attributes") or []
+if not isinstance(_attr_ops, list):
+    _attr_ops = [_attr_ops]
+for _i, _op in enumerate(_attr_ops):
+    if isinstance(_op, dict) and "remove" in _op:
+        assert_op_keys(_op, ['remove'], f"attributes[{_i}] remove")
+        for _rn in _names_of(_op.get("remove")):
+            remove_form_attribute({"remove": _rn}, _i)
+    else:
+        attrs_list.append(_op)
 if attrs_list:
     attrs_section = root.find("f:Attributes", NS)
     if attrs_section is None:
-        attrs_section = etree.SubElement(root, f"{{{FORM_NS}}}Attributes")
+        # Секция реквизитов — после ChildItems, Events или AutoCommandBar (как в PS-мастере)
+        attrs_section = etree.Element(f"{{{FORM_NS}}}Attributes")
+        _after = root_ci
+        if _after is None:
+            _after = root.find("f:Events", NS)
+        if _after is None:
+            _after = root.find("f:AutoCommandBar", NS)
+        insert_node_at(root, attrs_section, get_next_element_sibling(_after) if _after is not None else None, "\t")
 
     attr_child_indent = get_child_indent(attrs_section)
     if not attr_child_indent:
@@ -2198,11 +2704,31 @@ if attrs_list:
 
 added_cmds = []
 
-cmds_list = defn.get("commands") or []
+# Удаления (запись с ключом remove) — по порядку, до добавлений
+cmds_list = []
+_cmd_ops = defn.get("commands") or []
+if not isinstance(_cmd_ops, list):
+    _cmd_ops = [_cmd_ops]
+for _i, _op in enumerate(_cmd_ops):
+    if isinstance(_op, dict) and "remove" in _op:
+        assert_op_keys(_op, ['remove'], f"commands[{_i}] remove")
+        for _rn in _names_of(_op.get("remove")):
+            remove_form_command({"remove": _rn}, _i)
+    else:
+        cmds_list.append(_op)
 if cmds_list:
     cmds_section = root.find("f:Commands", NS)
     if cmds_section is None:
-        cmds_section = etree.SubElement(root, f"{{{FORM_NS}}}Commands")
+        # Секция команд — после Attributes (порядок платформы: Attributes, Commands, Parameters)
+        cmds_section = etree.Element(f"{{{FORM_NS}}}Commands")
+        _after = root.find("f:Attributes", NS)
+        if _after is None:
+            _after = root_ci
+        if _after is None:
+            _after = root.find("f:Events", NS)
+        if _after is None:
+            _after = root.find("f:AutoCommandBar", NS)
+        insert_node_at(root, cmds_section, get_next_element_sibling(_after) if _after is not None else None, "\t")
 
     cmd_child_indent = get_child_indent(cmds_section)
     if not cmd_child_indent:
@@ -2409,6 +2935,18 @@ if op_log:
         print(line)
     print()
 
+if remove_log:
+    print("Removed:")
+    for line in remove_log:
+        print(line)
+    print()
+
+if left_handlers:
+    print("Handlers left in module (delete if unused):")
+    for h in left_handlers:
+        print(f"  {h}")
+    print()
+
 if added_attrs:
     print("Added attributes:")
     for line in added_attrs:
@@ -2434,6 +2972,8 @@ if moved_count > 0:
     total_parts.append(f"{moved_count} moved")
 if changed_count > 0:
     total_parts.append(f"{changed_count} property change(s)")
+if removed_count > 0:
+    total_parts.append(f"{removed_count} removed")
 if added_attrs:
     total_parts.append(f"{len(added_attrs)} attribute(s)")
 if added_cmds:
