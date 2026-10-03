@@ -1,7 +1,7 @@
 ---
 name: cfe-borrow
 description: Заимствование объектов из конфигурации 1С в расширение (CFE). Используй когда нужно перехватить метод, изменить форму или добавить реквизит к существующему объекту конфигурации
-argument-hint: -ExtensionPath <path> -ConfigPath <path> -Object "Catalog.Контрагенты.Form.ФормаЭлемента" -BorrowMainAttribute
+argument-hint: -ExtensionPath <path> -ConfigPath <path> -Object "Catalog.Контрагенты.Form.ФормаЭлемента" -BorrowMainAttribute Form
 allowed-tools:
   - Bash
   - Read
@@ -32,7 +32,7 @@ allowed-tools:
 | `ConfigPath` | Путь к конфигурации-источнику (обязат.) |
 | `Object` | Что заимствовать (обязат.), batch через `;;` |
 | `Module` | Создать пустые модули объекта: `ObjectModule`, `ManagerModule`, `RecordSetModule`, `ValueManagerModule` (через запятую) или `None`. У типов с единственным модулем (`CommonModule`, `HTTPService`, `WebService`) он создаётся и без параметра |
-| `BorrowMainAttribute` | Заимствовать основной реквизит формы. Без параметра — не заимствует. `Form` — реквизиты, используемые на форме. `All` — все реквизиты объекта. Требует форму в -Object |
+| `BorrowMainAttribute` | Заимствовать основной реквизит формы: `Form` — реквизиты, используемые на форме, `All` — все реквизиты объекта. Не указан — не заимствует. Требует форму в -Object |
 
 ## Формат -Object
 
@@ -59,7 +59,7 @@ allowed-tools:
 **Когда нужно**: пользователь хочет добавить новый реквизит в существующий объект конфигурации и вывести его на заимствованную форму. Без `-BorrowMainAttribute` форма заимствуется "пустой" — только визуальные элементы, без привязки к данным объекта. С `-BorrowMainAttribute` форма сохраняет привязки к реквизитам объекта (DataPath), что позволяет затем добавить на неё новые элементы через `/form-edit`.
 
 **Два режима**:
-- `Form` (по умолчанию) — заимствует только те реквизиты объекта, которые уже выведены на форму. Оптимальный выбор для большинства случаев
+- `Form` — заимствует только те реквизиты объекта, которые уже выведены на форму. Оптимальный выбор для большинства случаев
 - `All` — заимствует все реквизиты и табличные части объекта. Используй если планируешь выводить на форму реквизиты, которых на ней ещё нет
 
 **Типовой сценарий** (добавление реквизита + вывод на форму):
@@ -94,7 +94,7 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/cfe-borrow.ps1" -Ex
 ... -ExtensionPath src\cfe\extname -ConfigPath src\cf -Object "Catalog.Контрагенты ;; CommonModule.ОбщийМодуль ;; Enum.ВидыОплат"
 
 # Заимствовать форму с основным реквизитом (реквизиты по DataPath формы)
-... -ExtensionPath src\cfe\extname -ConfigPath src\cf -Object "Catalog.Номенклатура.Form.ФормаЭлемента" -BorrowMainAttribute
+... -ExtensionPath src\cfe\extname -ConfigPath src\cf -Object "Catalog.Номенклатура.Form.ФормаЭлемента" -BorrowMainAttribute Form
 
 # Заимствовать форму с ВСЕМИ реквизитами объекта
 ... -ExtensionPath src\cfe\extname -ConfigPath src\cf -Object "Catalog.Номенклатура.Form.ФормаЭлемента" -BorrowMainAttribute All

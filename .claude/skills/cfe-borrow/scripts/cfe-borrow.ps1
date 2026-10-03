@@ -1,4 +1,4 @@
-﻿# cfe-borrow v1.43 — Borrow objects from configuration into extension (CFE)
+﻿# cfe-borrow v1.44 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -734,8 +734,6 @@ if ($items.Count -eq 0) {
 
 # --- 9b. Validate -BorrowMainAttribute ---
 if ($BorrowMainAttribute) {
-	# PS treats -BorrowMainAttribute without value as "True"
-	if ($BorrowMainAttribute -eq "True") { $BorrowMainAttribute = "Form" }
 	if ($BorrowMainAttribute -notin @("Form","All")) {
 		Write-Error "-BorrowMainAttribute accepts 'Form' or 'All' (default: Form)"
 		exit 1
