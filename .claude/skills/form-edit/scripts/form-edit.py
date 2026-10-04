@@ -1,4 +1,4 @@
-# form-edit v1.25 — Edit 1C managed form elements (Python port)
+# form-edit v1.26 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import contextlib
@@ -3265,8 +3265,9 @@ def emit_group(lines, el, name, eid, indent):
         lines.append(f'{inner}<CurrentRowUse>{el["currentRowUse"]}</CurrentRowUse>')
 
     # ShowTitle
-    if el.get('showTitle') is not None:
-        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+    if el.get('showTitle') is not None and not el['showTitle']:
+        lines.append(f'{inner}<ShowTitle>false</ShowTitle>')
     # Заголовок свёрнутого представления (collapsible/popup) — мультиязычный текст
     if el.get('collapsedTitle'):
         emit_mltext(lines, inner, 'CollapsedRepresentationTitle', el['collapsedTitle'])
@@ -3318,8 +3319,9 @@ def emit_column_group(lines, el, name, eid, indent):
     elif group_val:
         _warn_unrecognized('columnGroup orientation', el.get('columnGroup'), ('vertical', 'horizontal', 'inCell'), name)
 
-    if el.get('showTitle') is not None:
-        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+    if el.get('showTitle') is not None and not el['showTitle']:
+        lines.append(f'{inner}<ShowTitle>false</ShowTitle>')
     # showInHeader эмитится общим emit_common_element_props (через emit_layout)
 
     emit_common_flags(lines, el, inner)
@@ -3835,8 +3837,9 @@ def emit_page(lines, el, name, eid, indent):
             lines.append(f'{inner}<Group>{orientation}</Group>')
         else:
             _warn_unrecognized('page group orientation', el['group'], ('vertical', 'horizontalIfPossible', 'alwaysHorizontal'), name)
-    if el.get('showTitle') is not None:
-        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+    if el.get('showTitle') is not None and not el['showTitle']:
+        lines.append(f'{inner}<ShowTitle>false</ShowTitle>')
     # Формат значения пути к данным заголовка (<Format>; парный к titleDataPath страницы)
     if el.get('format'):
         emit_mltext(lines, inner, 'Format', el['format'])
@@ -5908,6 +5911,7 @@ def invoke_add(op, type_key, idx):
 
 # Кнопки из children — в командную панель формы (в конец, по порядку); autofill и horizontalAlign — её свойства.
 def invoke_auto_cmd_bar(op, idx):
+    global changed_count
     ctx = f"elements[{idx}] autoCmdBar"
     acb_node = root.find("f:AutoCommandBar", NS)
     if acb_node is None:
@@ -5917,10 +5921,12 @@ def invoke_auto_cmd_bar(op, idx):
         if not isinstance(op.get('autofill'), bool):
             fail(f"{ctx}: autofill — true или false")
         set_value_tag(acb_node, 'Autofill', 'true' if op['autofill'] else 'false')
-        op_log.append(f"  * {acb_node.get('name')}: Autofill={'true' if op['autofill'] else 'false'}")
+        op_log.append(f"  * {acb_node.get('name')}: autofill={'true' if op['autofill'] else 'false'} → Autofill")
+        changed_count += 1
     if op.get('horizontalAlign'):
         set_simple_tag(acb_node, 'HorizontalAlign', str(op['horizontalAlign']))
-        op_log.append(f"  * {acb_node.get('name')}: HorizontalAlign={op['horizontalAlign']}")
+        op_log.append(f"  * {acb_node.get('name')}: horizontalAlign={op['horizontalAlign']} → HorizontalAlign")
+        changed_count += 1
     children = op.get('children')
     for child in (children if isinstance(children, list) else [children]):
         if child is None:
@@ -6272,26 +6278,27 @@ def invoke_set(op, idx):
                     fail(f"{c}: {key} — строка или объект {{ru, en, ...}} со строковыми значениями")
                 set_ml_tag(node, tag, v)
                 shown = v if isinstance(v, str) else " ".join(f"{k2}:{v2}" for k2, v2 in v.items())
-                op_log.append(f"  * {n}: {key}=\"{shown}\"")
+                op_log.append(f"  * {n}: {key}=\"{shown}\" → {tag}")
             elif kind == 'bool':
                 if not isinstance(v, bool):
                     fail(f"{c}: {key} — true или false")
+                orig = 'true' if v else 'false'
                 if spec.get('Invert'):
                     v = not v
                 text = 'true' if v else 'false'
                 set_value_tag(node, tag, text)
-                op_log.append(f"  * {n}: {tag}={text}")
+                op_log.append(f"  * {n}: {key}={orig} → {tag}={text}")
             elif kind == 'num':
                 if not _is_num(v) or isinstance(v, float) or v < 0:
                     fail(f"{c}: {key} — целое неотрицательное число")
                 set_simple_tag(node, tag, str(v))
-                op_log.append(f"  * {n}: {tag}={v}")
+                op_log.append(f"  * {n}: {key}={v} → {tag}={v}")
             elif kind == 'enum':
                 mapped = spec['Map'].get(str(v).lower())
                 if not mapped:
                     fail(f"{c}: {key}='{v}' — допустимо: {', '.join(sorted(spec['Map'].keys()))}")
                 set_value_tag(node, tag, mapped)
-                op_log.append(f"  * {n}: {tag}={mapped}")
+                op_log.append(f"  * {n}: {key}={v} → {tag}={mapped}")
             elif kind == 'repr':
                 rmap = REPR_MAPS.get(nt)
                 if rmap is None:
@@ -6300,7 +6307,7 @@ def invoke_set(op, idx):
                 if not text:
                     fail(f"{c}: representation='{v}' — допустимо: {', '.join(sorted(rmap.keys()))}")
                 set_value_tag(node, tag, text)
-                op_log.append(f"  * {n}: {tag}={text}")
+                op_log.append(f"  * {n}: {key}={v} → {tag}={text}")
             changed_count += 1
         if probe_props:
             # Контекст пробы — все свойства операции: от них зависит, как эмиттер пишет остальные

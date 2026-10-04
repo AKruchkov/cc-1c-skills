@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-decompile v0.152 — Decompile 1C managed Form.xml to JSON DSL (draft)
+# form-decompile v0.153 — Decompile 1C managed Form.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # ВНИМАНИЕ: раундтрип не гарантируется. Навык исключён из авто-использования моделью.
 #
@@ -477,7 +477,7 @@ def test_has_real_markup(text):
         return False
     vals = list(text.values()) if isinstance(text, dict) else [str(text)]
     for v in vals:
-        if re.search(FMT_MARKUP_RE, str(v)):
+        if re.search(FMT_MARKUP_RE, str(v), re.I):  # как -match в PS: без учёта регистра
             return True
     return False
 

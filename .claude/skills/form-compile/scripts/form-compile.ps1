@@ -1,4 +1,4 @@
-﻿# form-compile v1.202 — Compile 1C managed form from JSON or object metadata
+﻿# form-compile v1.203 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -4076,7 +4076,8 @@ function Emit-Group {
 	if ($el.currentRowUse) { X "$inner<CurrentRowUse>$($el.currentRowUse)</CurrentRowUse>" }
 
 	# ShowTitle
-	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+	if ($null -ne $el.showTitle -and -not $el.showTitle) { X "$inner<ShowTitle>false</ShowTitle>" }
 	# Заголовок свёрнутого представления (collapsible/popup) — мультиязычный текст
 	if ($el.collapsedTitle) { Emit-MLText -tag "CollapsedRepresentationTitle" -text $el.collapsedTitle -indent $inner }
 
@@ -4127,7 +4128,8 @@ function Emit-ColumnGroup {
 	if ($orientation) { X "$inner<Group>$orientation</Group>" }
 	elseif ($groupVal) { Warn-Unrecognized 'columnGroup orientation' $el.columnGroup @('vertical','horizontal','inCell') $name }
 
-	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+	if ($null -ne $el.showTitle -and -not $el.showTitle) { X "$inner<ShowTitle>false</ShowTitle>" }
 	# showInHeader эмитится общим Emit-CommonElementProps (через Emit-Layout)
 
 	Emit-CommonFlags -el $el -indent $inner
@@ -5011,7 +5013,8 @@ function Emit-Page {
 		if ($orientation) { X "$inner<Group>$orientation</Group>" }
 		else { Warn-Unrecognized 'page group orientation' $el.group @('vertical','horizontalIfPossible','alwaysHorizontal') $name }
 	}
-	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+	if ($null -ne $el.showTitle -and -not $el.showTitle) { X "$inner<ShowTitle>false</ShowTitle>" }
 	# Формат значения пути к данным заголовка (<Format>; парный к titleDataPath страницы)
 	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
 	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }

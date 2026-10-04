@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-compile v1.202 — Compile 1C managed form from JSON or object metadata
+# form-compile v1.203 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -4256,8 +4256,9 @@ def emit_group(lines, el, name, eid, indent):
         lines.append(f'{inner}<CurrentRowUse>{el["currentRowUse"]}</CurrentRowUse>')
 
     # ShowTitle
-    if el.get('showTitle') is not None:
-        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+    if el.get('showTitle') is not None and not el['showTitle']:
+        lines.append(f'{inner}<ShowTitle>false</ShowTitle>')
     # Заголовок свёрнутого представления (collapsible/popup) — мультиязычный текст
     if el.get('collapsedTitle'):
         emit_mltext(lines, inner, 'CollapsedRepresentationTitle', el['collapsedTitle'])
@@ -4309,8 +4310,9 @@ def emit_column_group(lines, el, name, eid, indent):
     elif group_val:
         _warn_unrecognized('columnGroup orientation', el.get('columnGroup'), ('vertical', 'horizontal', 'inCell'), name)
 
-    if el.get('showTitle') is not None:
-        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+    if el.get('showTitle') is not None and not el['showTitle']:
+        lines.append(f'{inner}<ShowTitle>false</ShowTitle>')
     # showInHeader эмитится общим emit_common_element_props (через emit_layout)
 
     emit_common_flags(lines, el, inner)
@@ -4822,8 +4824,9 @@ def emit_page(lines, el, name, eid, indent):
             lines.append(f'{inner}<Group>{orientation}</Group>')
         else:
             _warn_unrecognized('page group orientation', el['group'], ('vertical', 'horizontalIfPossible', 'alwaysHorizontal'), name)
-    if el.get('showTitle') is not None:
-        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+    if el.get('showTitle') is not None and not el['showTitle']:
+        lines.append(f'{inner}<ShowTitle>false</ShowTitle>')
     # Формат значения пути к данным заголовка (<Format>; парный к titleDataPath страницы)
     if el.get('format'):
         emit_mltext(lines, inner, 'Format', el['format'])

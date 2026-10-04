@@ -30,7 +30,6 @@
 			</Title>
 			<Group>Horizontal</Group>
 			<Behavior>Usual</Behavior>
-			<ShowTitle>true</ShowTitle>
 			<HorizontalStretch>true</HorizontalStretch>
 			<GroupHorizontalAlign>Right</GroupHorizontalAlign>
 			<VerticalAlign>Top</VerticalAlign>

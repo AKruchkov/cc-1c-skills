@@ -655,7 +655,7 @@ const FAMILIES = [
   // ── Эмиттер элементов формы: form-edit добавляет элементы тем же кодом, что form-compile ──
   { name: 'Assert-UniqueName', py: null, ps1: 'Assert-UniqueName', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: 'emit_ml_items', py: 'emit_ml_items', ps1: 'Emit-MLItems', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }, { id: 'own', authority: 'meta-compile', consumers: ['meta-edit'], why: 'своя реализация для свойств метаданных объекта (meta-*), не копия эмиттера формы' }] },
-  { name: 'Test-HasRealMarkup', py: null, ps1: 'Test-HasRealMarkup', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }, { id: 'own', authority: 'form-decompile', consumers: [], why: 'разошёлся с form-compile до ревизии DSL (по комментарию должен совпадать) — свести отдельной задачей' }] },
+  { name: 'Test-HasRealMarkup', py: null, ps1: 'Test-HasRealMarkup', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-decompile', 'form-edit'] }] },
   { name: 'resolve_ml_formatted', py: 'resolve_ml_formatted', ps1: 'Resolve-MLFormatted', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: 'emit_type', py: 'emit_type', ps1: 'Emit-Type', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: 'emit_single_type', py: 'emit_single_type', ps1: 'Emit-SingleType', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },

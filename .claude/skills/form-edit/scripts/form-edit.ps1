@@ -1,4 +1,4 @@
-﻿# form-edit v1.25 — Edit 1C managed form elements
+﻿# form-edit v1.26 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2618,7 +2618,8 @@ function Emit-Group {
 	if ($el.currentRowUse) { X "$inner<CurrentRowUse>$($el.currentRowUse)</CurrentRowUse>" }
 
 	# ShowTitle
-	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+	if ($null -ne $el.showTitle -and -not $el.showTitle) { X "$inner<ShowTitle>false</ShowTitle>" }
 	# Заголовок свёрнутого представления (collapsible/popup) — мультиязычный текст
 	if ($el.collapsedTitle) { Emit-MLText -tag "CollapsedRepresentationTitle" -text $el.collapsedTitle -indent $inner }
 
@@ -2669,7 +2670,8 @@ function Emit-ColumnGroup {
 	if ($orientation) { X "$inner<Group>$orientation</Group>" }
 	elseif ($groupVal) { Warn-Unrecognized 'columnGroup orientation' $el.columnGroup @('vertical','horizontal','inCell') $name }
 
-	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+	if ($null -ne $el.showTitle -and -not $el.showTitle) { X "$inner<ShowTitle>false</ShowTitle>" }
 	# showInHeader эмитится общим Emit-CommonElementProps (через Emit-Layout)
 
 	Emit-CommonFlags -el $el -indent $inner
@@ -3502,7 +3504,8 @@ function Emit-Page {
 		if ($orientation) { X "$inner<Group>$orientation</Group>" }
 		else { Warn-Unrecognized 'page group orientation' $el.group @('vertical','horizontalIfPossible','alwaysHorizontal') $name }
 	}
-	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# ShowTitle=true — умолчание платформы (в корпусе только false): пишем лишь false
+	if ($null -ne $el.showTitle -and -not $el.showTitle) { X "$inner<ShowTitle>false</ShowTitle>" }
 	# Формат значения пути к данным заголовка (<Format>; парный к titleDataPath страницы)
 	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
 	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }
@@ -5485,11 +5488,13 @@ function Invoke-AutoCmdBar($op, [int]$idx) {
 	if ($null -ne $op.PSObject.Properties['autofill']) {
 		if (-not ($op.autofill -is [bool])) { Fail "${ctx}: autofill — true или false" }
 		Set-ValueTag $acbNode 'Autofill' $(if ($op.autofill) { 'true' } else { 'false' })
-		$script:opLog += "  * $($acbNode.GetAttribute('name')): Autofill=$($op.autofill.ToString().ToLower())"
+		$script:opLog += "  * $($acbNode.GetAttribute('name')): autofill=$($op.autofill.ToString().ToLower()) → Autofill"
+		$script:changedCount++
 	}
 	if ($op.horizontalAlign) {
 		Set-SimpleTag $acbNode 'HorizontalAlign' "$($op.horizontalAlign)"
-		$script:opLog += "  * $($acbNode.GetAttribute('name')): HorizontalAlign=$($op.horizontalAlign)"
+		$script:opLog += "  * $($acbNode.GetAttribute('name')): horizontalAlign=$($op.horizontalAlign) → HorizontalAlign"
+		$script:changedCount++
 	}
 	foreach ($child in @($op.children)) {
 		if ($null -eq $child) { continue }
@@ -5803,25 +5808,25 @@ function Invoke-Set($op, [int]$idx) {
 					if (-not $mlOk) { Fail "${c}: $key — строка или объект {ru, en, ...} со строковыми значениями" }
 					Set-MLTag $node $tag $v
 					$shown = if ($v -is [string]) { $v } else { ($v.PSObject.Properties | ForEach-Object { "$($_.Name):$($_.Value)" }) -join ' ' }
-					$script:opLog += "  * ${n}: $key=`"$shown`""
+					$script:opLog += "  * ${n}: $key=`"$shown`" → $tag"
 				}
 				'bool' {
 					if (-not ($v -is [bool])) { Fail "${c}: $key — true или false" }
 					if ($spec.Invert) { $v = -not $v }
 					$text = if ($v) { 'true' } else { 'false' }
 					Set-ValueTag $node $tag $text
-					$script:opLog += "  * ${n}: $tag=$text"
+					$script:opLog += "  * ${n}: $key=$("$($p.Value)".ToLower()) → $tag=$text"
 				}
 				'num' {
 					if (-not ($v -is [int] -or $v -is [long]) -or $v -lt 0) { Fail "${c}: $key — целое неотрицательное число" }
 					Set-SimpleTag $node $tag "$v"
-					$script:opLog += "  * ${n}: $tag=$v"
+					$script:opLog += "  * ${n}: $key=$v → $tag=$v"
 				}
 				'enum' {
 					$mapped = $spec.Map["$v".ToLower()]
 					if (-not $mapped) { Fail "${c}: $key='$v' — допустимо: $(($spec.Map.Keys | Sort-Object) -join ', ')" }
 					Set-ValueTag $node $tag $mapped
-					$script:opLog += "  * ${n}: $tag=$mapped"
+					$script:opLog += "  * ${n}: $key=$v → $tag=$mapped"
 				}
 				'repr' {
 					$rmap = $script:reprMaps[$nt]
@@ -5829,7 +5834,7 @@ function Invoke-Set($op, [int]$idx) {
 					$text = $rmap["$v".ToLower()]
 					if (-not $text) { Fail "${c}: representation='$v' — допустимо: $(($rmap.Keys | Sort-Object) -join ', ')" }
 					Set-ValueTag $node $tag $text
-					$script:opLog += "  * ${n}: $tag=$text"
+					$script:opLog += "  * ${n}: $key=$v → $tag=$text"
 				}
 			}
 			$script:changedCount++

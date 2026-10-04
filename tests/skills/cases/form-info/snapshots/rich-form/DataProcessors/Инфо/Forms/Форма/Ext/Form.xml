@@ -20,7 +20,6 @@
 				</v8:item>
 			</Title>
 			<Group>Horizontal</Group>
-			<ShowTitle>true</ShowTitle>
 			<ExtendedTooltip name="ШапкаРасширеннаяПодсказка" id="2"/>
 			<ChildItems>
 				<InputField name="Организация" id="3">

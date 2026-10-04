@@ -1,4 +1,4 @@
-﻿# form-decompile v0.152 — Decompile 1C managed Form.xml to JSON DSL (draft)
+﻿# form-decompile v0.153 — Decompile 1C managed Form.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 # ВНИМАНИЕ: раундтрип не гарантируется. Навык исключён из авто-использования моделью.
 [CmdletBinding(PositionalBinding=$false)]
@@ -427,7 +427,9 @@ $script:fmtMarkupRe = '</>|<\s*(?:link|b|i|u|s|color|colorStyle|bgColor|bgColorS
 function Test-HasRealMarkup {
 	param($text)
 	if ($null -eq $text) { return $false }
-	$vals = if ($text -is [System.Collections.IDictionary]) { @($text.Values) } else { @("$text") }
+	$vals = if ($text -is [System.Collections.IDictionary]) { @($text.Values) }
+		elseif ($text -is [System.Management.Automation.PSCustomObject]) { @($text.PSObject.Properties.Value) }
+		else { @("$text") }
 	foreach ($v in $vals) { if ("$v" -match $script:fmtMarkupRe) { return $true } }
 	return $false
 }
