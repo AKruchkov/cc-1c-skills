@@ -1,0 +1,31 @@
+{
+  "name": "Группа кнопок с подменю в командной панели формы — кнопки получают тип кнопки панели",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "buttonGroup": "ГруппаКнопок",
+        "into": "ФормаКоманднаяПанель",
+        "children": [
+          {
+            "button": "Кн1",
+            "stdCommand": "Close"
+          },
+          {
+            "popup": "Подменю",
+            "title": "Ещё",
+            "children": [
+              {
+                "button": "Кн2",
+                "stdCommand": "Help"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "callType обработчика — только Before, After или Override: опечатка даёт ошибку, а не битый XML",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "input": "Поле",
+        "events": {
+          "OnChange": {
+            "handler": "Расш_ПолеПриИзменении",
+            "callType": "Later"
+          }
+        }
+      }
+    ]
+  },
+  "expect": {
+    "stderrContains": "callType 'Later'"
+  },
+  "expectError": true
+}

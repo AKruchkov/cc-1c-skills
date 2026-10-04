@@ -1,0 +1,23 @@
+{
+  "name": "autoCmdBar: кнопки в командную панель формы, автозаполнение и выравнивание",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "autoCmdBar": true,
+        "autofill": false,
+        "horizontalAlign": "Right",
+        "children": [
+          {
+            "button": "КнЗакрыть",
+            "stdCommand": "Close",
+            "title": "Закрыть"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -28,6 +28,7 @@
 				</v8:item>
 			</Title>
 			<Group>Horizontal</Group>
+			<ShowTitle>true</ShowTitle>
 			<ExtendedTooltip name="ГруппаНоваяРасширеннаяПодсказка" id="5"/>
 			<ChildItems>
 				<InputField name="Поле2" id="6">

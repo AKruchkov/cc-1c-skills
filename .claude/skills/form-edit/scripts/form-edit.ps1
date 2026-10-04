@@ -1,4 +1,4 @@
-﻿# form-edit v1.21 — Edit 1C managed form elements
+﻿# form-edit v1.22 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -339,29 +339,6 @@ function X {
 	$script:xml.AppendLine($text) | Out-Null
 }
 
-function Esc-Xml {
-	param([string]$s)
-	# Эскейп ЗНАЧЕНИЯ АТРИБУТА: & < > и кавычка — внутри "..." литеральная " невалидна.
-	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;').Replace('"','&quot;')
-}
-
-function Esc-XmlText {
-	# Экранирование ТЕКСТА элемента: только & < > . Кавычки в тексте платформа НЕ экранирует —
-	# пишет литерально (проверено: 92142 сырых кавычки на корпус, ни одной &quot;). &quot; платформа
-	# принимает, но при выгрузке нормализует обратно в кавычку → лишний шум в роундтрипе.
-	param([string]$s)
-	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;')
-}
-
-function Emit-MLText {
-	param([string]$tag, [string]$text, [string]$indent)
-	X "$indent<$tag>"
-	X "$indent`t<v8:item>"
-	X "$indent`t`t<v8:lang>ru</v8:lang>"
-	X "$indent`t`t<v8:content>$(Esc-XmlText $text)</v8:content>"
-	X "$indent`t</v8:item>"
-	X "$indent</$tag>"
-}
 
 # --- Type emitter ---
 
@@ -390,6 +367,419 @@ $script:formTypeSynonyms["определяемыйтип"]             = "Define
 # Алиас на локальный словарь: тело Resolve-TypeStr ниже — общая реализация,
 # одинаковая во всех навыках (реестр в tests/skills/check-inline-drift.mjs).
 $script:typeSynonyms = $script:formTypeSynonyms
+
+
+# --- Event handler name generator ---
+
+
+# --- Element helpers ---
+
+
+# Уникальность имён внутри JSON-определения (1С: своя коллекция — свой неймспейс).
+function Assert-EditUnique {
+	param([string]$name, [hashtable]$seen, [string]$ctx)
+	if ($seen.ContainsKey($name)) {
+		Write-Host "[ERROR] Duplicate $ctx '$name' in JSON definition — names must be unique in 1C form"
+		exit 1
+	}
+	$seen[$name] = $true
+}
+
+
+# --- Element emitters ---
+
+
+# --- Element dispatcher ---
+
+
+# === 5b. Эмиттер элементов — общий с form-compile (эталон там; копии держит check-inline-drift) ===
+
+$script:fmtMarkupRe = '</>|<\s*(?:link|b|i|u|s|color|colorStyle|bgColor|bgColorStyle|font|fontSize|fontStyle|img)(?:\s|>)'
+
+$script:knownInvalidTypes = @{
+	"FormDataStructure"     = "Runtime type. Use object type without cfg: prefix (e.g. CatalogObject.Контрагенты, DocumentObject.Приход)"
+	"FormDataCollection"    = "Runtime type. Use ValueTable"
+	"FormDataTree"          = "Runtime type. Use ValueTree"
+	"FormDataTreeItem"      = "Runtime type, not valid in XML"
+	"FormDataCollectionItem"= "Runtime type, not valid in XML"
+	"FormGroup"             = "UI element type, not a data type"
+	"FormField"             = "UI element type, not a data type"
+	"FormButton"            = "UI element type, not a data type"
+	"FormDecoration"        = "UI element type, not a data type"
+	"FormTable"             = "UI element type, not a data type"
+}
+
+$script:typeSynonyms = $script:formTypeSynonyms
+
+$script:eventSuffixMap = @{
+	"OnChange"             = "ПриИзменении"
+	"StartChoice"          = "НачалоВыбора"
+	"ChoiceProcessing"     = "ОбработкаВыбора"
+	"AutoComplete"         = "АвтоПодбор"
+	"Clearing"             = "Очистка"
+	"Opening"              = "Открытие"
+	"Click"                = "Нажатие"
+	"OnActivateRow"        = "ПриАктивизацииСтроки"
+	"BeforeAddRow"         = "ПередНачаломДобавления"
+	"BeforeDeleteRow"      = "ПередУдалением"
+	"BeforeRowChange"      = "ПередНачаломИзменения"
+	"OnStartEdit"          = "ПриНачалеРедактирования"
+	"OnEditEnd"            = "ПриОкончанииРедактирования"
+	"Selection"            = "ВыборСтроки"
+	"OnCurrentPageChange"  = "ПриСменеСтраницы"
+	"TextEditEnd"          = "ОкончаниеВводаТекста"
+	"URLProcessing"        = "ОбработкаНавигационнойСсылки"
+	"DragStart"            = "НачалоПеретаскивания"
+	"Drag"                 = "Перетаскивание"
+	"DragCheck"            = "ПроверкаПеретаскивания"
+	"Drop"                 = "Помещение"
+	"AfterDeleteRow"       = "ПослеУдаления"
+}
+
+$script:knownEvents = @{
+	"input"     = @("OnChange","StartChoice","ChoiceProcessing","AutoComplete","TextEditEnd","Clearing","Creating","EditTextChange")
+	"check"     = @("OnChange")
+	"radio"     = @("OnChange")
+	"label"     = @("Click","URLProcessing")
+	"labelField"= @("OnChange","StartChoice","ChoiceProcessing","Click","URLProcessing","Clearing")
+	"table"     = @("Selection","BeforeAddRow","AfterDeleteRow","BeforeDeleteRow","OnActivateRow","OnEditEnd","OnStartEdit","BeforeRowChange","BeforeEditEnd","ValueChoice","OnActivateCell","OnActivateField","Drag","DragStart","DragCheck","DragEnd","OnGetDataAtServer","BeforeLoadUserSettingsAtServer","OnUpdateUserSettingSetAtServer","OnChange")
+	"pages"     = @("OnCurrentPageChange")
+	"page"      = @("OnCurrentPageChange")
+	"button"    = @("Click")
+	"picField"  = @("OnChange","StartChoice","ChoiceProcessing","Click","Clearing")
+	"calendar"  = @("OnChange","OnActivate")
+	"picture"   = @("Click")
+	"cmdBar"    = @()
+	"popup"     = @()
+	"group"     = @()
+}
+
+$script:companionStructKeys = @(
+	'width','autoMaxWidth','maxWidth','height','autoMaxHeight','maxHeight','verticalAlign','titleHeight',
+	'horizontalStretch','verticalStretch','horizontalAlign','groupHorizontalAlign','groupVerticalAlign',
+	'visible','hidden','enabled','disabled','hyperlink','events','tooltip',
+	'textColor','backColor','borderColor','font','border','цветтекста','цветфона','цветрамки','шрифт','рамка'
+)
+
+$script:additionTypeMap = [ordered]@{
+	'searchString'  = @{ Tag = 'SearchStringAddition';  Type = 'SearchStringRepresentation'; Suffix = 'СтрокаПоиска' }
+	'viewStatus'    = @{ Tag = 'ViewStatusAddition';    Type = 'ViewStatusRepresentation';   Suffix = 'СостояниеПросмотра' }
+	'searchControl' = @{ Tag = 'SearchControlAddition'; Type = 'SearchControl';               Suffix = 'УправлениеПоиском' }
+}
+
+$script:additionKeySynonyms = @{
+	'searchString'  = @('SearchStringAddition','SearchStringRepresentation','строкаПоиска','отображениеСтрокиПоиска')
+	'viewStatus'    = @('ViewStatusAddition','ViewStatusRepresentation','состояниеПросмотра')
+	'searchControl' = @('SearchControlAddition','SearchControl','управлениеПоиском')
+}
+
+$script:elementTypeStrOnlyKeys = @('commandBar','autoCommandBar','КоманднаяПанель')
+
+$script:elementTypeSynonyms = @{
+	"commandBar"        = "cmdBar"
+	"autoCommandBar"    = "autoCmdBar"
+	"КоманднаяПанель"   = "cmdBar"
+	"InputField"        = "input"
+	"ПолеВвода"         = "input"
+	"CheckBoxField"     = "check"
+	"ПолеФлажка"        = "check"
+	"RadioButtonField"  = "radio"
+	"ПолеПереключателя" = "radio"
+	"radioButton"       = "radio"
+	"PictureField"      = "picField"
+	"ПолеКартинки"      = "picField"
+	"LabelField"        = "labelField"
+	"ПолеНадписи"       = "labelField"
+	"CalendarField"     = "calendar"
+	"ПолеКалендаря"     = "calendar"
+	"LabelDecoration"   = "label"
+	"Надпись"           = "label"
+	"PictureDecoration" = "picture"
+	"Картинка"          = "picture"
+	"UsualGroup"        = "group"
+	"Группа"            = "group"
+	"ОбычнаяГруппа"     = "group"
+	"ColumnGroup"       = "columnGroup"
+	"ГруппаКолонок"     = "columnGroup"
+	"Pages"             = "pages"
+	"ГруппаСтраниц"     = "pages"
+	"Page"              = "page"
+	"Страница"          = "page"
+	"Table"             = "table"
+	"Таблица"           = "table"
+	"Button"            = "button"
+	"Кнопка"            = "button"
+	"Popup"             = "popup"
+	"ВсплывающееМеню"   = "popup"
+	# Дополнения командной панели таблицы (тип-как-ключ) — forgiving: XML-тег/Type/рус.имя → канон
+	"SearchStringAddition"       = "searchString"
+	"SearchStringRepresentation" = "searchString"
+	"строкаПоиска"               = "searchString"
+	"отображениеСтрокиПоиска"    = "searchString"
+	"Отображение строки поиска"  = "searchString"
+	"ViewStatusAddition"         = "viewStatus"
+	"ViewStatusRepresentation"   = "viewStatus"
+	"состояниеПросмотра"         = "viewStatus"
+	"Состояние просмотра"        = "viewStatus"
+	"SearchControlAddition"      = "searchControl"
+	"SearchControl"              = "searchControl"
+	"управлениеПоиском"          = "searchControl"
+	"Управление поиском"         = "searchControl"
+	# Спец-поля (документ/датчик) — XML-имя/рус. → канон
+	"SpreadSheetDocumentField"   = "spreadsheet"
+	"ПолеТабличногоДокумента"    = "spreadsheet"
+	"HTMLDocumentField"          = "html"
+	"ПолеHTMLДокумента"          = "html"
+	"TextDocumentField"          = "textDoc"
+	"ПолеТекстовогоДокумента"    = "textDoc"
+	"FormattedDocumentField"     = "formattedDoc"
+	"ПолеФорматированногоДокумента" = "formattedDoc"
+	"ProgressBarField"           = "progressBar"
+	"ПолеИндикатора"             = "progressBar"
+	"TrackBarField"              = "trackBar"
+	"ПолеПолосыРегулирования"    = "trackBar"
+	"ChartField"                 = "chart"
+	"ПолеДиаграммы"              = "chart"
+	"GanttChartField"            = "ganttChart"
+	"ПолеДиаграммыГанта"         = "ganttChart"
+	"GraphicalSchemaField"       = "graphicalSchema"
+	"ПолеГрафическойСхемы"       = "graphicalSchema"
+	"PlannerField"               = "planner"
+	"ПолеПланировщика"           = "planner"
+	"PeriodField"                = "periodField"
+	"ПолеПериода"                = "periodField"
+	"DendrogramField"            = "dendrogram"
+	"ПолеДендрограммы"           = "dendrogram"
+}
+
+$script:appearanceSpec = @{
+	titleTextColor  = @{ tag='TitleTextColor';  kind='color' }
+	titleBackColor  = @{ tag='TitleBackColor';  kind='color' }
+	titleFont       = @{ tag='TitleFont';       kind='font'  }
+	footerTextColor = @{ tag='FooterTextColor'; kind='color' }
+	footerBackColor = @{ tag='FooterBackColor'; kind='color' }
+	footerFont      = @{ tag='FooterFont';      kind='font'  }
+	textColor       = @{ tag='TextColor';       kind='color' }
+	backColor       = @{ tag='BackColor';       kind='color' }
+	borderColor     = @{ tag='BorderColor';     kind='color' }
+	border          = @{ tag='Border';          kind='border'}
+	font            = @{ tag='Font';            kind='font'  }
+}
+
+$script:appearanceSynonyms = @{
+	'цветтекста'='textColor'; 'цветфона'='backColor'; 'цветрамки'='borderColor'
+	'цветтекстазаголовка'='titleTextColor'; 'цветфоназаголовка'='titleBackColor'; 'шрифтзаголовка'='titleFont'
+	'цветтекстаподвала'='footerTextColor'; 'цветфонаподвала'='footerBackColor'; 'шрифтподвала'='footerFont'
+	'шрифт'='font'; 'рамка'='border'
+}
+
+$script:propSynonyms = @{
+	'пометка'='checked'
+	'кнопкавыбора'='choiceButton'; 'кнопкаочистки'='clearButton'; 'кнопкарегулирования'='spinButton'
+	'кнопкавыпадающегосписка'='dropListButton'; 'кнопкасписковоговыбора'='choiceListButton'
+	'кнопкаоткрытия'='openButton'; 'кнопкапоумолчанию'='defaultButton'
+	'быстрыйвыбор'='quickChoice'; 'формавыбора'='choiceForm'; 'историявыборапривводе'='choiceHistoryOnInput'
+	'выборгруппиэлементов'='choiceFoldersAndItems'; 'фиксациявтаблице'='fixingInTable'
+	'путькданнымподвала'='footerDataPath'; 'автоотметканезаполненного'='markIncomplete'
+	'многострочныйрежим'='multiLine'; 'режимпароля'='passwordMode'; 'переноспословам'='wrap'
+	'расположениезаголовка'='titleLocation'; 'пропускатьпривводе'='skipOnInput'
+	'заголовок'='title'; 'ширина'='width'; 'высота'='height'; 'подсказкаввода'='inputHint'
+}
+
+$script:appOrderField      = @('titleTextColor','titleBackColor','titleFont','footerTextColor','footerBackColor','footerFont','textColor','backColor','borderColor','border','font')
+
+$script:appOrderDecoration = @('textColor','font','backColor','borderColor','border')
+
+$script:appOrderButton     = @('textColor','backColor','borderColor','font')
+
+$script:genericScalars = @(
+	@{ Tag='VerticalAlign';       Key='verticalAlign';       Kind='value' }
+	@{ Tag='ThroughAlign';        Key='throughAlign';        Kind='value' }
+	@{ Tag='EnableContentChange'; Key='enableContentChange'; Kind='bool'  }
+	@{ Tag='PictureSize';         Key='pictureSize';         Kind='value' }
+	@{ Tag='TitleHeight';         Key='titleHeight';         Kind='value' }
+	@{ Tag='ChildItemsWidth';     Key='childItemsWidth';     Kind='value' }
+	@{ Tag='ShowLeftMargin';      Key='showLeftMargin';      Kind='bool'  }
+	@{ Tag='CellHyperlink';       Key='cellHyperlink';       Kind='bool'  }
+	@{ Tag='ViewMode';            Key='viewMode';            Kind='value' }
+	@{ Tag='VerticalScrollBar';   Key='verticalScrollBar';   Kind='value' }
+	@{ Tag='RowInputMode';        Key='rowInputMode';        Kind='value' }
+	@{ Tag='Mask';                Key='mask';                Kind='value' }
+	@{ Tag='CreateButton';        Key='createButton';        Kind='bool'  }
+	@{ Tag='FixingInTable';       Key='fixingInTable';       Kind='value' }
+	@{ Tag='VerticalSpacing';     Key='verticalSpacing';     Kind='value' }
+	# Спец-поля (документ/датчик) — типоспец. enum/bool скаляры pass-through
+	@{ Tag='HorizontalScrollBar'; Key='horizontalScrollBar'; Kind='value' }
+	@{ Tag='ViewScalingMode';     Key='viewScalingMode';     Kind='value' }
+	@{ Tag='Output';              Key='output';              Kind='value' }
+	@{ Tag='SelectionShowMode';   Key='selectionShowMode';   Kind='value' }
+	@{ Tag='PointerType';         Key='pointerType';         Kind='value' }
+	@{ Tag='DrawingSelectionShowMode'; Key='drawingSelectionShowMode'; Kind='value' }
+	@{ Tag='WarningOnEditRepresentation'; Key='warningOnEditRepresentation'; Kind='value' }
+	@{ Tag='MarkingAppearance';   Key='markingAppearance';   Kind='value' }
+	@{ Tag='Protection';          Key='protection';          Kind='bool'  }
+	@{ Tag='Edit';                Key='edit';                Kind='bool'  }
+	@{ Tag='ShowGrid';            Key='showGrid';            Kind='bool'  }
+	@{ Tag='ShowGroups';          Key='showGroups';          Kind='bool'  }
+	@{ Tag='ShowHeaders';         Key='showHeaders';         Kind='bool'  }
+	@{ Tag='ShowRowAndColumnNames'; Key='showRowAndColumnNames'; Kind='bool' }
+	@{ Tag='ShowCellNames';       Key='showCellNames';       Kind='bool'  }
+	@{ Tag='ShowPercent';         Key='showPercent';         Kind='bool'  }
+	# Report-form контекст: интервал группы / представление кнопки в контекстном меню / детальное представление настройки таблицы
+	@{ Tag='HorizontalSpacing';   Key='horizontalSpacing';   Kind='value' }
+	@{ Tag='RepresentationInContextMenu'; Key='representationInContextMenu'; Kind='value' }
+	@{ Tag='SettingsNamedItemDetailedRepresentation'; Key='settingsNamedItemDetailedRepresentation'; Kind='bool' }
+	# Хвост: высота элемента списка (radio) / ширина выпадающего списка (input)
+	@{ Tag='ItemHeight';          Key='itemHeight';          Kind='value' }
+	@{ Tag='DropListWidth';       Key='dropListWidth';       Kind='value' }
+	# Хвост CI-форм: динамический заголовок (Page/Group) / расширенное ред. (input) / высота таблицы по строкам
+	@{ Tag='TitleDataPath';       Key='titleDataPath';       Kind='value' }
+	@{ Tag='ExtendedEdit';        Key='extendedEdit';        Kind='bool'  }
+	@{ Tag='MaxRowsCount';        Key='maxRowsCount';        Kind='value' }
+	@{ Tag='AutoMaxRowsCount';    Key='autoMaxRowsCount';    Kind='bool'  }
+	@{ Tag='HeightControlVariant'; Key='heightControlVariant'; Kind='value' }
+	@{ Tag='EditTextUpdate';      Key='editTextUpdate';      Kind='value' }
+	# Корпусный хвост: представление управления свёрткой группы / форма кнопки-попапа /
+	# авто-добавление незаполненной строки / выделение отрицательных / нач. позиция списка /
+	# высота списка выбора / три состояния флажка / прокрутка страницы при сжатии
+	@{ Tag='ControlRepresentation'; Key='controlRepresentation'; Kind='value' }
+	@{ Tag='ShapeRepresentation';   Key='shapeRepresentation';   Kind='value' }
+	@{ Tag='AutoAddIncomplete';     Key='autoAddIncomplete';     Kind='bool'  }
+	@{ Tag='MarkNegatives';         Key='markNegatives';         Kind='bool'  }
+	@{ Tag='InitialListView';       Key='initialListView';       Kind='value' }
+	@{ Tag='ChoiceListHeight';      Key='choiceListHeight';      Kind='value' }
+	@{ Tag='ThreeState';            Key='threeState';            Kind='bool'  }
+	@{ Tag='ScrollOnCompress';      Key='scrollOnCompress';      Kind='bool'  }
+	# Сочетание клавиш — общее свойство (input/group/radio/page/picField/label/table/check; команда — отд. путь, §7)
+	@{ Tag='Shortcut';              Key='shortcut';              Kind='value' }
+	# Батч простых скаляров (input/radio/group/picDecoration/button): режим выбора незаполненного,
+	# равная ширина колонок, выравнивание детей, масштаб/зум картинки, форма/положение картинки кнопки.
+	# (Table HeaderHeight/FooterHeight/CurrentRowUse — НЕ здесь, а в Emit-Table: pass-through,
+	#  1С толерантна к порядку детей Table — в корпусе те же теги встречаются в разных позициях.)
+	@{ Tag='IncompleteChoiceMode';  Key='incompleteChoiceMode';  Kind='value' }
+	@{ Tag='EqualColumnsWidth';     Key='equalColumnsWidth';     Kind='bool'  }
+	@{ Tag='ChildrenAlign';         Key='childrenAlign';         Kind='value' }
+	@{ Tag='ImageScale';            Key='imageScale';            Kind='value' }
+	@{ Tag='Zoomable';              Key='zoomable';              Kind='bool'  }
+	@{ Tag='Shape';                 Key='shape';                 Kind='value' }
+	@{ Tag='PictureLocation';       Key='pictureLocation';       Kind='value' }
+	# Равная ширина элементов (check/radio) / высота заголовка пункта (radio)
+	@{ Tag='EqualItemsWidth';       Key='equalItemsWidth';       Kind='bool'  }
+	@{ Tag='ItemTitleHeight';       Key='itemTitleHeight';       Kind='value' }
+	# Спец-режим ввода текста (input, моб.: Email/PhoneNumber/...) — листовой enum-скаляр
+	@{ Tag='SpecialTextInputMode';  Key='specialTextInputMode';  Kind='value' }
+	# Ширина пункта (radio/check) / выбор нескольких значений из выпадающего (input)
+	@{ Tag='ItemWidth';                    Key='itemWidth';                    Kind='value' }
+	@{ Tag='ShowCheckBoxesInDropList';     Key='showCheckBoxesInDropList';     Kind='bool'  }
+	@{ Tag='MultipleValueDataPath';        Key='multipleValueDataPath';        Kind='value' }
+	@{ Tag='MultipleValuePresentDataPath'; Key='multipleValuePresentDataPath'; Kind='value' }
+	# Режим авто-показа кнопок открытия/очистки (input, enum Auto/Always/FilledOnly/…)
+	@{ Tag='AutoShowOpenButtonMode';       Key='autoShowOpenButtonMode';       Kind='value' }
+	@{ Tag='AutoShowClearButtonMode';      Key='autoShowClearButtonMode';      Kind='value' }
+	# Оформление/картинка множественного выбора (input, редко; цвета — текст-контент, не атрибуты)
+	@{ Tag='MultipleValuesTextColor';      Key='multipleValuesTextColor';      Kind='value' }
+	@{ Tag='MultipleValuesBackColor';      Key='multipleValuesBackColor';      Kind='value' }
+	@{ Tag='MultipleValuePictureShape';    Key='multipleValuePictureShape';    Kind='value' }
+	@{ Tag='MultipleValuePictureDataPath'; Key='multipleValuePictureDataPath'; Kind='value' }
+	# Хвост листовых скаляров (по 1 в корпусе): автокоррекция ввода (input) / уникальность команды
+	# (button) / допуск пустого множ. значения (input) / поведение при гориз. сжатии (table)
+	@{ Tag='AutoCorrectionOnTextInput';    Key='autoCorrectionOnTextInput';    Kind='value' }
+	@{ Tag='SpellCheckingOnTextInput';     Key='spellCheckingOnTextInput';     Kind='value' }
+	@{ Tag='CommandUniqueness';            Key='commandUniqueness';            Kind='bool'  }
+	@{ Tag='AllowInputEmptyMultipleValues';Key='allowInputEmptyMultipleValues';Kind='bool'  }
+	@{ Tag='BehaviorOnHorizontalCompression'; Key='behaviorOnHorizontalCompression'; Kind='value' }
+)
+
+$script:refRootSynonyms = @{
+	"Перечисление"            = "Enum"
+	"Справочник"              = "Catalog"
+	"Документ"                = "Document"
+	"ПланСчетов"              = "ChartOfAccounts"
+	"ПланВидовХарактеристик"  = "ChartOfCharacteristicTypes"
+	"ПланВидовРасчета"        = "ChartOfCalculationTypes"
+	"ПланВидовРасчёта"        = "ChartOfCalculationTypes"
+	"ПланОбмена"              = "ExchangePlan"
+	"БизнесПроцесс"           = "BusinessProcess"
+	"Задача"                  = "Task"
+	"РегистрСведений"         = "InformationRegister"
+	"РегистрНакопления"       = "AccumulationRegister"
+	"РегистрБухгалтерии"      = "AccountingRegister"
+	"РегистрРасчета"          = "CalculationRegister"
+	"РегистрРасчёта"          = "CalculationRegister"
+	"ЖурналДокументов"        = "DocumentJournal"
+	"КритерийОтбора"          = "FilterCriterion"
+}
+
+$script:enumValueSynonyms = @("EnumValue","ЗначениеПеречисления")
+
+function Assert-UniqueName {
+	param([string]$name, [hashtable]$seen, [string]$kind)
+	if ($seen.ContainsKey($name)) {
+		Write-Error "Duplicate $kind name '$name' — names must be unique within their collection in a 1C form (set a unique 'name')"
+		exit 1
+	}
+	$seen[$name] = $true
+}
+
+function Esc-Xml {
+	param([string]$s)
+	# Эскейп ЗНАЧЕНИЯ АТРИБУТА: & < > и кавычка — внутри "..." литеральная " невалидна.
+	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;').Replace('"','&quot;')
+}
+
+function Esc-XmlText {
+	# Экранирование ТЕКСТА элемента (<v8:content>, <Value>): только & < > .
+	# Кавычки/апострофы в тексте экранировать НЕ нужно (1С их не экранирует — пишет литерально);
+	# &quot; ломал бы раундтрип. Кавычки спецсимвольны лишь в значениях атрибутов.
+	param([string]$s)
+	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;')
+}
+
+function Emit-MLItems {
+	param($val, [string]$indent)
+	if ($val -is [System.Collections.IDictionary]) {
+		foreach ($k in $val.Keys) {
+			X "$indent<v8:item>"; X "$indent`t<v8:lang>$k</v8:lang>"; X "$indent`t<v8:content>$(Esc-XmlText "$($val[$k])")</v8:content>"; X "$indent</v8:item>"
+		}
+	} elseif ($val -is [System.Management.Automation.PSCustomObject]) {
+		foreach ($p in $val.PSObject.Properties) {
+			X "$indent<v8:item>"; X "$indent`t<v8:lang>$($p.Name)</v8:lang>"; X "$indent`t<v8:content>$(Esc-XmlText "$($p.Value)")</v8:content>"; X "$indent</v8:item>"
+		}
+	} else {
+		X "$indent<v8:item>"; X "$indent`t<v8:lang>ru</v8:lang>"; X "$indent`t<v8:content>$(Esc-XmlText "$val")</v8:content>"; X "$indent</v8:item>"
+	}
+}
+
+function Emit-MLText {
+	param([string]$tag, $text, [string]$indent, [string]$xsiType)
+	$attr = if ($xsiType) { " xsi:type=`"$xsiType`"" } else { "" }
+	X "$indent<$tag$attr>"
+	Emit-MLItems -val $text -indent "$indent`t"
+	X "$indent</$tag>"
+}
+
+function Test-HasRealMarkup {
+	param($text)
+	if ($null -eq $text) { return $false }
+	$vals = if ($text -is [System.Collections.IDictionary]) { @($text.Values) }
+		elseif ($text -is [System.Management.Automation.PSCustomObject]) { @($text.PSObject.Properties.Value) }
+		else { @("$text") }
+	foreach ($v in $vals) { if ("$v" -match $script:fmtMarkupRe) { return $true } }
+	return $false
+}
+
+function Resolve-MLFormatted {
+	param($val)
+	$hasText = $false
+	if ($val -is [System.Management.Automation.PSCustomObject]) { $hasText = [bool]$val.PSObject.Properties['text'] }
+	elseif ($val -is [System.Collections.IDictionary]) { $hasText = $val.Contains('text') }
+	if ($hasText) {
+		$t = if ($val -is [System.Collections.IDictionary]) { $val['text'] } else { $val.text }
+		$f = if ($val -is [System.Collections.IDictionary]) { $val['formatted'] } else { $val.formatted }
+		return @{ text = $t; formatted = [bool]$f }
+	}
+	return @{ text = $val; formatted = (Test-HasRealMarkup $val) }
+}
 
 function Resolve-TypeStr {
 	param([string]$typeStr)
@@ -442,15 +832,26 @@ function Resolve-TypeStr {
 }
 
 function Emit-Type {
-	param($typeStr, [string]$indent)
-	if (-not $typeStr) { X "$indent<Type/>"; return }
-	$typeString = "$typeStr"
-	$parts = $typeString -split '\s*[|+]\s*'
-	X "$indent<Type>"
-	foreach ($part in $parts) {
-		Emit-SingleType -typeStr $part.Trim() -indent "$indent`t"
+	# $tag/$tagAttrs — обёртка (по умолчанию <Type>); для уточнения типа значений ValueList
+	# вызывается с tag="Settings", tagAttrs=' xsi:type="v8:TypeDescription"'.
+	param($typeStr, [string]$indent, [string]$tag = "Type", [string]$tagAttrs = "")
+
+	if (-not $typeStr) {
+		X "$indent<$tag$tagAttrs/>"
+		return
 	}
-	X "$indent</Type>"
+
+	$typeString = "$typeStr"
+
+	# Composite type: "Type1 | Type2" or "Type1 + Type2"
+	$parts = $typeString -split '\s*[|+]\s*'
+
+	X "$indent<$tag$tagAttrs>"
+	foreach ($part in $parts) {
+		$part = $part.Trim()
+		Emit-SingleType -typeStr $part -indent "$indent`t"
+	}
+	X "$indent</$tag>"
 }
 
 function Emit-SingleType {
@@ -458,76 +859,171 @@ function Emit-SingleType {
 
 	$typeStr = Resolve-TypeStr $typeStr
 
-	if ($typeStr -eq "boolean") {
-		X "$indent<v8:Type>xs:boolean</v8:Type>"; return
+	# TypeId — тип, заданный глобальным стабильным GUID (<v8:TypeId>, не <v8:Type>). Платформа так
+	# сериализует типы, чьё имя в этом контексте недоступно (определяемые/характеристики). GUID
+	# глобально стабилен → эмитим verbatim (как роль-по-GUID). Маркер декомпилятора: 'typeid:GUID'.
+	if ($typeStr -match '^typeid:([0-9a-fA-F-]{36})$') {
+		X "$indent<v8:TypeId>$($Matches[1])</v8:TypeId>"
+		return
 	}
-	if ($typeStr -match '^string(\((\d+)\))?$') {
+
+	# boolean
+	if ($typeStr -eq "boolean") {
+		X "$indent<v8:Type>xs:boolean</v8:Type>"
+		return
+	}
+
+	# string or string(N) or string(N,fixed) (AllowedLength: Variable дефолт / Fixed)
+	if ($typeStr -match '^string(\((\d+)(\s*,\s*(fixed|variable))?\))?$') {
 		$len = if ($Matches[2]) { $Matches[2] } else { "0" }
+		$al = if ($Matches[4] -and $Matches[4].ToLower() -eq 'fixed') { 'Fixed' } else { 'Variable' }
 		X "$indent<v8:Type>xs:string</v8:Type>"
 		X "$indent<v8:StringQualifiers>"
 		X "$indent`t<v8:Length>$len</v8:Length>"
-		X "$indent`t<v8:AllowedLength>Variable</v8:AllowedLength>"
-		X "$indent</v8:StringQualifiers>"; return
+		X "$indent`t<v8:AllowedLength>$al</v8:AllowedLength>"
+		X "$indent</v8:StringQualifiers>"
+		return
 	}
+
+	# decimal(D,F) or decimal(D,F,nonneg)
 	if ($typeStr -match '^decimal\((\d+),(\d+)(,nonneg)?\)$') {
-		$digits = $Matches[1]; $fraction = $Matches[2]
+		$digits = $Matches[1]
+		$fraction = $Matches[2]
 		$sign = if ($Matches[3]) { "Nonnegative" } else { "Any" }
 		X "$indent<v8:Type>xs:decimal</v8:Type>"
 		X "$indent<v8:NumberQualifiers>"
 		X "$indent`t<v8:Digits>$digits</v8:Digits>"
 		X "$indent`t<v8:FractionDigits>$fraction</v8:FractionDigits>"
 		X "$indent`t<v8:AllowedSign>$sign</v8:AllowedSign>"
-		X "$indent</v8:NumberQualifiers>"; return
+		X "$indent</v8:NumberQualifiers>"
+		return
 	}
+
+	# date / dateTime / time
 	if ($typeStr -match '^(date|dateTime|time)$') {
-		$fractions = switch ($typeStr) { "date" { "Date" } "dateTime" { "DateTime" } "time" { "Time" } }
+		$fractions = switch ($typeStr) {
+			"date"     { "Date" }
+			"dateTime" { "DateTime" }
+			"time"     { "Time" }
+		}
 		X "$indent<v8:Type>xs:dateTime</v8:Type>"
 		X "$indent<v8:DateQualifiers>"
 		X "$indent`t<v8:DateFractions>$fractions</v8:DateFractions>"
-		X "$indent</v8:DateQualifiers>"; return
+		X "$indent</v8:DateQualifiers>"
+		return
 	}
+
+	# ValueTable, ValueTree, ValueList, etc.
 	$v8Types = @{
-		"ValueTable" = "v8:ValueTable"; "ValueTree" = "v8:ValueTree"; "ValueList" = "v8:ValueListType"
-		"TypeDescription" = "v8:TypeDescription"; "Universal" = "v8:Universal"
-		"FixedArray" = "v8:FixedArray"; "FixedStructure" = "v8:FixedStructure"
+		"ValueTable"       = "v8:ValueTable"
+		"ValueTree"        = "v8:ValueTree"
+		"ValueList"        = "v8:ValueListType"
+		"TypeDescription"  = "v8:TypeDescription"
+		"Universal"        = "v8:Universal"
+		"FixedArray"       = "v8:FixedArray"
+		"FixedStructure"   = "v8:FixedStructure"
 	}
-	if ($v8Types.ContainsKey($typeStr)) { X "$indent<v8:Type>$($v8Types[$typeStr])</v8:Type>"; return }
-	$uiTypes = @{ "FormattedString" = "v8ui:FormattedString"; "Picture" = "v8ui:Picture"; "Color" = "v8ui:Color"; "Font" = "v8ui:Font" }
-	if ($uiTypes.ContainsKey($typeStr)) { X "$indent<v8:Type>$($uiTypes[$typeStr])</v8:Type>"; return }
-	if ($typeStr -eq "DynamicList") { X "$indent<v8:Type>cfg:DynamicList</v8:Type>"; return }
+	if ($v8Types.ContainsKey($typeStr)) {
+		X "$indent<v8:Type>$($v8Types[$typeStr])</v8:Type>"
+		return
+	}
+
+	# UI types
+	$uiTypes = @{
+		"FormattedString" = "v8ui:FormattedString"
+		"Picture"         = "v8ui:Picture"
+		"Color"           = "v8ui:Color"
+		"Font"            = "v8ui:Font"
+	}
+	if ($uiTypes.ContainsKey($typeStr)) {
+		X "$indent<v8:Type>$($uiTypes[$typeStr])</v8:Type>"
+		return
+	}
+
+	# DCS types
 	if ($typeStr -match '^DataComposition') {
-		$dcsMap = @{ "DataCompositionSettings" = "dcsset:DataCompositionSettings"; "DataCompositionSchema" = "dcssch:DataCompositionSchema"; "DataCompositionComparisonType" = "dcscor:DataCompositionComparisonType" }
-		if ($dcsMap.ContainsKey($typeStr)) { X "$indent<v8:Type>$($dcsMap[$typeStr])</v8:Type>"; return }
+		$dcsMap = @{
+			"DataCompositionSettings"      = "dcsset:DataCompositionSettings"
+			"DataCompositionSchema"        = "dcssch:DataCompositionSchema"
+			"DataCompositionComparisonType" = "dcscor:DataCompositionComparisonType"
+		}
+		if ($dcsMap.ContainsKey($typeStr)) {
+			X "$indent<v8:Type>$($dcsMap[$typeStr])</v8:Type>"
+			return
+		}
 	}
-	if ($typeStr -match '^(CatalogRef|CatalogObject|DocumentRef|DocumentObject|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef|ExchangePlanRef|BusinessProcessRef|TaskRef|InformationRegisterRecordSet|AccumulationRegisterRecordSet|DataProcessorObject)\.') {
-		X "$indent<v8:Type>cfg:$typeStr</v8:Type>"; return
+
+	# Голые конфигурационные типы (cfg: без .Имя): дин-список, набор констант, общий объект отчёта.
+	# Корпус (acc+erp 8.3.24): DynamicList 5205, ConstantsSet 103, ReportObject 10. (Дотированные формы
+	# ConstantsSet.X / ReportObject.X ловит общий cfg:-regex ниже.)
+	if ($typeStr -in @("DynamicList","ConstantsSet","ReportObject")) {
+		X "$indent<v8:Type>cfg:$typeStr</v8:Type>"
+		return
 	}
-	if ($typeStr.Contains('.')) { X "$indent<v8:Type>cfg:$typeStr</v8:Type>" }
-	else { X "$indent<v8:Type>$typeStr</v8:Type>" }
-}
 
-# --- Event handler name generator ---
+	# TypeSet (набор типов) → <v8:TypeSet>: определяемый тип / характеристика (именованные)
+	# + «любая ссылка вида» (голый ref-вид без .Имя). Развязка с обычным типом — по наличию точки.
+	if ($typeStr -match '^(DefinedType|Characteristic)\.') {
+		X "$indent<v8:TypeSet>cfg:$typeStr</v8:TypeSet>"
+		return
+	}
+	if ($typeStr -match '^(AnyRef|AnyIBRef|CatalogRef|DocumentRef|EnumRef|ExchangePlanRef|TaskRef|BusinessProcessRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef)$') {
+		X "$indent<v8:TypeSet>cfg:$typeStr</v8:TypeSet>"
+		return
+	}
 
-$script:eventSuffixMap = @{
-	"OnChange" = "ПриИзменении"; "StartChoice" = "НачалоВыбора"; "ChoiceProcessing" = "ОбработкаВыбора"
-	"AutoComplete" = "АвтоПодбор"; "Clearing" = "Очистка"; "Opening" = "Открытие"; "Click" = "Нажатие"
-	"OnActivateRow" = "ПриАктивизацииСтроки"; "BeforeAddRow" = "ПередНачаломДобавления"
-	"BeforeDeleteRow" = "ПередУдалением"; "BeforeRowChange" = "ПередНачаломИзменения"
-	"OnStartEdit" = "ПриНачалеРедактирования"; "OnEditEnd" = "ПриОкончанииРедактирования"
-	"Selection" = "ВыборСтроки"; "OnCurrentPageChange" = "ПриСменеСтраницы"
-	"TextEditEnd" = "ОкончаниеВводаТекста"; "URLProcessing" = "ОбработкаНавигационнойСсылки"
-	"DragStart" = "НачалоПеретаскивания"; "Drag" = "Перетаскивание"
-	"DragCheck" = "ПроверкаПеретаскивания"; "Drop" = "Помещение"; "AfterDeleteRow" = "ПослеУдаления"
+	# cfg: references (CatalogRef.XXX, DocumentObject.XXX, etc.)
+	if ($typeStr -match '^(CatalogRef|CatalogObject|DocumentRef|DocumentObject|EnumRef|ChartOfAccountsRef|ChartOfAccountsObject|ChartOfCharacteristicTypesRef|ChartOfCharacteristicTypesObject|ChartOfCalculationTypesRef|ChartOfCalculationTypesObject|ExchangePlanRef|ExchangePlanObject|BusinessProcessRef|BusinessProcessObject|TaskRef|TaskObject|InformationRegisterRecordSet|InformationRegisterRecordManager|AccumulationRegisterRecordSet|AccountingRegisterRecordSet|ConstantsSet|DataProcessorObject|ReportObject)\.') {
+		X "$indent<v8:Type>cfg:$typeStr</v8:Type>"
+		return
+	}
+
+	# Спец-типы платформы с собственным namespace (объявляется ЛОКАЛЬНО на <v8:Type>).
+	# Префикс d5p1 неоднозначен (5 разных URI), поэтому маппинг по полному значению типа.
+	# К таким типам привязаны спец-поля: mxl→SpreadSheetDocumentField, fd→FormattedDocumentField,
+	# d5p1:TextDocument→TextDocumentField, pdfdoc→PDF, pl→Planner, chart/geo/graphscheme/data-analysis.
+	$specialTypeNs = @{
+		"mxl:SpreadsheetDocument"               = "http://v8.1c.ru/8.2/data/spreadsheet"
+		"fd:FormattedDocument"                  = "http://v8.1c.ru/8.2/data/formatted-document"
+		"d5p1:TextDocument"                     = "http://v8.1c.ru/8.1/data/txtedt"
+		"d5p1:Chart"                            = "http://v8.1c.ru/8.2/data/chart"
+		"d5p1:GanttChart"                       = "http://v8.1c.ru/8.2/data/chart"
+		"d5p1:Dendrogram"                       = "http://v8.1c.ru/8.2/data/chart"
+		"d5p1:FlowchartContextType"             = "http://v8.1c.ru/8.2/data/graphscheme"
+		"d5p1:DataAnalysisTimeIntervalUnitType" = "http://v8.1c.ru/8.2/data/data-analysis"
+		"d5p1:GeographicalSchema"               = "http://v8.1c.ru/8.2/data/geo"
+		"pdfdoc:PDFDocument"                    = "http://v8.1c.ru/8.3/data/pdf"
+		"pl:Planner"                            = "http://v8.1c.ru/8.3/data/planner"
+	}
+	if ($specialTypeNs.ContainsKey($typeStr)) {
+		$pref = $typeStr.Substring(0, $typeStr.IndexOf(':'))
+		X "$indent<v8:Type xmlns:$pref=`"$($specialTypeNs[$typeStr])`">$typeStr</v8:Type>"
+		return
+	}
+
+	# Fallback with validation
+	if ($script:knownInvalidTypes.ContainsKey($typeStr)) {
+		throw "Invalid form attribute type '$typeStr': $($script:knownInvalidTypes[$typeStr])"
+	}
+	# Платформенный тип с префиксом (v8:/v8ui:/xs:/dcs*:) — эмитим verbatim (напр. v8:UUID, v8:StandardPeriod).
+	if ($typeStr -match '^(v8|v8ui|xs|ent|style|sys|web|win|dcs\w*):') {
+		X "$indent<v8:Type>$typeStr</v8:Type>"
+	} elseif ($typeStr.Contains('.')) {
+		X "$indent<v8:Type>cfg:$typeStr</v8:Type>"
+	} else {
+		Write-Warning "Unrecognized bare type '$typeStr' — will be emitted without namespace prefix"
+		X "$indent<v8:Type>$typeStr</v8:Type>"
+	}
 }
 
 function Get-HandlerName {
 	param([string]$elementName, [string]$eventName)
 	$suffix = $script:eventSuffixMap[$eventName]
-	if ($suffix) { return "$elementName$suffix" }
+	if ($suffix) {
+		return "$elementName$suffix"
+	}
 	return "$elementName$eventName"
 }
-
-# --- Element helpers ---
 
 function Get-ElementName {
 	param($el, [string]$typeKey)
@@ -535,275 +1031,1683 @@ function Get-ElementName {
 	return "$($el.$typeKey)"
 }
 
-# Уникальность имён внутри JSON-определения (1С: своя коллекция — свой неймспейс).
-function Assert-EditUnique {
-	param([string]$name, [hashtable]$seen, [string]$ctx)
-	if ($seen.ContainsKey($name)) {
-		Write-Host "[ERROR] Duplicate $ctx '$name' in JSON definition — names must be unique in 1C form"
-		exit 1
+function Get-EventPairs {
+	param($el, [string]$elementName)
+	$pairs = New-Object System.Collections.ArrayList
+	if ($el.events) {
+		foreach ($p in $el.events.PSObject.Properties) {
+			# Значение — имя обработчика; null — имя по шаблону; объект { handler, callType } или массив
+			# таких объектов (в расширении на одно событие вешают и Before, и After)
+			$vals = @($p.Value)   # массив — как есть, одно значение (в т.ч. null) — один элемент
+			foreach ($v in $vals) {
+				$h = ""; $ct = ""
+				if ($v -is [System.Management.Automation.PSCustomObject]) { $h = "$($v.handler)"; $ct = Normalize-CallType "$($v.callType)" $elementName $p.Name } else { $h = "$v" }
+				if ([string]::IsNullOrEmpty($h)) { $h = Get-HandlerName -elementName $elementName -eventName $p.Name }
+				[void]$pairs.Add([pscustomobject]@{ name = $p.Name; handler = $h; callType = $ct })
+			}
+		}
+	} elseif ($el.on) {
+		foreach ($evt in $el.on) {
+			if ($evt -is [System.Management.Automation.PSCustomObject]) {
+				$evtName = "$($evt.event)"; $h = "$($evt.handler)"; $ct = Normalize-CallType "$($evt.callType)" $elementName $evtName
+			} else {
+				$evtName = "$evt"; $h = ""; $ct = ""
+			}
+			if (-not $h) { $h = if ($el.handlers -and $el.handlers.$evtName) { "$($el.handlers.$evtName)" } else { Get-HandlerName -elementName $elementName -eventName $evtName } }
+			[void]$pairs.Add([pscustomobject]@{ name = $evtName; handler = $h; callType = $ct })
+		}
 	}
-	$seen[$name] = $true
+	return $pairs
 }
 
-$script:knownEvents = @{
-	"input"     = @("OnChange","StartChoice","ChoiceProcessing","AutoComplete","TextEditEnd","Clearing","Creating","EditTextChange")
-	"check"     = @("OnChange")
-	"label"     = @("Click","URLProcessing")
-	"labelField"= @("OnChange","StartChoice","ChoiceProcessing","Click","URLProcessing","Clearing")
-	"table"     = @("Selection","BeforeAddRow","AfterDeleteRow","BeforeDeleteRow","OnActivateRow","OnEditEnd","OnStartEdit","BeforeRowChange","BeforeEditEnd","ValueChoice","OnActivateCell","OnActivateField","Drag","DragStart","DragCheck","DragEnd","OnGetDataAtServer","BeforeLoadUserSettingsAtServer","OnUpdateUserSettingSetAtServer","OnChange")
-	"pages"     = @("OnCurrentPageChange")
-	"page"      = @("OnCurrentPageChange")
-	"button"    = @("Click")
-	"picField"  = @("OnChange","StartChoice","ChoiceProcessing","Click","Clearing")
-	"calendar"  = @("OnChange","OnActivate")
-	"picture"   = @("Click")
-	"cmdBar"    = @()
-	"popup"     = @()
-	"group"     = @()
+function Normalize-CallType([string]$raw, [string]$elementName, [string]$eventName) {
+	if ([string]::IsNullOrEmpty($raw)) { return '' }
+	foreach ($v in @('Before','After','Override')) { if ($raw -eq $v) { return $v } }
+	Write-Error "Element '$elementName', event '$eventName': callType '$raw' — expected Before, After or Override"
+	exit 1
 }
 
 function Emit-Events {
 	param($el, [string]$elementName, [string]$indent, [string]$typeKey)
-	if (-not $el.on) { return }
+
+	$pairs = Get-EventPairs -el $el -elementName $elementName
+	if ($pairs.Count -eq 0) { return }
 
 	# Validate event names
 	if ($typeKey -and $script:knownEvents.ContainsKey($typeKey)) {
 		$allowed = $script:knownEvents[$typeKey]
-		foreach ($evt in $el.on) {
-			$evtStr = if ($evt -is [string]) { "$evt" } else { "$($evt.event)" }
-			if ($allowed.Count -gt 0 -and $allowed -notcontains $evtStr) {
-				Write-Host "[WARN] Unknown event '$evtStr' for $typeKey '$elementName'. Known: $($allowed -join ', ')"
+		foreach ($pr in $pairs) {
+			if ($allowed.Count -gt 0 -and $allowed -notcontains "$($pr.name)") {
+				Write-Host "[WARN] Unknown event '$($pr.name)' for $typeKey '$elementName'. Known: $($allowed -join ', ')"
 			}
 		}
 	}
 
 	X "$indent<Events>"
-	foreach ($evt in $el.on) {
-		# Support both string ("OnChange") and object ({ "event": "OnChange", "callType": "After" })
-		if ($evt -is [string] -or -not $evt.event) {
-			$evtName = "$evt"
-			$handler = if ($el.handlers -and $el.handlers.$evtName) { "$($el.handlers.$evtName)" }
-			else { Get-HandlerName -elementName $elementName -eventName $evtName }
-			X "$indent`t<Event name=`"$evtName`">$handler</Event>"
-		} else {
-			$evtName = "$($evt.event)"
-			$handler = if ($evt.handler) { "$($evt.handler)" }
-			elseif ($el.handlers -and $el.handlers.$evtName) { "$($el.handlers.$evtName)" }
-			else { Get-HandlerName -elementName $elementName -eventName $evtName }
-			$callTypeAttr = if ($evt.callType) { " callType=`"$($evt.callType)`"" } else { "" }
-			X "$indent`t<Event name=`"$evtName`"$callTypeAttr>$handler</Event>"
-		}
+	foreach ($pr in $pairs) {
+		$ctAttr = if ($pr.callType) { " callType=`"$($pr.callType)`"" } else { "" }
+		X "$indent`t<Event name=`"$($pr.name)`"$ctAttr>$($pr.handler)</Event>"
 	}
 	X "$indent</Events>"
 }
 
+function Test-CompanionStructured {
+	param($content)
+	if (-not (($content -is [System.Collections.IDictionary]) -or ($content -is [System.Management.Automation.PSCustomObject]))) { return $false }
+	foreach ($k in $script:companionStructKeys) {
+		$present = if ($content -is [System.Collections.IDictionary]) { $content.Contains($k) } else { [bool]$content.PSObject.Properties[$k] }
+		if ($present) { return $true }
+	}
+	return $false
+}
+
+function Emit-CompanionTitle {
+	param($content, [string]$indent)
+	$r = Resolve-MLFormatted $content
+	$fmt = if ($r.formatted) { 'true' } else { 'false' }
+	X "$indent<Title formatted=`"$fmt`">"
+	Emit-MLItems -val $r.text -indent "$indent`t"
+	X "$indent</Title>"
+}
+
+function DI-Attr {
+	param($el)
+	if ($null -ne $el -and $el.displayImportance) { return " DisplayImportance=`"$(Esc-Xml "$($el.displayImportance)")`"" }
+	return ""
+}
+
 function Emit-Companion {
-	param([string]$tag, [string]$name, [string]$indent)
+	param([string]$tag, [string]$name, [string]$indent, $content = $null)
 	$id = New-Id
-	X "$indent<$tag name=`"$name`" id=`"$id`"/>"
+	$hasContent = $null -ne $content -and -not ($content -is [string] -and "$content" -eq '')
+	if (-not $hasContent) {
+		X "$indent<$tag name=`"$name`" id=`"$id`"/>"
+		return
+	}
+	$inner = "$indent`t"
+	# DI-Attr берём от СОБСТВЕННОГО объекта компаньона ($content), НЕ от ambient $el родителя
+	# (PowerShell dynamic scope — иначе companion наследует DisplayImportance владельца: баг).
+	X "$indent<$tag name=`"$name`" id=`"$id`"$(DI-Attr $content)>"
+	if (Test-CompanionStructured $content) {
+		# структурированная форма (own-content). Порядок как у платформы: own-content (флаги/hyperlink/
+		# layout/оформление) ПЕРЕД Title (в корпусе layout-first 582 vs 10).
+		$txtPresent = if ($content -is [System.Collections.IDictionary]) { $content.Contains('text') } else { [bool]$content.PSObject.Properties['text'] }
+		Emit-CommonFlags -el $content -indent $inner
+		if ($content.hyperlink -eq $true) { X "$inner<Hyperlink>true</Hyperlink>" }
+		Emit-Layout -el $content -indent $inner
+		Emit-Appearance -el $content -indent $inner -profile 'decoration'
+		if ($txtPresent) { Emit-CompanionTitle -content $content -indent $inner }
+		# ToolTip компаньона (подсказка самой расширенной подсказки) — после Title (порядок схемы LabelDecoration)
+		if ($content.tooltip) { Emit-MLText -tag "ToolTip" -text $content.tooltip -indent $inner }
+		# События компаньона (ExtendedTooltip = LabelDecoration: напр. URLProcessing у hyperlink-подсказки)
+		Emit-Events -el $content -elementName $name -indent $inner -typeKey 'label'
+	} else {
+		Emit-CompanionTitle -content $content -indent $inner
+	}
+	X "$indent</$tag>"
+}
+
+function Emit-CompanionPanel {
+	param([string]$tag, [string]$name, [string]$indent, $panel)
+	$id = New-Id
+	$autofill = $null
+	$children = $null
+	$halign = $null
+	if ($panel -is [array]) {
+		$children = $panel
+	} elseif ($null -ne $panel) {
+		if ($null -ne $panel.PSObject.Properties['autofill'] -and $null -ne $panel.autofill) { $autofill = [bool]$panel.autofill }
+		if ($null -ne $panel.PSObject.Properties['horizontalAlign'] -and "$($panel.horizontalAlign)" -ne '') { $halign = "$($panel.horizontalAlign)" }
+		$children = $panel.children
+	}
+	$hasChildren = $children -and @($children).Count -gt 0
+	# Платформа пишет <Autofill> только при false; true = дефолт (тег опускается).
+	$emitAfFalse = ($autofill -eq $false)
+	if (-not $emitAfFalse -and -not $hasChildren -and -not $halign) {
+		X "$indent<$tag name=`"$name`" id=`"$id`"/>"
+		return
+	}
+	X "$indent<$tag name=`"$name`" id=`"$id`"$(DI-Attr $panel)>"
+	if ($halign) { X "$indent`t<HorizontalAlign>$halign</HorizontalAlign>" }
+	if ($emitAfFalse) { X "$indent`t<Autofill>false</Autofill>" }
+	if ($hasChildren) {
+		X "$indent`t<ChildItems>"
+		foreach ($c in @($children)) { Emit-Element -el $c -indent "$indent`t`t" -inCmdBar $true }
+		X "$indent`t</ChildItems>"
+	}
+	X "$indent</$tag>"
+}
+
+function Get-HLocation {
+	param($el)
+	$v = if ($el -and $el.PSObject.Properties['horizontalLocation']) { $el.horizontalLocation } else { $null }
+	if (-not $v) { return $null }
+	switch -Regex ("$v".ToLower()) {
+		'^(auto|авто)$'          { return $null }    # дефолт — не эмитим
+		'^(left|слева|лево)$'    { return 'Left' }
+		'^(right|справа|право)$'  { return 'Right' }
+		'^(center|центр|по центру)$' { return 'Center' }
+		default                  { return "$v" }
+	}
+}
+
+function Emit-AdditionBody {
+	param($props, [string]$source, [string]$srcType, [string]$addName, [string]$indent)
+	$inner = "$indent`t"
+	X "$inner<AdditionSource>"
+	X "$inner`t<Item>$source</Item>"
+	X "$inner`t<Type>$srcType</Type>"
+	X "$inner</AdditionSource>"
+	if ($props) {
+		if ($props.PSObject.Properties['title'] -and $props.title) { Emit-MLText -tag "Title" -text $props.title -indent $inner }
+		Emit-CommonFlags -el $props -indent $inner
+		if ($props.tooltip) { Emit-MLText -tag "ToolTip" -text $props.tooltip -indent $inner }
+		if ($props.tooltipRepresentation) { X "$inner<ToolTipRepresentation>$($props.tooltipRepresentation)</ToolTipRepresentation>" }
+		$hl = Get-HLocation $props; if ($hl) { X "$inner<HorizontalLocation>$hl</HorizontalLocation>" }
+		Emit-Layout -el $props -indent $inner
+		Emit-Appearance -el $props -indent $inner -profile 'field'
+	}
+	Emit-Companion -tag "ContextMenu" -name "${addName}КонтекстноеМеню" -indent $inner
+	Emit-Companion -tag "ExtendedTooltip" -name "${addName}РасширеннаяПодсказка" -indent $inner
+}
+
+function Emit-Addition {
+	param($el, [string]$name, [int]$id, [string]$typeKey, [string]$indent)
+	$map = $script:additionTypeMap[$typeKey]
+	$source = if ($el.source) { "$($el.source)" } elseif ($script:currentTableName) { $script:currentTableName } else { '' }
+	X "$indent<$($map.Tag) name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
+	Emit-AdditionBody -props $el -source $source -srcType $map.Type -addName $name -indent $indent
+	X "$indent</$($map.Tag)>"
+}
+
+function Emit-TableAddition {
+	param([string]$typeKey, [string]$tableName, [string]$indent, $override = $null)
+	$map = $script:additionTypeMap[$typeKey]
+	$addName = "$tableName$($map.Suffix)"
+	$id = New-Id
+	X "$indent<$($map.Tag) name=`"$addName`" id=`"$id`">"
+	Emit-AdditionBody -props $override -source $tableName -srcType $map.Type -addName $addName -indent $indent
+	X "$indent</$($map.Tag)>"
+}
+
+function Get-AdditionOverride {
+	param($additions, [string]$typeKey)
+	if ($null -eq $additions) { return $null }
+	foreach ($k in @($typeKey) + $script:additionKeySynonyms[$typeKey]) {
+		$p = $additions.PSObject.Properties[$k]
+		if ($p) { return $p.Value }
+	}
+	return $null
+}
+
+function Normalize-ElementTypeSynonyms {
+	param($el)
+	foreach ($pair in $script:elementTypeSynonyms.GetEnumerator()) {
+		if ($null -ne $el.PSObject.Properties[$pair.Key] -and $null -eq $el.PSObject.Properties[$pair.Value]) {
+			if ($script:elementTypeStrOnlyKeys -contains $pair.Key -and -not ($el.($pair.Key) -is [string])) { continue }
+			$val = $el.($pair.Key)
+			$el.PSObject.Properties.Remove($pair.Key) | Out-Null
+			$el | Add-Member -NotePropertyName $pair.Value -NotePropertyValue $val -Force
+		}
+	}
+}
+
+function Emit-Element {
+	param($el, [string]$indent, [bool]$inCmdBar = $false)
+
+	# Companion-панели (объект/массив-значение) → commandBar/contextMenu, до тип-синонимов.
+	Normalize-PanelSynonyms $el
+
+	# Синонимы типа (XML-имя, русское имя) → канонический ключ DSL
+	Normalize-ElementTypeSynonyms $el
+
+	# Синонимы ключей-свойств (русские имена 1С → канон. англ.). Case/space-insensitive.
+	# Канон побеждает: если задан и русский, и англ. ключ — англ. остаётся, русский отбрасываем.
+	foreach ($pn in @($el.PSObject.Properties.Name)) {
+		$norm = ($pn -replace '\s','').ToLower()
+		$canon = $script:propSynonyms[$norm]
+		if ($canon -and $pn -ne $canon) {
+			if ($null -eq $el.PSObject.Properties[$canon]) {
+				$val = $el.($pn)
+				$el | Add-Member -NotePropertyName $canon -NotePropertyValue $val -Force
+			}
+			$el.PSObject.Properties.Remove($pn) | Out-Null
+		}
+	}
+
+	# Determine element type from key
+	$typeKey = $null
+	$xmlTag = $null
+
+	# picture/picField — НИЗКИЙ приоритет: 'picture' это и тип (PictureDecoration), и свойство-иконка
+	# у popup/button/cmdBar. Тип-ключ владельца (popup/button/…) должен выиграть.
+	# pages/page ПЕРЕД group: у Page/Pages ключ 'group' — это направление раскладки детей
+	# (<Group>Horizontal</Group>), а не тип UsualGroup. Реальная UsualGroup ключа page/pages не несёт.
+	foreach ($key in @("columnGroup","buttonGroup","pages","page","group","input","check","radio","label","labelField","table","button","calendar","cmdBar","popup","searchString","viewStatus","searchControl","picField","picture","spreadsheet","html","textDoc","formattedDoc","progressBar","trackBar","chart","ganttChart","graphicalSchema","planner","periodField","dendrogram")) {
+		if ($el.$key -ne $null) {
+			$typeKey = $key
+			break
+		}
+	}
+
+	if (-not $typeKey) {
+		Write-Warning "Unknown element type, skipping"
+		return
+	}
+
+	# Validate known keys — warn about typos and unknown properties
+	$knownKeys = @{
+		# type keys
+		"group"=1;"columnGroup"=1;"buttonGroup"=1;"input"=1;"check"=1;"radio"=1;"label"=1;"labelField"=1;"table"=1;"pages"=1;"page"=1
+		"button"=1;"picture"=1;"picField"=1;"calendar"=1;"cmdBar"=1;"popup"=1
+		# спец-поля (документ/датчик/диаграмма) — тип-ключи + типоспец. скаляры
+		"spreadsheet"=1;"html"=1;"textDoc"=1;"formattedDoc"=1;"progressBar"=1;"trackBar"=1
+		"chart"=1;"ganttChart"=1;"graphicalSchema"=1;"planner"=1;"periodField"=1;"dendrogram"=1;"ganttTable"=1
+		"showPercent"=1;"largeStep"=1;"markingStep"=1;"step"=1
+		"horizontalScrollBar"=1;"viewScalingMode"=1;"output"=1;"selectionShowMode"=1;"protection"=1
+		"edit"=1;"showGrid"=1;"showGroups"=1;"showHeaders"=1;"showRowAndColumnNames"=1;"showCellNames"=1
+		"pointerType"=1;"drawingSelectionShowMode"=1;"warningOnEditRepresentation"=1;"markingAppearance"=1
+		# report-form контекст (generic-скаляры элементов)
+		"horizontalSpacing"=1;"representationInContextMenu"=1;"settingsNamedItemDetailedRepresentation"=1
+		# хвост: высота элемента списка / ширина выпадающего списка / картинка кнопки выбора / прозрачный пиксель
+		"itemHeight"=1;"dropListWidth"=1;"choiceButtonPicture"=1;"transparentPixel"=1
+		# хвост CI-форм: динамический заголовок / расширенное редактирование / высота таблицы
+		"titleDataPath"=1;"extendedEdit"=1;"maxRowsCount"=1;"autoMaxRowsCount"=1;"heightControlVariant"=1
+		"warningOnEdit"=1;"nonselectedPictureText"=1;"editTextUpdate"=1;"footerText"=1
+		# columnGroup-specific
+		"showInHeader"=1
+		# radio-specific
+		"radioButtonType"=1;"choiceList"=1;"columnsCount"=1;"checkBoxType"=1;"editMode"=1
+		# naming & binding
+		"name"=1;"path"=1;"title"=1;"tooltip"=1;"tooltipRepresentation"=1;"extendedTooltip"=1
+		# companion-панели (свойства): командная панель + контекстное меню
+		"commandBar"=1;"contextMenu"=1
+		# источник команд группы/панели (ButtonGroup/CommandBar)
+		"commandSource"=1
+		# visibility & state
+		"visible"=1;"hidden"=1;"enabled"=1;"disabled"=1;"readOnly"=1;"userVisible"=1
+		# events ("events" — основной формат; on/handlers — legacy, принимаются ради совместимости)
+		"events"=1;"on"=1;"handlers"=1
+		# layout
+		"titleLocation"=1;"representation"=1;"width"=1;"height"=1
+		"horizontalStretch"=1;"verticalStretch"=1;"autoMaxWidth"=1;"autoMaxHeight"=1
+		"maxWidth"=1;"maxHeight"=1
+		"groupHorizontalAlign"=1;"groupVerticalAlign"=1;"horizontalAlign"=1
+		# input-specific
+		"multiLine"=1;"passwordMode"=1;"choiceButton"=1;"clearButton"=1
+		"spinButton"=1;"dropListButton"=1;"markIncomplete"=1;"skipOnInput"=1;"inputHint"=1
+		"textEdit"=1
+		"wrap"=1;"openButton"=1;"listChoiceMode"=1;"showInFooter"=1
+		"extendedEditMultipleValues"=1;"chooseType"=1;"autoCellHeight"=1
+		"choiceButtonRepresentation"=1;"footerHorizontalAlign"=1;"headerHorizontalAlign"=1
+		"headerDataPath"=1;"headerFormat"=1;"currentRowUse"=1
+		"format"=1;"editFormat"=1;"choiceParameters"=1;"choiceParameterLinks"=1;"typeLink"=1
+		# label/hyperlink
+		"hyperlink"=1;"formatted"=1
+		# group-specific
+		"collapsedTitle"=1;"showTitle"=1;"united"=1;"collapsed"=1;"behavior"=1
+		# hierarchy
+		"children"=1;"columns"=1
+		# table-specific
+		"changeRowSet"=1;"changeRowOrder"=1;"autoInsertNewRow"=1;"rowFilter"=1;"header"=1;"footer"=1
+		"commandBarLocation"=1;"searchStringLocation"=1;"viewStatusLocation"=1;"searchControlLocation"=1
+		"excludedCommands"=1
+		"choiceMode"=1;"initialTreeView"=1;"enableDrag"=1;"enableStartDrag"=1
+		"rowPictureDataPath"=1;"tableAutofill"=1;"heightInTableRows"=1
+		"multipleChoice"=1;"searchOnInput"=1;"shortcut"=1
+		"rowSelectionMode"=1;"verticalLines"=1;"horizontalLines"=1
+		# dynamic-list table block
+		"defaultItem"=1;"useAlternationRowColor"=1;"fileDragMode"=1;"autoRefresh"=1
+		"autoRefreshPeriod"=1;"choiceFoldersAndItems"=1;"restoreCurrentRow"=1;"showRoot"=1
+		"allowRootChoice"=1;"updateOnDataChange"=1;"allowGettingCurrentRowURL"=1
+		"userSettingsGroup"=1;"rowsPicture"=1
+		# calendar-specific
+		"selectionMode"=1;"showCurrentDate"=1;"widthInMonths"=1;"heightInMonths"=1;"showMonthsPanel"=1
+		# pages-specific
+		"pagesRepresentation"=1
+		# button-specific
+		"type"=1;"command"=1;"commandName"=1;"stdCommand"=1;"parameter"=1;"defaultButton"=1;"locationInCommandBar"=1;"displayImportance"=1
+		# picture/decoration
+		"src"=1;"valuesPicture"=1;"loadTransparent"=1;"headerPicture"=1;"footerPicture"=1
+		# cmdBar-specific
+		"autofill"=1
+		# AutoCommandBar-маркер (autofill heuristic) на элементе/таблице
+		"autoCmdBar"=1
+		# дополнения командной панели таблицы (тип-ключи + свойства)
+		"searchString"=1;"viewStatus"=1;"searchControl"=1;"source"=1;"horizontalLocation"=1;"additions"=1
+		# generic-скаляры (pass-through) + точечные
+		"verticalAlign"=1;"throughAlign"=1;"enableContentChange"=1;"pictureSize"=1;"titleHeight"=1
+		"childItemsWidth"=1;"showLeftMargin"=1;"cellHyperlink"=1;"viewMode"=1;"verticalScrollBar"=1
+		"rowInputMode"=1;"mask"=1;"createButton"=1;"fixingInTable"=1;"verticalSpacing"=1
+		# InputField choice-скаляры
+		"choiceListButton"=1;"quickChoice"=1;"autoChoiceIncomplete"=1
+		"choiceForm"=1;"choiceHistoryOnInput"=1;"footerDataPath"=1;"minValue"=1;"maxValue"=1
+		# Button — пометка toggle-кнопки (ключ 'checked', не 'check' — во избежание конфликта с типом)
+		"checked"=1
+	}
+	# Оформление (цвета/шрифты/граница) — авто-регистрация из самих структур, чтобы allowlist
+	# не дрейфовал при добавлении новых ключей/синонимов. Канонические + forgiving-синонимы.
+	foreach ($k in $script:appearanceSpec.Keys)     { $knownKeys[$k] = 1 }
+	foreach ($k in $script:appearanceSynonyms.Keys) { $knownKeys[$k] = 1 }
+	foreach ($k in $script:propSynonyms.Keys)       { $knownKeys[$k] = 1 }
+	# Простые скаляры (pass-through) — тоже из своей таблицы: компилятор их выводит, значит, они известны
+	foreach ($g in $script:genericScalars)          { $knownKeys[$g.Key] = 1 }
+	foreach ($p in $el.PSObject.Properties) {
+		if ($p.Name -like '_*') { continue }  # внутренние маркеры (напр. _dynList)
+		if (-not $knownKeys.ContainsKey($p.Name)) {
+			Write-Warning "Element '$($el.$typeKey)': unknown key '$($p.Name)' — ignored. Check SKILL.md for valid keys."
+		}
+	}
+
+	$name = Get-ElementName -el $el -typeKey $typeKey
+	Assert-UniqueName -name $name -seen $script:seenElementNames -kind 'element'
+	$id = New-Id
+
+	switch ($typeKey) {
+		"group"    { Emit-Group -el $el -name $name -id $id -indent $indent }
+		"columnGroup" { Emit-ColumnGroup -el $el -name $name -id $id -indent $indent }
+		"buttonGroup" { Emit-ButtonGroup -el $el -name $name -id $id -indent $indent }
+		"input"    { Emit-Input -el $el -name $name -id $id -indent $indent }
+		"check"    { Emit-Check -el $el -name $name -id $id -indent $indent }
+		"radio"    { Emit-Radio -el $el -name $name -id $id -indent $indent }
+		"label"    { Emit-Label -el $el -name $name -id $id -indent $indent }
+		"labelField" { Emit-LabelField -el $el -name $name -id $id -indent $indent }
+		"table"    { Emit-Table -el $el -name $name -id $id -indent $indent }
+		"pages"    { Emit-Pages -el $el -name $name -id $id -indent $indent }
+		"page"     { Emit-Page -el $el -name $name -id $id -indent $indent }
+		"button"   { Emit-Button -el $el -name $name -id $id -indent $indent -inCmdBar $inCmdBar }
+		"picture"  { Emit-PictureDecoration -el $el -name $name -id $id -indent $indent }
+		"searchString"  { Emit-Addition -el $el -name $name -typeKey "searchString"  -id $id -indent $indent }
+		"viewStatus"    { Emit-Addition -el $el -name $name -typeKey "viewStatus"    -id $id -indent $indent }
+		"searchControl" { Emit-Addition -el $el -name $name -typeKey "searchControl" -id $id -indent $indent }
+		"picField" { Emit-PictureField -el $el -name $name -id $id -indent $indent }
+		"calendar" { Emit-Calendar -el $el -name $name -id $id -indent $indent }
+		"cmdBar"   { Emit-CommandBar -el $el -name $name -id $id -indent $indent }
+		"popup"    { Emit-Popup -el $el -name $name -id $id -indent $indent }
+		"spreadsheet"  { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "SpreadSheetDocumentField" -typeKey "spreadsheet" }
+		"html"         { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "HTMLDocumentField" -typeKey "html" }
+		"textDoc"      { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "TextDocumentField" -typeKey "textDoc" }
+		"formattedDoc" { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "FormattedDocumentField" -typeKey "formattedDoc" }
+		"progressBar"  { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "ProgressBarField" -typeKey "progressBar" }
+		"trackBar"     { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "TrackBarField" -typeKey "trackBar" }
+		"chart"           { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "ChartField" -typeKey "chart" }
+		"graphicalSchema" { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "GraphicalSchemaField" -typeKey "graphicalSchema" }
+		"planner"         { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "PlannerField" -typeKey "planner" }
+		"periodField"     { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "PeriodField" -typeKey "periodField" }
+		"dendrogram"      { Emit-SimpleField -el $el -name $name -id $id -indent $indent -xmlTag "DendrogramField" -typeKey "dendrogram" }
+		"ganttChart"      { Emit-GanttChart -el $el -name $name -id $id -indent $indent }
+	}
+}
+
+function Emit-XrFlag {
+	param([string]$tag, $val, [string]$indent)
+	if ($null -eq $val) { return }
+	if ($val -is [bool]) {
+		X "$indent<$tag>"
+		X "$indent`t<xr:Common>$(if ($val){'true'}else{'false'})</xr:Common>"
+		X "$indent</$tag>"
+		return
+	}
+	# объектная форма { common, roles }
+	$common = if ($null -ne $val.common) { [bool]$val.common } else { $false }
+	X "$indent<$tag>"
+	X "$indent`t<xr:Common>$(if ($common){'true'}else{'false'})</xr:Common>"
+	if ($val.roles) {
+		foreach ($r in $val.roles.PSObject.Properties) {
+			# Forgiving: принимаем имя без префикса, с "Role." или кириллическим "Роль." → нормализуем в "Role.".
+			# Роль по GUID (заимствованная/расширение — name="<guid>" без префикса) эмитим как есть.
+			$rname = "$($r.Name)" -replace '^(Role|Роль)\.', ''
+			if ($rname -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { $rname = "Role.$rname" }
+			$rval = if ([bool]$r.Value) { 'true' } else { 'false' }
+			X "$indent`t<xr:Value name=`"$rname`">$rval</xr:Value>"
+		}
+	}
+	X "$indent</$tag>"
 }
 
 function Emit-CommonFlags {
 	param($el, [string]$indent)
 	if ($el.visible -eq $false -or $el.hidden -eq $true) { X "$indent<Visible>false</Visible>" }
+	if ($null -ne $el.userVisible) { Emit-XrFlag -tag 'UserVisible' -val $el.userVisible -indent $indent }
 	if ($el.enabled -eq $false -or $el.disabled -eq $true) { X "$indent<Enabled>false</Enabled>" }
 	if ($el.readOnly -eq $true) { X "$indent<ReadOnly>true</ReadOnly>" }
 }
 
-function Emit-Title {
-	param($el, [string]$name, [string]$indent)
-	if ($el.title) { Emit-MLText -tag "Title" -text "$($el.title)" -indent $indent }
+function Emit-CommonElementProps {
+	param($el, [string]$indent)
+	if ($el.defaultItem -eq $true) { X "$indent<DefaultItem>true</DefaultItem>" }
+	if ($el.PSObject.Properties['skipOnInput'] -and $null -ne $el.skipOnInput) {
+		$siv = if ($el.skipOnInput -eq $true) { 'true' } else { 'false' }
+		X "$indent<SkipOnInput>$siv</SkipOnInput>"
+	}
+	# EnableStartDrag — фактическое значение (платформа эмитит и явный false, напр. SpreadSheet)
+	if ($null -ne $el.enableStartDrag) { X "$indent<EnableStartDrag>$(if ($el.enableStartDrag){'true'}else{'false'})</EnableStartDrag>" }
+	if ($el.fileDragMode) { X "$indent<FileDragMode>$($el.fileDragMode)</FileDragMode>" }
+	# Cell-свойства поля в таблице (общие для Input/Label/Picture/CheckBox): захват «как есть»
+	foreach ($p in @(@('showInHeader','ShowInHeader'), @('showInFooter','ShowInFooter'), @('autoCellHeight','AutoCellHeight'))) {
+		if ($null -ne $el.($p[0])) { X "$indent<$($p[1])>$(if ($el.($p[0])){'true'}else{'false'})</$($p[1])>" }
+	}
+	# Динамический заголовок колонки-группы из данных (HeaderDataPath) — перед HeaderHorizontalAlign (порядок XSD)
+	if ($el.headerDataPath) { X "$indent<HeaderDataPath>$(Esc-XmlText "$($el.headerDataPath)")</HeaderDataPath>" }
+	if ($el.footerHorizontalAlign) { X "$indent<FooterHorizontalAlign>$($el.footerHorizontalAlign)</FooterHorizontalAlign>" }
+	if ($el.headerHorizontalAlign) { X "$indent<HeaderHorizontalAlign>$($el.headerHorizontalAlign)</HeaderHorizontalAlign>" }
+	# Формат заголовка колонки-группы (ML-текст) — после HeaderHorizontalAlign (порядок XSD)
+	if ($el.headerFormat) { Emit-MLText -tag "HeaderFormat" -text $el.headerFormat -indent $indent }
 }
 
-# --- Element emitters ---
+function Emit-PictureRef {
+	param($val, [string]$picTag, [string]$indent)
+	if (-not $val) { return }
+	$src = $null; $lt = $false; $tpx = $null
+	if ($val -is [string]) { $src = $val }
+	else { $src = $val.src; if ($val.loadTransparent -eq $true) { $lt = $true }; $tpx = $val.transparentPixel }
+	if (-not $src) { return }
+	$srcStr = "$src"
+	X "$indent<$picTag>"
+	if ($srcStr -match '^abs:(.*)$') { X "$indent`t<xr:Abs>$(Esc-XmlText $matches[1])</xr:Abs>" }
+	else { X "$indent`t<xr:Ref>$(Esc-XmlText $srcStr)</xr:Ref>" }
+	X "$indent`t<xr:LoadTransparent>$(if ($lt) { 'true' } else { 'false' })</xr:LoadTransparent>"
+	if ($tpx) { X "$indent`t<xr:TransparentPixel x=`"$($tpx.x)`" y=`"$($tpx.y)`"/>" }
+	X "$indent</$picTag>"
+}
+
+function Emit-ColumnPics {
+	param($el, [string]$indent)
+	Emit-PictureRef -val $el.headerPicture -picTag 'HeaderPicture' -indent $indent
+	Emit-PictureRef -val $el.footerPicture -picTag 'FooterPicture' -indent $indent
+}
+
+function Emit-CommandPicture {
+	param($pic, $elemLt, [string]$indent)
+	if (-not $pic) { return }
+	$src = $null; $lt = $null; $tpx = $null
+	if ($pic -is [string]) { $src = $pic }
+	else { $src = $pic.src; if ($null -ne $pic.loadTransparent) { $lt = [bool]$pic.loadTransparent }; $tpx = $pic.transparentPixel }
+	if (-not $src) { return }
+	if ($null -eq $lt -and $null -ne $elemLt) { $lt = [bool]$elemLt }
+	$srcStr = "$src"
+	X "$indent<Picture>"
+	if ($srcStr -match '^abs:(.*)$') { X "$indent`t<xr:Abs>$(Esc-XmlText $matches[1])</xr:Abs>" }
+	else { X "$indent`t<xr:Ref>$(Esc-XmlText $srcStr)</xr:Ref>" }
+	X "$indent`t<xr:LoadTransparent>$(if ($lt -eq $false) { 'false' } else { 'true' })</xr:LoadTransparent>"
+	if ($tpx) { X "$indent`t<xr:TransparentPixel x=`"$($tpx.x)`" y=`"$($tpx.y)`"/>" }
+	X "$indent</Picture>"
+}
+
+function Emit-GenericScalars {
+	param($el, [string]$indent)
+	if ($null -eq $el) { return }
+	foreach ($s in $script:genericScalars) {
+		$p = $el.PSObject.Properties[$s.Key]
+		if (-not $p -or $null -eq $p.Value) { continue }
+		if ($s.Kind -eq 'bool') {
+			X "$indent<$($s.Tag)>$(if ($p.Value){'true'}else{'false'})</$($s.Tag)>"
+		} else {
+			$v = "$($p.Value)"; if ($v -eq '') { continue }
+			X "$indent<$($s.Tag)>$(Esc-XmlText $v)</$($s.Tag)>"
+		}
+	}
+}
+
+function Get-AppearanceValue {
+	param($el, [string]$canonical)
+	if ($null -eq $el) { return $null }
+	$p = $el.PSObject.Properties[$canonical]
+	if ($p) { return $p.Value }
+	foreach ($syn in $script:appearanceSynonyms.Keys) {
+		if ($script:appearanceSynonyms[$syn] -eq $canonical) {
+			$pp = $el.PSObject.Properties[$syn]
+			if ($pp) { return $pp.Value }
+		}
+	}
+	return $null
+}
+
+function Emit-FontTag {
+	param([string]$tag, $val, [string]$indent)
+	if ($val -is [string]) {
+		X "$indent<$tag ref=`"$(Esc-Xml $val)`" kind=`"StyleItem`"/>"
+		return
+	}
+	$attrs = @()
+	foreach ($a in @('ref','faceName','height','bold','italic','underline','strikeout','kind','scale')) {
+		$pp = $val.PSObject.Properties[$a]
+		if ($pp -and $null -ne $pp.Value) {
+			$v = $pp.Value
+			if ($v -is [bool]) { $v = if ($v) {'true'} else {'false'} }
+			$attrs += "$a=`"$(Esc-Xml "$v")`""
+		}
+	}
+	X "$indent<$tag $($attrs -join ' ')/>"
+}
+
+function Emit-BorderTag {
+	param($val, [string]$indent)
+	if ($val -is [string]) { X "$indent<Border ref=`"$(Esc-Xml $val)`"/>"; return }
+	$refP = $val.PSObject.Properties['ref']
+	if ($refP -and $refP.Value) { X "$indent<Border ref=`"$(Esc-Xml "$($refP.Value)")`"/>"; return }
+	$width = if ($val.PSObject.Properties['width'] -and $null -ne $val.width) { $val.width } else { 1 }
+	$style = if ($val.PSObject.Properties['style']) { "$($val.style)" } else { $null }
+	X "$indent<Border width=`"$width`">"
+	if ($style) { X "$indent`t<v8ui:style xsi:type=`"v8ui:ControlBorderType`">$(Esc-XmlText $style)</v8ui:style>" }
+	X "$indent</Border>"
+}
+
+function Emit-Appearance {
+	param($el, [string]$indent, [string]$profile = 'field')
+	if ($null -eq $el) { return }
+	$order = switch ($profile) {
+		'decoration' { $script:appOrderDecoration }
+		'button'     { $script:appOrderButton }
+		default      { $script:appOrderField }
+	}
+	foreach ($key in $order) {
+		$val = Get-AppearanceValue -el $el -canonical $key
+		if ($null -eq $val -or ($val -is [string] -and $val -eq '')) { continue }
+		$spec = $script:appearanceSpec[$key]
+		switch ($spec.kind) {
+			'color'  { X "$indent<$($spec.tag)>$(Esc-XmlText "$val")</$($spec.tag)>" }
+			'font'   { Emit-FontTag -tag $spec.tag -val $val -indent $indent }
+			'border' { Emit-BorderTag -val $val -indent $indent }
+		}
+	}
+}
+
+function Emit-Layout {
+	param($el, [string]$indent, [switch]$skipHeight, [bool]$multiLineDefault = $false)
+	# CommandSet (отключённые команды редактора) — общее свойство поля (input/label/check/
+	# spreadsheet/html/formatted/picture); в схеме рано (после TitleLocation, перед скалярами).
+	if ($el.excludedCommands -and @($el.excludedCommands).Count -gt 0) {
+		X "$indent<CommandSet>"
+		foreach ($cmd in $el.excludedCommands) { X "$indent`t<ExcludedCommand>$cmd</ExcludedCommand>" }
+		X "$indent</CommandSet>"
+	}
+	Emit-CommonElementProps -el $el -indent $indent
+	$amwExplicit = ($el.PSObject.Properties.Name -contains 'autoMaxWidth')
+	if ($amwExplicit) {
+		if ($el.autoMaxWidth -eq $false) { X "$indent<AutoMaxWidth>false</AutoMaxWidth>" }
+	} elseif ($multiLineDefault) {
+		X "$indent<AutoMaxWidth>false</AutoMaxWidth>"
+	}
+	if ($null -ne $el.maxWidth) { X "$indent<MaxWidth>$($el.maxWidth)</MaxWidth>" }
+	if ($el.autoMaxHeight -eq $false) { X "$indent<AutoMaxHeight>false</AutoMaxHeight>" }
+	if ($null -ne $el.maxHeight) { X "$indent<MaxHeight>$($el.maxHeight)</MaxHeight>" }
+	if ($el.width) { X "$indent<Width>$($el.width)</Width>" }
+	if (-not $skipHeight -and $el.height) { X "$indent<Height>$($el.height)</Height>" }
+	if ($null -ne $el.horizontalStretch) { X "$indent<HorizontalStretch>$(if ($el.horizontalStretch){'true'}else{'false'})</HorizontalStretch>" }
+	if ($null -ne $el.verticalStretch) { X "$indent<VerticalStretch>$(if ($el.verticalStretch){'true'}else{'false'})</VerticalStretch>" }
+	if ($el.groupHorizontalAlign) { X "$indent<GroupHorizontalAlign>$($el.groupHorizontalAlign)</GroupHorizontalAlign>" }
+	if ($el.groupVerticalAlign) { X "$indent<GroupVerticalAlign>$($el.groupVerticalAlign)</GroupVerticalAlign>" }
+	if ($el.horizontalAlign) { X "$indent<HorizontalAlign>$($el.horizontalAlign)</HorizontalAlign>" }
+	Emit-GenericScalars -el $el -indent $indent
+}
+
+function Title-FromName {
+	param([string]$name)
+	if (-not $name) { return '' }
+	$s = [regex]::Replace($name, '([А-ЯA-Z])([А-ЯA-Z][а-яa-z])', '$1 $2')
+	$s = [regex]::Replace($s, '([а-яa-z0-9])([А-ЯA-Z])', '$1 $2')
+	$parts = $s -split ' '
+	if ($parts.Count -eq 0) { return $s }
+	$out = New-Object System.Collections.ArrayList
+	[void]$out.Add($parts[0])
+	for ($i = 1; $i -lt $parts.Count; $i++) {
+		$p = $parts[$i]
+		if ($p.Length -gt 1 -and $p -ceq $p.ToUpper()) {
+			[void]$out.Add($p)
+		} else {
+			[void]$out.Add($p.ToLower())
+		}
+	}
+	return ($out -join ' ')
+}
+
+function Emit-Title {
+	# Нет ключа title → авто-вывод из имени (помощь модели).
+	# Явный title: "" (или null) → подавить (заголовок не эмитим).
+	# Явный непустой → эмитим как есть.
+	param($el, [string]$name, [string]$indent, [switch]$auto)
+	$hasKey = $null -ne $el.PSObject.Properties['title']
+	if ($hasKey) {
+		if ($el.title) { Emit-MLText -tag "Title" -text $el.title -indent $indent }
+	} elseif ($auto -and $name) {
+		Emit-MLText -tag "Title" -text (Title-FromName -name $name) -indent $indent
+	}
+	# ToolTip элемента (всплывающая подсказка) — по схеме сразу после Title.
+	if ($el.tooltip) { Emit-MLText -tag "ToolTip" -text $el.tooltip -indent $indent }
+	# ToolTipRepresentation — режим показа подсказки (None/Button/ShowBottom/…), после ToolTip.
+	if ($el.tooltipRepresentation) { X "$indent<ToolTipRepresentation>$($el.tooltipRepresentation)</ToolTipRepresentation>" }
+}
+
+function Map-TitleLoc {
+	param([string]$v)
+	switch ("$v".ToLower()) {
+		"none"   { "None" }
+		"left"   { "Left" }
+		"right"  { "Right" }
+		"top"    { "Top" }
+		"bottom" { "Bottom" }
+		"auto"   { "Auto" }
+		default  { "$v" }
+	}
+}
+
+function Emit-TitleLocation {
+	param($el, [string]$indent, [string]$smartDefault)
+	if ($null -ne $el.PSObject.Properties['titleLocation']) {
+		if ($el.titleLocation) { X "$indent<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
+	} elseif ($smartDefault) {
+		X "$indent<TitleLocation>$smartDefault</TitleLocation>"
+	}
+}
+
+function Warn-Unrecognized {
+	# drop-on-miss enum: значение не распознано → тег не эмитится. Громко, чтобы автор увидел потерю.
+	param([string]$key, $raw, [string[]]$valid, [string]$owner)
+	Write-Warning "Unrecognized $key '$raw' on '$owner'. Valid values: $($valid -join ', '). Value ignored."
+}
 
 function Emit-Group {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<UsualGroup name=`"$name`" id=`"$id`">"
+
+	X "$indent<UsualGroup name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	Emit-Title -el $el -name $name -indent $inner
-	$groupVal = "$($el.group)"
+
+	# Group orientation (направление). Legacy: group:'collapsible' = Vertical + behavior collapsible.
+	$groupVal = "$($el.group)".ToLower()
 	$orientation = switch ($groupVal) {
-		"horizontal" { "Horizontal" } "vertical" { "Vertical" }
-		"alwaysHorizontal" { "AlwaysHorizontal" } "alwaysVertical" { "AlwaysVertical" }
-		default { $null }
+		"horizontal"       { "Horizontal" }
+		"vertical"         { "Vertical" }
+		"alwayshorizontal" { "AlwaysHorizontal" }
+		"alwaysvertical"   { "AlwaysVertical" }
+		"horizontalifpossible" { "HorizontalIfPossible" }
+		"collapsible"      { "Vertical" }
+		default            { $null }
 	}
 	if ($orientation) { X "$inner<Group>$orientation</Group>" }
-	if ($groupVal -eq "collapsible") { X "$inner<Group>Vertical</Group>"; X "$inner<Behavior>Collapsible</Behavior>" }
+	elseif ($groupVal) { Warn-Unrecognized 'group orientation' $el.group @('vertical','horizontalIfPossible','alwaysHorizontal') $name }
+
+	# Behavior: ключ behavior (usual/collapsible/popup) → <Behavior>; отсутствие = Авто (не эмитим).
+	# Legacy: group:'collapsible' эквивалентно behavior:'collapsible'.
+	$behaviorVal = if ($el.behavior) { "$($el.behavior)".ToLower() } elseif ($groupVal -eq "collapsible") { "collapsible" } else { $null }
+	$bmap = @{ "usual"="Usual"; "collapsible"="Collapsible"; "popup"="PopUp" }
+	if ($behaviorVal -and $bmap.ContainsKey($behaviorVal)) {
+		X "$inner<Behavior>$($bmap[$behaviorVal])</Behavior>"
+	} elseif ($el.behavior -and -not $bmap.ContainsKey($behaviorVal)) {
+		Warn-Unrecognized 'behavior' $el.behavior @('collapsible','popup') $name
+	}
+	# Collapsed — у Collapsible и PopUp (не привязано к одному behavior)
+	if ($el.collapsed -eq $true) { X "$inner<Collapsed>true</Collapsed>" }
+
+	# Representation
 	if ($el.representation) {
-		$repr = switch ("$($el.representation)") { "none" { "None" } "normal" { "NormalSeparation" } "weak" { "WeakSeparation" } "strong" { "StrongSeparation" } default { "$($el.representation)" } }
+		$repr = switch ("$($el.representation)") {
+			"none"             { "None" }
+			"normal"           { "NormalSeparation" }
+			"weak"             { "WeakSeparation" }
+			"strong"           { "StrongSeparation" }
+			default            { "$($el.representation)" }
+		}
 		X "$inner<Representation>$repr</Representation>"
 	}
-	if ($el.showTitle -eq $false) { X "$inner<ShowTitle>false</ShowTitle>" }
+
+	# Использование текущей строки группы (после Representation, порядок XSD)
+	if ($el.currentRowUse) { X "$inner<CurrentRowUse>$($el.currentRowUse)</CurrentRowUse>" }
+
+	# ShowTitle
+	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# Заголовок свёрнутого представления (collapsible/popup) — мультиязычный текст
+	if ($el.collapsedTitle) { Emit-MLText -tag "CollapsedRepresentationTitle" -text $el.collapsedTitle -indent $inner }
+
+	# United
 	if ($el.united -eq $false) { X "$inner<United>false</United>" }
+
+	# Формат значения пути к данным заголовка (<Format>; парный к titleDataPath группы)
+	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
+	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }
+
 	Emit-CommonFlags -el $el -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	Emit-Layout -el $el -indent $inner
+
+	# Оформление (цвета/шрифты/граница) — перед компаньоном
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companion: ExtendedTooltip
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	# Children
 	if ($el.children -and $el.children.Count -gt 0) {
 		X "$inner<ChildItems>"
-		foreach ($child in $el.children) { Emit-Element -el $child -indent "$inner`t" }
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t"
+		}
 		X "$inner</ChildItems>"
 	}
+
 	X "$indent</UsualGroup>"
+}
+
+function Emit-ColumnGroup {
+	param($el, [string]$name, [int]$id, [string]$indent)
+
+	X "$indent<ColumnGroup name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
+	$inner = "$indent`t"
+
+	Emit-Title -el $el -name $name -indent $inner
+
+	# Group orientation (horizontal / vertical / inCell — последнее только здесь)
+	$groupVal = "$($el.columnGroup)"
+	$orientation = switch ($groupVal) {
+		"horizontal" { "Horizontal" }
+		"vertical"   { "Vertical" }
+		"inCell"     { "InCell" }
+		default      { $null }
+	}
+	if ($orientation) { X "$inner<Group>$orientation</Group>" }
+	elseif ($groupVal) { Warn-Unrecognized 'columnGroup orientation' $el.columnGroup @('vertical','horizontal','inCell') $name }
+
+	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# showInHeader эмитится общим Emit-CommonElementProps (через Emit-Layout)
+
+	Emit-CommonFlags -el $el -indent $inner
+	Emit-Layout -el $el -indent $inner
+
+	# Картинка заголовка колонки-группы (после ShowInHeader/Layout, перед оформлением — порядок XSD)
+	Emit-ColumnPics -el $el -indent $inner
+
+	# Оформление (цвета/шрифты/граница) — перед компаньоном
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companion: ExtendedTooltip
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	# Children
+	if ($el.children -and $el.children.Count -gt 0) {
+		X "$inner<ChildItems>"
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t"
+		}
+		X "$inner</ChildItems>"
+	}
+
+	X "$indent</ColumnGroup>"
 }
 
 function Emit-Input {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<InputField name=`"$name`" id=`"$id`">"
+
+	X "$indent<InputField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
+
 	if ($el.titleLocation) {
-		$loc = switch ("$($el.titleLocation)") { "none" { "None" } "left" { "Left" } "right" { "Right" } "top" { "Top" } "bottom" { "Bottom" } default { "$($el.titleLocation)" } }
+		$loc = switch ("$($el.titleLocation)") {
+			"none"   { "None" }
+			"left"   { "Left" }
+			"right"  { "Right" }
+			"top"    { "Top" }
+			"bottom" { "Bottom" }
+			default  { "$($el.titleLocation)" }
+		}
 		X "$inner<TitleLocation>$loc</TitleLocation>"
 	}
-	if ($el.multiLine -eq $true) { X "$inner<MultiLine>true</MultiLine>" }
-	if ($el.passwordMode -eq $true) { X "$inner<PasswordMode>true</PasswordMode>" }
-	if ($el.choiceButton -eq $false) { X "$inner<ChoiceButton>false</ChoiceButton>" }
-	if ($el.clearButton -eq $true) { X "$inner<ClearButton>true</ClearButton>" }
-	if ($el.spinButton -eq $true) { X "$inner<SpinButton>true</SpinButton>" }
-	if ($el.dropListButton -eq $true) { X "$inner<DropListButton>true</DropListButton>" }
-	if ($el.markIncomplete -eq $true) { X "$inner<AutoMarkIncomplete>true</AutoMarkIncomplete>" }
-	if ($el.skipOnInput -eq $true) { X "$inner<SkipOnInput>true</SkipOnInput>" }
-	if ($el.autoMaxWidth -eq $false) { X "$inner<AutoMaxWidth>false</AutoMaxWidth>" }
-	if ($el.autoMaxHeight -eq $false) { X "$inner<AutoMaxHeight>false</AutoMaxHeight>" }
-	if ($el.width) { X "$inner<Width>$($el.width)</Width>" }
-	if ($el.height) { X "$inner<Height>$($el.height)</Height>" }
-	if ($el.horizontalStretch -eq $true) { X "$inner<HorizontalStretch>true</HorizontalStretch>" }
-	if ($el.verticalStretch -eq $true) { X "$inner<VerticalStretch>true</VerticalStretch>" }
-	if ($el.inputHint) { Emit-MLText -tag "InputHint" -text "$($el.inputHint)" -indent $inner }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+
+	if ($null -ne $el.multiLine) { X "$inner<MultiLine>$(if ($el.multiLine){'true'}else{'false'})</MultiLine>" }
+	if ($null -ne $el.passwordMode) { X "$inner<PasswordMode>$(if ($el.passwordMode){'true'}else{'false'})</PasswordMode>" }
+	# ChoiceButton — захват «как есть» (платформа эмитит явное значение; ref-поля выводят сама,
+	# декомпилятор фиксирует факт. значение). Нет ключа → не эмитим (не додумываем по событию).
+	if ($null -ne $el.choiceButton) { X "$inner<ChoiceButton>$(if ($el.choiceButton){'true'}else{'false'})</ChoiceButton>" }
+	# Кнопки поля ввода — захват «как есть» (платформа эмитит явное значение, в т.ч. false)
+	if ($null -ne $el.clearButton)    { X "$inner<ClearButton>$(if ($el.clearButton){'true'}else{'false'})</ClearButton>" }
+	if ($null -ne $el.spinButton)     { X "$inner<SpinButton>$(if ($el.spinButton){'true'}else{'false'})</SpinButton>" }
+	if ($null -ne $el.dropListButton) { X "$inner<DropListButton>$(if ($el.dropListButton){'true'}else{'false'})</DropListButton>" }
+	if ($null -ne $el.choiceListButton) { X "$inner<ChoiceListButton>$(if ($el.choiceListButton){'true'}else{'false'})</ChoiceListButton>" }
+	if ($null -ne $el.markIncomplete) { X "$inner<AutoMarkIncomplete>$(if ($el.markIncomplete){'true'}else{'false'})</AutoMarkIncomplete>" }
+	if ($el.editMode) { X "$inner<EditMode>$($el.editMode)</EditMode>" }
+	Emit-ColumnPics -el $el -indent $inner
+	if ($el.textEdit -eq $false) { X "$inner<TextEdit>false</TextEdit>" }
+	# InputField-специфичные скаляры (захват «как есть»: платформа эмитит явное не-дефолтное значение)
+	foreach ($p in @(
+		@('wrap','Wrap'), @('openButton','OpenButton'), @('listChoiceMode','ListChoiceMode'),
+		@('extendedEditMultipleValues','ExtendedEditMultipleValues'), @('chooseType','ChooseType'),
+		@('quickChoice','QuickChoice'), @('autoChoiceIncomplete','AutoChoiceIncomplete')
+	)) {
+		if ($null -ne $el.($p[0])) { X "$inner<$($p[1])>$(if ($el.($p[0])){'true'}else{'false'})</$($p[1])>" }
+	}
+	# Ограничение доступных типов (поле на составном типе): домен типов + явный набор.
+	# availableTypes — формат типа реквизита (§type); Emit-Type сам разбирает мультитип "a | b".
+	if ($null -ne $el.typeDomainEnabled) { X "$inner<TypeDomainEnabled>$(if ($el.typeDomainEnabled){'true'}else{'false'})</TypeDomainEnabled>" }
+	if ($el.availableTypes) { Emit-Type -typeStr $el.availableTypes -indent $inner -tag 'AvailableTypes' }
+	# InputField-специфичные value-скаляры
+	foreach ($p in @(
+		@('choiceForm','ChoiceForm'), @('choiceHistoryOnInput','ChoiceHistoryOnInput'),
+		@('choiceFoldersAndItems','ChoiceFoldersAndItems'), @('footerDataPath','FooterDataPath')
+	)) {
+		if ($el.($p[0])) { X "$inner<$($p[1])>$(Esc-XmlText "$($el.($p[0]))")</$($p[1])>" }
+	}
+	# MinValue/MaxValue — типизированное. JSON-число → xs:decimal, строка → xs:string (тип сохранён декомпилятором).
+	foreach ($p in @(@('minValue','MinValue'), @('maxValue','MaxValue'))) {
+		if ($null -ne $el.($p[0])) {
+			$mvt = if ($el.($p[0]) -is [string]) { 'xs:string' } else { 'xs:decimal' }
+			X "$inner<$($p[1]) xsi:type=`"$mvt`">$(Esc-XmlText "$($el.($p[0]))")</$($p[1])>"
+		}
+	}
+	if ($el.choiceButtonRepresentation) { X "$inner<ChoiceButtonRepresentation>$($el.choiceButtonRepresentation)</ChoiceButtonRepresentation>" }
+	Emit-PictureRef -val $el.choiceButtonPicture -picTag 'ChoiceButtonPicture' -indent $inner
+	Emit-Layout -el $el -indent $inner -multiLineDefault ([bool]($el.multiLine -eq $true))
+
+	if ($el.inputHint) {
+		Emit-MLText -tag "InputHint" -text $el.inputHint -indent $inner
+	}
+	if ($null -ne $el.warningOnEdit) { Emit-MLText -tag "WarningOnEdit" -text $el.warningOnEdit -indent $inner }
+	if ($null -ne $el.footerText) { Emit-MLText -tag "FooterText" -text $el.footerText -indent $inner }
+
+	# Формат / формат редактирования (LocalStringType — строка или {ru,en})
+	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
+	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }
+
+	Emit-ChoiceList -el $el -indent $inner
+
+	# Связи по типу / связи параметров выбора / параметры выбора
+	Emit-TypeLink -el $el -indent $inner
+	Emit-ChoiceParameterLinks -el $el -indent $inner
+	Emit-ChoiceParameters -el $el -indent $inner
+
+	# Оформление (цвета/шрифты/граница) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "input"
+
 	X "$indent</InputField>"
 }
 
 function Emit-Check {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<CheckBoxField name=`"$name`" id=`"$id`">"
+
+	X "$indent<CheckBoxField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
-	if ($el.titleLocation) { X "$inner<TitleLocation>$($el.titleLocation)</TitleLocation>" }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+
+	if ($el.editMode) { X "$inner<EditMode>$($el.editMode)</EditMode>" }
+	Emit-ColumnPics -el $el -indent $inner
+	# CheckBoxType: нет ключа → умный дефолт Auto; "" → подавить; значение → маппинг
+	if ($null -ne $el.PSObject.Properties['checkBoxType']) {
+		if ($el.checkBoxType) {
+			$cbt = switch ("$($el.checkBoxType)".ToLower()) { 'auto' {'Auto'} 'checkbox' {'CheckBox'} 'switcher' {'Switcher'} 'tumbler' {'Tumbler'} default {"$($el.checkBoxType)"} }
+			X "$inner<CheckBoxType>$cbt</CheckBoxType>"
+		}
+	} else { X "$inner<CheckBoxType>Auto</CheckBoxType>" }
+
+	Emit-TitleLocation -el $el -indent $inner -smartDefault "Right"
+
+	Emit-Layout -el $el -indent $inner
+
+	if ($null -ne $el.warningOnEdit) { Emit-MLText -tag "WarningOnEdit" -text $el.warningOnEdit -indent $inner }
+	# FooterDataPath / FooterText — общие cell-свойства колонки (как у input/labelField)
+	if ($el.footerDataPath) { X "$inner<FooterDataPath>$(Esc-XmlText "$($el.footerDataPath)")</FooterDataPath>" }
+	if ($null -ne $el.footerText) { Emit-MLText -tag "FooterText" -text $el.footerText -indent $inner }
+
+	# Формат / формат редактирования (LocalStringType — строка или {ru,en})
+	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
+	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }
+
+	# Оформление (цвета/шрифты/граница) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "check"
+
 	X "$indent</CheckBoxField>"
+}
+
+function Normalize-ChoiceValue {
+	param($value)
+
+	# Booleans
+	if ($value -is [bool]) {
+		return @{ XsiType = "xs:boolean"; Text = if ($value) { "true" } else { "false" } }
+	}
+	# Numbers (int / decimal / double)
+	if ($value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal]) {
+		return @{ XsiType = "xs:decimal"; Text = "$value" }
+	}
+
+	$s = "$value"
+	if ([string]::IsNullOrEmpty($s)) {
+		return @{ XsiType = "xs:string"; Text = "" }
+	}
+
+	# ISO datetime ("2020-01-01T00:00:00") → xs:dateTime
+	if ($s -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$') {
+		return @{ XsiType = "xs:dateTime"; Text = $s }
+	}
+
+	# Raw-ссылка по GUID (метаданные.значение, оба GUID): "GUID.GUID" → xr:DesignTimeRef
+	# (всегда ссылка, не строка; named-ссылки Enum.X.Y детектятся ниже).
+	if ($s -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.[0-9a-fA-F]{8}-[0-9a-fA-F-]+$') {
+		return @{ XsiType = "xr:DesignTimeRef"; Text = $s }
+	}
+
+	# Try to detect typed reference path: "<Root>.<Type>[.<Member>.<Value>]"
+	$parts = $s -split '\.'
+	if ($parts.Count -ge 2) {
+		$root = $parts[0]
+		$canonRoot = $null
+		if ($script:refRootSynonyms.ContainsKey($root)) { $canonRoot = $script:refRootSynonyms[$root] }
+		elseif ($script:refRootSynonyms.Values -contains $root) { $canonRoot = $root }
+
+		if ($canonRoot) {
+			$typeName = $parts[1]
+			$normalized = $null
+
+			if ($canonRoot -eq "Enum") {
+				if ($parts.Count -eq 2) {
+					# "Enum.X" alone — not a value, treat as string
+				} elseif ($parts.Count -eq 3) {
+					# "Enum.X.Y" — insert .EnumValue. ("EmptyRef" — пустая ссылка, БЕЗ вставки)
+					if ($parts[2] -eq 'EmptyRef') { $normalized = "Enum.$typeName.EmptyRef" }
+					else { $normalized = "Enum.$typeName.EnumValue.$($parts[2])" }
+				} else {
+					# "Enum.X.<member>.Y..."  — replace member with EnumValue (handles ЗначениеПеречисления too)
+					$member = $parts[2]
+					if ($script:enumValueSynonyms -contains $member) {
+						$rest = $parts[3..($parts.Count-1)] -join '.'
+						$normalized = "Enum.$typeName.EnumValue.$rest"
+					} else {
+						$rest = $parts[2..($parts.Count-1)] -join '.'
+						$normalized = "Enum.$typeName.EnumValue.$rest"
+					}
+				}
+			} else {
+				# Other ref roots: just translate root, keep tail as-is
+				if ($parts.Count -ge 3) {
+					$tail = $parts[1..($parts.Count-1)] -join '.'
+					$normalized = "$canonRoot.$tail"
+				}
+			}
+
+			if ($normalized) {
+				return @{ XsiType = "xr:DesignTimeRef"; Text = $normalized }
+			}
+		}
+	}
+
+	return @{ XsiType = "xs:string"; Text = $s }
+}
+
+function Emit-ChoicePresentation {
+	param($pres, [string]$indent)
+	if ($null -eq $pres -or ($pres -is [string] -and [string]::IsNullOrEmpty($pres))) {
+		X "$indent<Presentation/>"
+		return
+	}
+
+	$pairs = @()
+	if ($pres -is [string]) {
+		$pairs += ,@("ru", $pres)
+	} elseif ($pres -is [hashtable] -or $pres -is [System.Collections.IDictionary]) {
+		foreach ($k in $pres.Keys) { $pairs += ,@("$k", "$($pres[$k])") }
+	} elseif ($pres.PSObject -and $pres.PSObject.Properties) {
+		foreach ($p in $pres.PSObject.Properties) { $pairs += ,@("$($p.Name)", "$($p.Value)") }
+	} else {
+		$pairs += ,@("ru", "$pres")
+	}
+
+	X "$indent<Presentation>"
+	foreach ($pair in $pairs) {
+		X "$indent`t<v8:item>"
+		X "$indent`t`t<v8:lang>$($pair[0])</v8:lang>"
+		X "$indent`t`t<v8:content>$(Esc-XmlText $pair[1])</v8:content>"
+		X "$indent`t</v8:item>"
+	}
+	X "$indent</Presentation>"
+}
+
+function Get-ChoiceValueTag {
+	param($norm)
+	if ([string]::IsNullOrEmpty($norm.Text)) { return "<Value xsi:type=`"$($norm.XsiType)`"/>" }
+	return "<Value xsi:type=`"$($norm.XsiType)`">$(Esc-XmlText $norm.Text)</Value>"
+}
+
+function Emit-ChoiceList {
+	param($el, [string]$indent)
+	if (-not $el.choiceList -or $el.choiceList.Count -eq 0) { return }
+	X "$indent<ChoiceList>"
+	$itemIndent = "$indent`t"
+	foreach ($item in $el.choiceList) {
+		# value (+ рус. синоним "значение")
+		$valRaw = $null
+		if ($item -is [hashtable] -or $item -is [System.Collections.IDictionary]) {
+			if ($item.Contains("value")) { $valRaw = $item["value"] }
+			elseif ($item.Contains("значение")) { $valRaw = $item["значение"] }
+		} else {
+			if ($item.PSObject.Properties["value"])    { $valRaw = $item.value }
+			elseif ($item.PSObject.Properties["значение"]) { $valRaw = $item."значение" }
+		}
+
+		# presentation (presentation OR title синоним)
+		$presRaw = $null
+		$hasPres = $false
+		if ($item -is [hashtable] -or $item -is [System.Collections.IDictionary]) {
+			if ($item.Contains("presentation")) { $presRaw = $item["presentation"]; $hasPres = $true }
+			elseif ($item.Contains("представление")) { $presRaw = $item["представление"]; $hasPres = $true }
+			elseif ($item.Contains("title")) { $presRaw = $item["title"]; $hasPres = $true }
+		} else {
+			if ($item.PSObject.Properties["presentation"]) { $presRaw = $item.presentation; $hasPres = $true }
+			elseif ($item.PSObject.Properties["представление"]) { $presRaw = $item."представление"; $hasPres = $true }
+			elseif ($item.PSObject.Properties["title"]) { $presRaw = $item.title; $hasPres = $true }
+		}
+
+		# valueType: явный xsi:type значения (системное перечисление ent:*, иной не-примитив) —
+		# переопределяет авто-детект (Normalize-ChoiceValue вывела бы xs:string).
+		$vtRaw = $null
+		if ($item -is [hashtable] -or $item -is [System.Collections.IDictionary]) {
+			if ($item.Contains("valueType")) { $vtRaw = "$($item["valueType"])" }
+		} elseif ($item.PSObject.Properties["valueType"]) { $vtRaw = "$($item.valueType)" }
+
+		if ($vtRaw -eq 'nil') { $norm = @{ XsiType = $null; Text = $null; Nil = $true } }
+		elseif ($vtRaw) { $norm = @{ XsiType = $vtRaw; Text = "$valRaw" } }
+		else { $norm = Normalize-ChoiceValue -value $valRaw }
+
+		# авто-вывод presentation, если не задан
+		if (-not $hasPres) {
+			if ($norm.XsiType -eq "xr:DesignTimeRef") {
+				$tail = ($norm.Text -split '\.')[-1]
+				$presRaw = Title-FromName -name $tail
+			} else {
+				$presRaw = $norm.Text
+			}
+		}
+
+		X "$itemIndent<xr:Item>"
+		$valIndent = "$itemIndent`t"
+		X "$valIndent<xr:Presentation/>"
+		X "$valIndent<xr:CheckState>0</xr:CheckState>"
+		X "$valIndent<xr:Value xsi:type=`"FormChoiceListDesTimeValue`">"
+		Emit-ChoicePresentation -pres $presRaw -indent "$valIndent`t"
+		X "$valIndent`t$(if ($norm.Nil) { '<Value xsi:nil="true"/>' } else { Get-ChoiceValueTag $norm })"
+		X "$valIndent</xr:Value>"
+		X "$itemIndent</xr:Item>"
+	}
+	X "$indent</ChoiceList>"
+}
+
+function Get-ElProp {
+	param($obj, [string[]]$names)
+	if ($null -eq $obj) { return $null }
+	foreach ($n in $names) {
+		if ($obj -is [System.Collections.IDictionary]) {
+			if ($obj.Contains($n)) { return $obj[$n] }
+		} elseif ($obj.PSObject -and $obj.PSObject.Properties[$n]) {
+			return $obj.PSObject.Properties[$n].Value
+		}
+	}
+	return $null
+}
+
+function ConvertTo-ScalarLiteral {
+	param([string]$s)
+	$t = "$s".Trim()
+	if ($t -match '^(?i:true)$')  { return $true }
+	if ($t -match '^(?i:false)$') { return $false }
+	if ($t -match '^-?\d+$')       { return [int]$t }
+	if ($t -match '^-?\d+\.\d+$')  { return [double]::Parse($t, [System.Globalization.CultureInfo]::InvariantCulture) }
+	return $t
+}
+
+function ConvertFrom-ChoiceParamShorthand {
+	param([string]$s)
+	$eq = $s.IndexOf('=')
+	if ($eq -lt 0) { return @{ name = $s.Trim() } }
+	$name = $s.Substring(0, $eq).Trim()
+	$rest = $s.Substring($eq + 1)
+	if ($rest -match ',') {
+		$vals = @()
+		foreach ($part in ($rest -split ',')) { $vals += ,(ConvertTo-ScalarLiteral $part) }
+		return @{ name = $name; value = $vals }
+	}
+	return @{ name = $name; value = (ConvertTo-ScalarLiteral $rest) }
+}
+
+function ConvertFrom-ChoiceParamLinkShorthand {
+	param([string]$s)
+	$eq = $s.IndexOf('=')
+	if ($eq -lt 0) { return @{ name = $s.Trim() } }
+	$o = @{ name = $s.Substring(0, $eq).Trim() }
+	$rest = $s.Substring($eq + 1).Trim()
+	if ($rest -match '^(.*):(?i:(Clear|DontChange|очистить|неизменять))$') {
+		$o['dataPath'] = $matches[1].Trim(); $o['valueChange'] = $matches[2]
+	} else {
+		$o['dataPath'] = $rest
+	}
+	return $o
+}
+
+function ConvertFrom-TypeLinkShorthand {
+	param([string]$s)
+	if ($s -match '^(.*)#(\d+)$') { return @{ dataPath = $matches[1].Trim(); linkItem = [int]$matches[2] } }
+	return @{ dataPath = "$s".Trim() }
+}
+
+function Emit-ChoiceParamValue {
+	# $isArray передаётся ЯВНО из вызывающего кода: PowerShell разворачивает одноэлементный массив
+	# при биндинге параметра ($value становится скаляром), поэтому определять массив тут — ненадёжно
+	# (1-элементный список `["X"]` эмитился бы скаляром вместо FixedArray). foreach по скаляру = 1 итерация.
+	param($value, [string]$indent, [bool]$isArray)
+	X "$indent<Presentation/>"
+	if ($isArray) {
+		X "$indent<Value xsi:type=`"v8:FixedArray`">"
+		foreach ($v in $value) {
+			$norm = Normalize-ChoiceValue -value $v
+			X "$indent`t<v8:Value xsi:type=`"FormChoiceListDesTimeValue`">"
+			X "$indent`t`t<Presentation/>"
+			X "$indent`t`t$(Get-ChoiceValueTag $norm)"
+			X "$indent`t</v8:Value>"
+		}
+		X "$indent</Value>"
+	} else {
+		$norm = Normalize-ChoiceValue -value $value
+		X "$indent$(Get-ChoiceValueTag $norm)"
+	}
+}
+
+function Emit-ChoiceParameters {
+	param($el, [string]$indent)
+	$cp = $el.choiceParameters
+	if (-not $cp -or @($cp).Count -eq 0) { return }
+	X "$indent<ChoiceParameters>"
+	foreach ($item in @($cp)) {
+		if ($item -is [string]) { $item = ConvertFrom-ChoiceParamShorthand $item }
+		$name = Get-ElProp $item @('name','имя')
+		# Наличие ключа value (≠ значения) + ПРЯМОЙ доступ к значению (без Get-ElProp): его return
+		# разворачивает 1-элементный массив (PS unwrap), теряя массив-ность → FixedArray не эмитится.
+		# Индексер/member-доступ массив сохраняет; if-выражение/функция-return — нет.
+		$hasVal = $false; $val = $null
+		if ($item -is [System.Collections.IDictionary]) {
+			if ($item.Contains('value')) { $hasVal = $true; $val = $item['value'] }
+			elseif ($item.Contains('значение')) { $hasVal = $true; $val = $item['значение'] }
+		} else {
+			if ($item.PSObject.Properties['value']) { $hasVal = $true; $val = $item.PSObject.Properties['value'].Value }
+			elseif ($item.PSObject.Properties['значение']) { $hasVal = $true; $val = $item.PSObject.Properties['значение'].Value }
+		}
+		$valIsArray = ($val -is [System.Array]) -or ($val -is [System.Collections.IList] -and $val -isnot [string])
+		X "$indent`t<app:item name=`"$(Esc-Xml "$name")`">"
+		# Параметр выбора без значения → <app:value xsi:nil="true"/> (платформа, 13 в корпусе);
+		# со значением (в т.ч. пустой строкой) → FormChoiceListDesTimeValue.
+		if (-not $hasVal) {
+			X "$indent`t`t<app:value xsi:nil=`"true`"/>"
+		} else {
+			X "$indent`t`t<app:value xsi:type=`"FormChoiceListDesTimeValue`">"
+			Emit-ChoiceParamValue -value $val -indent "$indent`t`t`t" -isArray $valIsArray
+			X "$indent`t`t</app:value>"
+		}
+		X "$indent`t</app:item>"
+	}
+	X "$indent</ChoiceParameters>"
+}
+
+function Emit-ChoiceParameterLinks {
+	param($el, [string]$indent)
+	$cpl = $el.choiceParameterLinks
+	if (-not $cpl -or @($cpl).Count -eq 0) { return }
+	X "$indent<ChoiceParameterLinks>"
+	foreach ($lk in @($cpl)) {
+		if ($lk -is [string]) { $lk = ConvertFrom-ChoiceParamLinkShorthand $lk }
+		$name = Get-ElProp $lk @('name','имя')
+		$dp = Get-ElProp $lk @('dataPath','path','путь')
+		$vcRaw = Get-ElProp $lk @('valueChange','режимИзменения')
+		$vc = "Clear"
+		if ($vcRaw) {
+			$vc = switch -Regex ("$vcRaw".ToLower()) {
+				'^(clear|очистить|очистка)$'             { "Clear"; break }
+				'^(dontchange|неизменять|неменять|нет)$' { "DontChange"; break }
+				default                                  { "$vcRaw" }
+			}
+		}
+		X "$indent`t<xr:Link>"
+		X "$indent`t`t<xr:Name>$(Esc-XmlText "$name")</xr:Name>"
+		X "$indent`t`t<xr:DataPath xsi:type=`"xs:string`">$(Esc-XmlText "$dp")</xr:DataPath>"
+		X "$indent`t`t<xr:ValueChange>$vc</xr:ValueChange>"
+		X "$indent`t</xr:Link>"
+	}
+	X "$indent</ChoiceParameterLinks>"
+}
+
+function Emit-TypeLink {
+	param($el, [string]$indent)
+	$tl = $el.typeLink
+	if (-not $tl) { return }
+	if ($tl -is [string]) { $tl = ConvertFrom-TypeLinkShorthand $tl }
+	$dp = Get-ElProp $tl @('dataPath','path','путь')
+	$li = Get-ElProp $tl @('linkItem','элементСвязи')
+	if ($null -eq $li) { $li = 0 }
+	X "$indent<TypeLink>"
+	X "$indent`t<xr:DataPath>$(Esc-XmlText "$dp")</xr:DataPath>"
+	X "$indent`t<xr:LinkItem>$li</xr:LinkItem>"
+	X "$indent</TypeLink>"
+}
+
+function Emit-Radio {
+	param($el, [string]$name, [int]$id, [string]$indent)
+
+	X "$indent<RadioButtonField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
+	$inner = "$indent`t"
+
+	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
+
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
+	Emit-CommonFlags -el $el -indent $inner
+
+	if ($el.editMode) { X "$inner<EditMode>$($el.editMode)</EditMode>" }
+	Emit-TitleLocation -el $el -indent $inner -smartDefault "None"
+
+	# RadioButtonType: Auto | RadioButtons | Tumbler. Accept synonyms.
+	$rbtRaw = if ($el.radioButtonType) { "$($el.radioButtonType)".Trim() } else { "Auto" }
+	$rbt = switch -Regex ($rbtRaw.ToLower()) {
+		'^(auto|авто)$'                        { "Auto"; break }
+		'^(radiobuttons?|переключатель|радио)$' { "RadioButtons"; break }
+		'^(tumbler|тумблер)$'                  { "Tumbler"; break }
+		default                                { $rbtRaw }
+	}
+	X "$inner<RadioButtonType>$rbt</RadioButtonType>"
+
+	if ($null -ne $el.columnsCount) {
+		X "$inner<ColumnsCount>$($el.columnsCount)</ColumnsCount>"
+	}
+
+	Emit-ChoiceList -el $el -indent $inner
+
+	Emit-Layout -el $el -indent $inner
+
+	if ($null -ne $el.warningOnEdit) { Emit-MLText -tag "WarningOnEdit" -text $el.warningOnEdit -indent $inner }
+
+	# Оформление (цвета/шрифты/граница) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	Emit-Events -el $el -elementName $name -indent $inner -typeKey "radio"
+
+	X "$indent</RadioButtonField>"
+}
+
+function Emit-DecorationTitle {
+	param($el, [string]$name, [string]$indent, [switch]$auto)
+	$hasKey = $null -ne $el.PSObject.Properties['title']
+	$titleVal = if ($hasKey) { $el.title } elseif ($auto -and $name) { Title-FromName -name $name } else { $null }
+	if ($titleVal) {
+		$r = Resolve-MLFormatted $titleVal
+		$fmt = if ($null -ne $el.PSObject.Properties['formatted']) { [bool]$el.formatted } else { $r.formatted }
+		X "$indent<Title formatted=`"$(if ($fmt) { 'true' } else { 'false' })`">"
+		Emit-MLItems -val $r.text -indent "$indent`t"
+		X "$indent</Title>"
+	}
+	if ($el.tooltip) { Emit-MLText -tag "ToolTip" -text $el.tooltip -indent $indent }
+	if ($el.tooltipRepresentation) { X "$indent<ToolTipRepresentation>$($el.tooltipRepresentation)</ToolTipRepresentation>" }
 }
 
 function Emit-Label {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<LabelDecoration name=`"$name`" id=`"$id`">"
+
+	X "$indent<LabelDecoration name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
-	if ($el.title) {
-		$formatted = if ($el.hyperlink -eq $true) { "true" } else { "false" }
-		X "$inner<Title formatted=`"$formatted`">"
-		X "$inner`t<v8:item>"
-		X "$inner`t`t<v8:lang>ru</v8:lang>"
-		X "$inner`t`t<v8:content>$(Esc-XmlText "$($el.title)")</v8:content>"
-		X "$inner`t</v8:item>"
-		X "$inner</Title>"
-	}
+
+	# Порядок как у платформы: own-content (флаги/hyperlink/layout/оформление) ПЕРЕД Title
+	# (корпус layout-first 16970 vs 44 — заодно убирает шум атрибуции харнесса на многострочном Title).
 	Emit-CommonFlags -el $el -indent $inner
 	if ($el.hyperlink -eq $true) { X "$inner<Hyperlink>true</Hyperlink>" }
-	if ($el.autoMaxWidth -eq $false) { X "$inner<AutoMaxWidth>false</AutoMaxWidth>" }
-	if ($el.autoMaxHeight -eq $false) { X "$inner<AutoMaxHeight>false</AutoMaxHeight>" }
-	if ($el.width) { X "$inner<Width>$($el.width)</Width>" }
-	if ($el.height) { X "$inner<Height>$($el.height)</Height>" }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	Emit-Layout -el $el -indent $inner
+	Emit-Appearance -el $el -indent $inner -profile 'decoration'
+
+	Emit-DecorationTitle -el $el -name $name -indent $inner -auto
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "label"
+
 	X "$indent</LabelDecoration>"
 }
 
 function Emit-LabelField {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<LabelField name=`"$name`" id=`"$id`">"
+
+	X "$indent<LabelField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
-	if ($el.hyperlink -eq $true) { X "$inner<Hyperlink>true</Hyperlink>" }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+
+	if ($el.titleLocation) { X "$inner<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
+	if ($el.editMode) { X "$inner<EditMode>$($el.editMode)</EditMode>" }
+	# FooterDataPath — путь данных подвала колонки (общий cell-prop, как у input); после EditMode
+	if ($el.footerDataPath) { X "$inner<FooterDataPath>$(Esc-XmlText "$($el.footerDataPath)")</FooterDataPath>" }
+	# PasswordMode на LabelField — платформа эмитит явный false (редко); факт. значение
+	if ($null -ne $el.passwordMode) { X "$inner<PasswordMode>$(if ($el.passwordMode){'true'}else{'false'})</PasswordMode>" }
+	Emit-ColumnPics -el $el -indent $inner
+	# ВНИМАНИЕ: у LabelField платформенный тег именно <Hiperlink> (опечатка 1С), не <Hyperlink>.
+	if ($el.hyperlink -eq $true) { X "$inner<Hiperlink>true</Hiperlink>" }
+	Emit-Layout -el $el -indent $inner
+
+	if ($null -ne $el.warningOnEdit) { Emit-MLText -tag "WarningOnEdit" -text $el.warningOnEdit -indent $inner }
+	if ($null -ne $el.footerText) { Emit-MLText -tag "FooterText" -text $el.footerText -indent $inner }
+
+	# Формат / формат редактирования (LocalStringType — строка или {ru,en})
+	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
+	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }
+
+	# Оформление (цвета/шрифты/граница + header/footer) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "labelField"
+
 	X "$indent</LabelField>"
+}
+
+function Emit-DynListTableBlock {
+	param($el, [string]$indent)
+	# (useAlternationRowColor — общее свойство таблицы, эмитится в Emit-Table)
+	# Group A (гарант. блок, n=5079): дефолт + override
+	$ar = if ($el.autoRefresh -eq $true) { "true" } else { "false" }
+	X "$indent<AutoRefresh>$ar</AutoRefresh>"
+	$arp = if ($el.PSObject.Properties["autoRefreshPeriod"] -and $null -ne $el.autoRefreshPeriod) { $el.autoRefreshPeriod } else { 60 }
+	X "$indent<AutoRefreshPeriod>$arp</AutoRefreshPeriod>"
+	X "$indent<Period>"
+	X "$indent`t<v8:variant xsi:type=`"v8:StandardPeriodVariant`">Custom</v8:variant>"
+	X "$indent`t<v8:startDate>0001-01-01T00:00:00</v8:startDate>"
+	X "$indent`t<v8:endDate>0001-01-01T00:00:00</v8:endDate>"
+	X "$indent</Period>"
+	$cfi = if ($el.choiceFoldersAndItems) { $el.choiceFoldersAndItems } else { "Items" }
+	X "$indent<ChoiceFoldersAndItems>$cfi</ChoiceFoldersAndItems>"
+	$rcr = if ($el.restoreCurrentRow -eq $true) { "true" } else { "false" }
+	X "$indent<RestoreCurrentRow>$rcr</RestoreCurrentRow>"
+	X "$indent<TopLevelParent xsi:nil=`"true`"/>"
+	$sr = if ($el.showRoot -eq $false) { "false" } else { "true" }
+	X "$indent<ShowRoot>$sr</ShowRoot>"
+	$arc = if ($el.allowRootChoice -eq $true) { "true" } else { "false" }
+	X "$indent<AllowRootChoice>$arc</AllowRootChoice>"
+	$uodc = if ($el.updateOnDataChange) { $el.updateOnDataChange } else { "Auto" }
+	X "$indent<UpdateOnDataChange>$uodc</UpdateOnDataChange>"
+	if ($el.userSettingsGroup) { X "$indent<UserSettingsGroup>$($el.userSettingsGroup)</UserSettingsGroup>" }
+	$agcru = if ($el.allowGettingCurrentRowURL -eq $false) { "false" } else { "true" }
+	X "$indent<AllowGettingCurrentRowURL>$agcru</AllowGettingCurrentRowURL>"
 }
 
 function Emit-Table {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<Table name=`"$name`" id=`"$id`">"
+
+	$script:currentTableName = $name   # дефолт source для кастомных дополнений в commandBar
+	X "$indent<Table name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
-	if ($el.representation) { X "$inner<Representation>$($el.representation)</Representation>" }
-	if ($el.changeRowSet -eq $true) { X "$inner<ChangeRowSet>true</ChangeRowSet>" }
-	if ($el.changeRowOrder -eq $true) { X "$inner<ChangeRowOrder>true</ChangeRowOrder>" }
-	if ($el.height) { X "$inner<HeightInTableRows>$($el.height)</HeightInTableRows>" }
+
+	if ($el.representation) {
+		X "$inner<Representation>$($el.representation)</Representation>"
+	}
+	if ($el.titleLocation) { X "$inner<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
+	# ChangeRowSet/Order — эмитим явное значение (в т.ч. false: платформа пишет его на ValueTable)
+	if ($el.PSObject.Properties['changeRowSet'] -and $null -ne $el.changeRowSet) {
+		X "$inner<ChangeRowSet>$(if ($el.changeRowSet -eq $true){'true'}else{'false'})</ChangeRowSet>"
+	}
+	if ($el.PSObject.Properties['changeRowOrder'] -and $null -ne $el.changeRowOrder) {
+		X "$inner<ChangeRowOrder>$(if ($el.changeRowOrder -eq $true){'true'}else{'false'})</ChangeRowOrder>"
+	}
+	if ($el.autoInsertNewRow -eq $true) { X "$inner<AutoInsertNewRow>true</AutoInsertNewRow>" }
+	# RowFilter — nil-плейсхолдер (всегда пустой); ключ присутствует → эмитим
+	if ($el.PSObject.Properties['rowFilter']) { X "$inner<RowFilter xsi:nil=`"true`"/>" }
+	# Высота в строках таблицы (<HeightInTableRows>) — отдельное свойство от <Height> (высота элемента,
+	# эмитится generic-ом Emit-Layout ниже). Таблица может нести оба (237 в корпусе).
+	if ($el.heightInTableRows) { X "$inner<HeightInTableRows>$($el.heightInTableRows)</HeightInTableRows>" }
 	if ($el.header -eq $false) { X "$inner<Header>false</Header>" }
 	if ($el.footer -eq $true) { X "$inner<Footer>true</Footer>" }
-	if ($el.commandBarLocation) { X "$inner<CommandBarLocation>$($el.commandBarLocation)</CommandBarLocation>" }
-	if ($el.searchStringLocation) { X "$inner<SearchStringLocation>$($el.searchStringLocation)</SearchStringLocation>" }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "AutoCommandBar" -name "${name}КоманднаяПанель" -indent $inner
-	Emit-Companion -tag "SearchStringAddition" -name "${name}СтрокаПоиска" -indent $inner
-	Emit-Companion -tag "ViewStatusAddition" -name "${name}СостояниеПросмотра" -indent $inner
-	Emit-Companion -tag "SearchControlAddition" -name "${name}УправлениеПоиском" -indent $inner
+
+	if ($el.commandBarLocation) {
+		X "$inner<CommandBarLocation>$($el.commandBarLocation)</CommandBarLocation>"
+	}
+	if ($el.searchStringLocation) {
+		X "$inner<SearchStringLocation>$($el.searchStringLocation)</SearchStringLocation>"
+	}
+	if ($el.choiceMode -eq $true) { X "$inner<ChoiceMode>true</ChoiceMode>" }
+	# Скаляры таблицы (захват «как есть»). Autofill — СВОЁ свойство таблицы (≠ AutoCommandBar autofill = tableAutofill).
+	if ($null -ne $el.autofill) { X "$inner<Autofill>$(if ($el.autofill){'true'}else{'false'})</Autofill>" }
+	if ($el.multipleChoice -eq $true) { X "$inner<MultipleChoice>true</MultipleChoice>" }
+	if ($el.searchOnInput) { X "$inner<SearchOnInput>$($el.searchOnInput)</SearchOnInput>" }
+	if ($null -ne $el.markIncomplete) { X "$inner<AutoMarkIncomplete>$(if ($el.markIncomplete){'true'}else{'false'})</AutoMarkIncomplete>" }
+	# Высота шапки/подвала в строках (pass-through; 1С толерантна к порядку детей Table)
+	if ($null -ne $el.headerHeight) { X "$inner<HeaderHeight>$($el.headerHeight)</HeaderHeight>" }
+	if ($null -ne $el.footerHeight) { X "$inner<FooterHeight>$($el.footerHeight)</FooterHeight>" }
+	if ($el.useAlternationRowColor -eq $true) { X "$inner<UseAlternationRowColor>true</UseAlternationRowColor>" }
+	if ($el.selectionMode) { X "$inner<SelectionMode>$($el.selectionMode)</SelectionMode>" }
+	if ($el.rowSelectionMode) { X "$inner<RowSelectionMode>$($el.rowSelectionMode)</RowSelectionMode>" }
+	if ($el.verticalLines -eq $false) { X "$inner<VerticalLines>false</VerticalLines>" }
+	if ($el.horizontalLines -eq $false) { X "$inner<HorizontalLines>false</HorizontalLines>" }
+	if ($el.initialTreeView) { X "$inner<InitialTreeView>$($el.initialTreeView)</InitialTreeView>" }
+	if ($null -ne $el.enableDrag) { X "$inner<EnableDrag>$(if ($el.enableDrag){'true'}else{'false'})</EnableDrag>" }
+	if ($el.rowPictureDataPath) { X "$inner<RowPictureDataPath>$($el.rowPictureDataPath)</RowPictureDataPath>" }
+	# RowsPicture — та же конвенция, что ValuesPicture (дефолт LoadTransparent=false; abs/TransparentPixel)
+	Emit-PictureRef -val $el.rowsPicture -picTag 'RowsPicture' -indent $inner
+	# Использование текущей строки таблицы (pass-through; в корпусе соседствует с блоком дин-списка)
+	if ($el.currentRowUse) { X "$inner<CurrentRowUse>$($el.currentRowUse)</CurrentRowUse>" }
+	# Запрос обновления дин-списка (pass-through; в корпусе всегда PullFromTop)
+	if ($el.refreshRequest) { X "$inner<RefreshRequest>$($el.refreshRequest)</RefreshRequest>" }
+	# Блок свойств дин-список-таблицы (помечена эвристикой 11b.4)
+	if ($el.PSObject.Properties["_dynList"] -and $el._dynList) { Emit-DynListTableBlock -el $el -indent $inner }
+	if ($el.viewStatusLocation) { X "$inner<ViewStatusLocation>$($el.viewStatusLocation)</ViewStatusLocation>" }
+	if ($el.searchControlLocation) { X "$inner<SearchControlLocation>$($el.searchControlLocation)</SearchControlLocation>" }
+	Emit-Layout -el $el -indent $inner
+
+	# CommandSet таблицы эмитится через Emit-Layout (общий механизм поля)
+
+	# Оформление (цвета/граница таблицы) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	# AutoCommandBar: приоритет commandBar-свойства (контент); иначе tableAutofill-shorthand; иначе пусто.
+	if ($null -ne $el.commandBar) {
+		Emit-CompanionPanel -tag "AutoCommandBar" -name "${name}КоманднаяПанель" -indent $inner -panel $el.commandBar
+	} elseif ($null -ne $el.tableAutofill) {
+		$acbId = New-Id
+		X "$inner<AutoCommandBar name=`"${name}КоманднаяПанель`" id=`"$acbId`">"
+		$afVal = if ($el.tableAutofill) { "true" } else { "false" }
+		X "$inner`t<Autofill>$afVal</Autofill>"
+		X "$inner</AutoCommandBar>"
+	} else {
+		Emit-Companion -tag "AutoCommandBar" -name "${name}КоманднаяПанель" -indent $inner
+	}
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+	$adds = $el.additions
+	Emit-TableAddition -typeKey 'searchString'  -tableName $name -indent $inner -override (Get-AdditionOverride $adds 'searchString')
+	Emit-TableAddition -typeKey 'viewStatus'    -tableName $name -indent $inner -override (Get-AdditionOverride $adds 'viewStatus')
+	Emit-TableAddition -typeKey 'searchControl' -tableName $name -indent $inner -override (Get-AdditionOverride $adds 'searchControl')
+
+	# Columns
 	if ($el.columns -and $el.columns.Count -gt 0) {
 		X "$inner<ChildItems>"
-		foreach ($col in $el.columns) { Emit-Element -el $col -indent "$inner`t" }
+		foreach ($col in $el.columns) {
+			Emit-Element -el $col -indent "$inner`t"
+		}
 		X "$inner</ChildItems>"
 	}
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "table"
+
 	X "$indent</Table>"
 }
 
 function Emit-Pages {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<Pages name=`"$name`" id=`"$id`">"
+
+	X "$indent<Pages name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
-	if ($el.pagesRepresentation) { X "$inner<PagesRepresentation>$($el.pagesRepresentation)</PagesRepresentation>" }
+
+	Emit-Title -el $el -name $name -indent $inner
+
+	if ($el.pagesRepresentation) {
+		X "$inner<PagesRepresentation>$($el.pagesRepresentation)</PagesRepresentation>"
+	}
+	# Использование текущей строки (после PagesRepresentation, порядок XSD)
+	if ($el.currentRowUse) { X "$inner<CurrentRowUse>$($el.currentRowUse)</CurrentRowUse>" }
+
 	Emit-CommonFlags -el $el -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	Emit-Layout -el $el -indent $inner
+
+	# Оформление (цвета/шрифты/граница) заголовка группы страниц — TitleFont/TitleTextColor/… (как у Page)
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companion
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "pages"
+
+	# Children (pages)
 	if ($el.children -and $el.children.Count -gt 0) {
 		X "$inner<ChildItems>"
-		foreach ($child in $el.children) { Emit-Element -el $child -indent "$inner`t" }
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t"
+		}
 		X "$inner</ChildItems>"
 	}
+
 	X "$indent</Pages>"
 }
 
 function Emit-Page {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<Page name=`"$name`" id=`"$id`">"
+
+	X "$indent<Page name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto
 	Emit-CommonFlags -el $el -indent $inner
+
+	# Картинка страницы (иконка вкладки): после Title/флагов, перед Group (порядок XSD).
+	# Конвенция как у ValuesPicture (дефолт LoadTransparent=false): скаляр-Ref/'abs:X' или объект.
+	Emit-PictureRef -val $el.picture -picTag 'Picture' -indent $inner
+
 	if ($el.group) {
-		$orientation = switch ("$($el.group)") { "horizontal" { "Horizontal" } "vertical" { "Vertical" } "alwaysHorizontal" { "AlwaysHorizontal" } "alwaysVertical" { "AlwaysVertical" } default { $null } }
+		# Доступные значения страницы/обычной группы: Vertical / HorizontalIfPossible / AlwaysHorizontal
+		# (InCell — только у columnGroup). Horizontal/AlwaysVertical оставлены forgiving (legacy).
+		$orientation = switch ("$($el.group)") {
+			"horizontal"          { "Horizontal" }
+			"vertical"            { "Vertical" }
+			"alwaysHorizontal"    { "AlwaysHorizontal" }
+			"alwaysVertical"      { "AlwaysVertical" }
+			"horizontalIfPossible" { "HorizontalIfPossible" }
+			default               { $null }
+		}
 		if ($orientation) { X "$inner<Group>$orientation</Group>" }
+		else { Warn-Unrecognized 'page group orientation' $el.group @('vertical','horizontalIfPossible','alwaysHorizontal') $name }
 	}
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	if ($null -ne $el.showTitle) { X "$inner<ShowTitle>$(if ($el.showTitle){'true'}else{'false'})</ShowTitle>" }
+	# Формат значения пути к данным заголовка (<Format>; парный к titleDataPath страницы)
+	if ($el.format)     { Emit-MLText -tag "Format" -text $el.format -indent $inner }
+	if ($el.editFormat) { Emit-MLText -tag "EditFormat" -text $el.editFormat -indent $inner }
+	Emit-Layout -el $el -indent $inner
+
+	# Оформление страницы (BackColor / TitleTextColor / TitleFont) — после ShowTitle, перед компаньоном
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companion
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	# Children
 	if ($el.children -and $el.children.Count -gt 0) {
 		X "$inner<ChildItems>"
-		foreach ($child in $el.children) { Emit-Element -el $child -indent "$inner`t" }
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t"
+		}
 		X "$inner</ChildItems>"
 	}
+
 	X "$indent</Page>"
 }
 
 function Emit-Button {
-	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<Button name=`"$name`" id=`"$id`">"
+	param($el, [string]$name, [int]$id, [string]$indent, [bool]$inCmdBar = $false)
+
+	X "$indent<Button name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+	# (общие свойства — через Emit-Layout ниже; отдельный вызов был бы двойной эмиссией)
+
+	# Type — context-aware:
+	# Inside command bar (cmdBar/autoCmdBar/popup) only CommandBarButton/CommandBarHyperlink are valid.
+	# UsualButton/Hyperlink would be silently ignored by 1C.
+	$btnType = $null
 	if ($el.type) {
-		$btnType = switch ("$($el.type)") { "usual" { "UsualButton" } "hyperlink" { "Hyperlink" } "commandBar" { "CommandBarButton" } default { "$($el.type)" } }
+		$rawType = "$($el.type)"
+		if ($inCmdBar) {
+			# Be forgiving: any "ordinary button" hint resolves to CommandBarButton,
+			# any "hyperlink" hint resolves to CommandBarHyperlink. The model can pass
+			# either DSL ("usual"/"hyperlink") or XML names — all map to the right kind.
+			switch ($rawType) {
+				"usual"                { $btnType = "CommandBarButton" }
+				"UsualButton"          { $btnType = "CommandBarButton" }
+				"commandBar"           { $btnType = "CommandBarButton" }
+				"CommandBarButton"     { $btnType = "CommandBarButton" }
+				"hyperlink"            { $btnType = "CommandBarHyperlink" }
+				"Hyperlink"            { $btnType = "CommandBarHyperlink" }
+				"CommandBarHyperlink"  { $btnType = "CommandBarHyperlink" }
+				default                { $btnType = $rawType }
+			}
+		} else {
+			# Symmetric: any "ordinary button" hint → UsualButton, any "hyperlink" → Hyperlink.
+			switch ($rawType) {
+				"usual"                { $btnType = "UsualButton" }
+				"UsualButton"          { $btnType = "UsualButton" }
+				"commandBar"           { $btnType = "UsualButton" }
+				"CommandBarButton"     { $btnType = "UsualButton" }
+				"hyperlink"            { $btnType = "Hyperlink" }
+				"Hyperlink"            { $btnType = "Hyperlink" }
+				"CommandBarHyperlink"  { $btnType = "Hyperlink" }
+				default                { $btnType = $rawType }
+			}
+		}
+	} elseif ($inCmdBar) {
+		$btnType = "CommandBarButton"
+	}
+	if ($btnType) {
 		X "$inner<Type>$btnType</Type>"
 	}
-	if ($el.command) { X "$inner<CommandName>Form.Command.$($el.command)</CommandName>" }
+
+	# CommandName
+	if ($el.command) {
+		X "$inner<CommandName>Form.Command.$($el.command)</CommandName>"
+	}
+	# commandName — глобальная команда «как есть» (CommonCommand.X, Catalog.X.Command.Y …), без обёртки Form.
+	if ($el.commandName -and -not $el.command) {
+		X "$inner<CommandName>$($el.commandName)</CommandName>"
+	}
 	if ($el.stdCommand) {
 		$sc = "$($el.stdCommand)"
 		if ($sc -match '^(.+)\.(.+)$') {
@@ -812,154 +2716,413 @@ function Emit-Button {
 			X "$inner<CommandName>Form.StandardCommand.$sc</CommandName>"
 		}
 	}
-	Emit-Title -el $el -name $name -indent $inner
-	Emit-CommonFlags -el $el -indent $inner
-	if ($el.defaultButton -eq $true) { X "$inner<DefaultButton>true</DefaultButton>" }
-	if ($el.picture) {
-		X "$inner<Picture>"
-		X "$inner`t<xr:Ref>$($el.picture)</xr:Ref>"
-		X "$inner`t<xr:LoadTransparent>true</xr:LoadTransparent>"
-		X "$inner</Picture>"
+	# Parameter команды (после CommandName): строка → xr:MDObjectRef (объект метаданных);
+	# объект {type} → v8:TypeDescription (грамматика типа). Forgiving-синоним 'параметр'.
+	$btnParam = if ($null -ne $el.PSObject.Properties['parameter']) { $el.parameter } elseif ($null -ne $el.PSObject.Properties['параметр']) { $el.параметр } else { $null }
+	if ($null -ne $btnParam) {
+		if (($btnParam -is [System.Management.Automation.PSCustomObject] -or $btnParam -is [hashtable]) -and $btnParam.type) {
+			Emit-Type -typeStr "$($btnParam.type)" -indent $inner -tag "Parameter" -tagAttrs ' xsi:type="v8:TypeDescription"'
+		} else {
+			X "$inner<Parameter xsi:type=`"xr:MDObjectRef`">$(Esc-XmlText "$btnParam")</Parameter>"
+		}
 	}
-	if ($el.representation) { X "$inner<Representation>$($el.representation)</Representation>" }
-	if ($el.locationInCommandBar) { X "$inner<LocationInCommandBar>$($el.locationInCommandBar)</LocationInCommandBar>" }
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	# DataPath — привязка команды кнопки к контексту (Объект.Ref, Items.X.CurrentData.Поле)
+	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
+
+	$btnAuto = -not ($el.command -or $el.commandName -or $el.stdCommand)
+	Emit-Title -el $el -name $name -indent $inner -auto:$btnAuto
+	Emit-CommonFlags -el $el -indent $inner
+
+	if ($el.defaultButton -eq $true) { X "$inner<DefaultButton>true</DefaultButton>" }
+	# Check (пометка toggle-кнопки командной панели) — платформа эмитит только true.
+	# Ключ 'checked' (не 'check': 'check' — тип-ключ CheckBoxField, был бы конфликт диспетчера типов)
+	if ($el.checked -eq $true) { X "$inner<Check>true</Check>" }
+
+	# Picture
+	Emit-CommandPicture -pic $el.picture -elemLt $el.loadTransparent -indent $inner
+
+	if ($el.representation) {
+		X "$inner<Representation>$($el.representation)</Representation>"
+	}
+
+	if ($el.locationInCommandBar) {
+		X "$inner<LocationInCommandBar>$($el.locationInCommandBar)</LocationInCommandBar>"
+	}
+	Emit-Layout -el $el -indent $inner
+
+	# Оформление (цвета/шрифт/граница) — перед компаньоном (профиль кнопки)
+	Emit-Appearance -el $el -indent $inner -profile 'button'
+
+	# Companion
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "button"
+
 	X "$indent</Button>"
 }
 
 function Emit-PictureDecoration {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<PictureDecoration name=`"$name`" id=`"$id`">"
+
+	X "$indent<PictureDecoration name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-DecorationTitle -el $el -name $name -indent $inner
+	# Текст при невыбранной картинке (NonselectedPictureText) — после Title (порядок корпуса)
+	if ($null -ne $el.nonselectedPictureText) { Emit-MLText -tag "NonselectedPictureText" -text $el.nonselectedPictureText -indent $inner }
 	Emit-CommonFlags -el $el -indent $inner
-	if ($el.picture -or $el.src) {
-		$ref = if ($el.src) { "$($el.src)" } else { "$($el.picture)" }
-		X "$inner<Picture>"; X "$inner`t<xr:Ref>$ref</xr:Ref>"; X "$inner`t<xr:LoadTransparent>true</xr:LoadTransparent>"; X "$inner</Picture>"
+
+	# Источник картинки — ТОЛЬКО $el.src (у PictureDecoration ключ 'picture' = тип/имя элемента, не источник).
+	# Префикс "abs:" → встроенная картинка <xr:Abs>; иначе именованная/стилевая <xr:Ref>.
+	if ($el.src) {
+		$srcStr = "$($el.src)"
+		$lt = if ($el.loadTransparent -eq $true) { "true" } else { "false" }
+		X "$inner<Picture>"
+		if ($srcStr -match '^abs:(.*)$') { X "$inner`t<xr:Abs>$(Esc-XmlText $matches[1])</xr:Abs>" }
+		else { X "$inner`t<xr:Ref>$(Esc-XmlText $srcStr)</xr:Ref>" }
+		X "$inner`t<xr:LoadTransparent>$lt</xr:LoadTransparent>"
+		if ($el.transparentPixel) { X "$inner`t<xr:TransparentPixel x=`"$($el.transparentPixel.x)`" y=`"$($el.transparentPixel.y)`"/>" }
+		X "$inner</Picture>"
 	}
+
 	if ($el.hyperlink -eq $true) { X "$inner<Hyperlink>true</Hyperlink>" }
-	if ($el.width) { X "$inner<Width>$($el.width)</Width>" }
-	if ($el.height) { X "$inner<Height>$($el.height)</Height>" }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	Emit-Layout -el $el -indent $inner
+	# EnableDrag — фактическое значение (декорация-картинка перетаскиваема; декомпилятор ловит generic-ом)
+	if ($null -ne $el.enableDrag) { X "$inner<EnableDrag>$(if ($el.enableDrag){'true'}else{'false'})</EnableDrag>" }
+
+	# Оформление (цвета/шрифт/граница) — профиль декорации (1С толерантна к порядку appearance)
+	Emit-Appearance -el $el -indent $inner -profile 'decoration'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "picture"
+
 	X "$indent</PictureDecoration>"
 }
 
 function Emit-PictureField {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<PictureField name=`"$name`" id=`"$id`">"
+
+	X "$indent<PictureField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
+
 	Emit-Title -el $el -name $name -indent $inner
 	Emit-CommonFlags -el $el -indent $inner
-	if ($el.width) { X "$inner<Width>$($el.width)</Width>" }
-	if ($el.height) { X "$inner<Height>$($el.height)</Height>" }
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+
+	if ($el.editMode) { X "$inner<EditMode>$($el.editMode)</EditMode>" }
+	Emit-ColumnPics -el $el -indent $inner
+	if ($el.titleLocation) { X "$inner<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
+	if ($el.hyperlink -eq $true) { X "$inner<Hyperlink>true</Hyperlink>" }
+
+	Emit-Layout -el $el -indent $inner
+	# EnableDrag — фактическое значение (поле картинки перетаскиваемо; декомпилятор ловит generic-ом)
+	if ($null -ne $el.enableDrag) { X "$inner<EnableDrag>$(if ($el.enableDrag){'true'}else{'false'})</EnableDrag>" }
+
+	# FooterDataPath / FooterText — общие cell-свойства колонки (как у input/labelField)
+	if ($el.footerDataPath) { X "$inner<FooterDataPath>$(Esc-XmlText "$($el.footerDataPath)")</FooterDataPath>" }
+	if ($null -ne $el.footerText) { Emit-MLText -tag "FooterText" -text $el.footerText -indent $inner }
+
+	# ValuesPicture — picture (collection) used to render the field's value.
+	# Required for a Boolean-bound PictureField to actually show an icon.
+	# Скаляр (Ref) или объект {src, loadTransparent}; LoadTransparent эмитится всегда.
+	Emit-PictureRef -val $el.valuesPicture -picTag 'ValuesPicture' -indent $inner
+	if ($null -ne $el.nonselectedPictureText) { Emit-MLText -tag "NonselectedPictureText" -text $el.nonselectedPictureText -indent $inner }
+
+	# Оформление (цвета/шрифты/граница) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "picField"
+
 	X "$indent</PictureField>"
 }
 
 function Emit-Calendar {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<CalendarField name=`"$name`" id=`"$id`">"
+
+	X "$indent<CalendarField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
+
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
-	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
-	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+
+	if ($el.titleLocation) {
+		$loc = switch ("$($el.titleLocation)") {
+			"none"   { "None" }
+			"left"   { "Left" }
+			"right"  { "Right" }
+			"top"    { "Top" }
+			"bottom" { "Bottom" }
+			"auto"   { "Auto" }
+			default  { "$($el.titleLocation)" }
+		}
+		X "$inner<TitleLocation>$loc</TitleLocation>"
+	}
+
+	Emit-Layout -el $el -indent $inner
+
+	# Календарно-специфичные свойства (порядок схемы: после layout, до companions)
+	if ($el.selectionMode) { X "$inner<SelectionMode>$($el.selectionMode)</SelectionMode>" }
+	if ($null -ne $el.showCurrentDate) { $v = if ($el.showCurrentDate) { "true" } else { "false" }; X "$inner<ShowCurrentDate>$v</ShowCurrentDate>" }
+	if ($null -ne $el.widthInMonths) { X "$inner<WidthInMonths>$($el.widthInMonths)</WidthInMonths>" }
+	if ($null -ne $el.heightInMonths) { X "$inner<HeightInMonths>$($el.heightInMonths)</HeightInMonths>" }
+	if ($null -ne $el.showMonthsPanel) { $v = if ($el.showMonthsPanel) { "true" } else { "false" }; X "$inner<ShowMonthsPanel>$v</ShowMonthsPanel>" }
+
+	# Оформление (цвета/шрифты/граница) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "calendar"
+
 	X "$indent</CalendarField>"
 }
 
-function Emit-CommandBarEl {
-	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<CommandBar name=`"$name`" id=`"$id`">"
+function Emit-SimpleField {
+	param($el, [string]$name, [int]$id, [string]$indent, [string]$xmlTag, [string]$typeKey)
+
+	X "$indent<$xmlTag name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
-	if ($el.autofill -eq $true) { X "$inner<Autofill>true</Autofill>" }
+
+	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
+	if ($el.titleLocation) { X "$inner<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
+	if ($el.editMode) { X "$inner<EditMode>$($el.editMode)</EditMode>" }
+
+	Emit-Layout -el $el -indent $inner
+
+	# EnableDrag — фактическое значение (SpreadSheet; платформа эмитит явный false). enableStartDrag — через Emit-Layout.
+	if ($null -ne $el.enableDrag) { X "$inner<EnableDrag>$(if ($el.enableDrag){'true'}else{'false'})</EnableDrag>" }
+
+	# Датчики (ProgressBar/TrackBar) — числовые скаляры (без xsi:type)
+	foreach ($p in @(@('minValue','MinValue'), @('maxValue','MaxValue'), @('largeStep','LargeStep'), @('markingStep','MarkingStep'), @('step','Step'))) {
+		if ($null -ne $el.($p[0])) { X "$inner<$($p[1])>$($el.($p[0]))</$($p[1])>" }
+	}
+
+	# Оформление (цвета/шрифты/граница) — перед компаньонами
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	# Companions
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	Emit-Events -el $el -elementName $name -indent $inner -typeKey $typeKey
+
+	X "$indent</$xmlTag>"
+}
+
+function Emit-GanttChart {
+	param($el, [string]$name, [int]$id, [string]$indent)
+	X "$indent<GanttChartField name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
+	$inner = "$indent`t"
+	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
+	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
+	Emit-CommonFlags -el $el -indent $inner
+	if ($el.titleLocation) { X "$inner<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
+	Emit-Layout -el $el -indent $inner
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+	Emit-CompanionPanel -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner -panel $el.contextMenu
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+	# Вложенная таблица диаграммы Ганта (стандартный Table — переиспользуем Emit-Element)
+	if ($el.ganttTable) { Emit-Element -el $el.ganttTable -indent $inner }
+	Emit-Events -el $el -elementName $name -indent $inner -typeKey "ganttChart"
+	X "$indent</GanttChartField>"
+}
+
+function Emit-CommandBar {
+	param($el, [string]$name, [int]$id, [string]$indent)
+
+	X "$indent<CommandBar name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
+	$inner = "$indent`t"
+
+	Emit-Title -el $el -name $name -indent $inner
+
+	if ($el.commandSource) { X "$inner<CommandSource>$($el.commandSource)</CommandSource>" }
+
+	if ($el.autofill -eq $true) { X "$inner<Autofill>true</Autofill>" }
+
+	# CommandBar хранит HorizontalLocation фактически (включая Auto — декомпилятор ловит только при наличии);
+	# ≠ дополнениям, где Auto = умолчание-скип (Get-HLocation).
+	if ($el.horizontalLocation) {
+		$hlv = switch ("$($el.horizontalLocation)".ToLower()) { 'auto' {'Auto'} 'left' {'Left'} 'right' {'Right'} 'center' {'Center'} default {"$($el.horizontalLocation)"} }
+		X "$inner<HorizontalLocation>$hlv</HorizontalLocation>"
+	}
+	Emit-CommonFlags -el $el -indent $inner
+	Emit-Layout -el $el -indent $inner
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	# Children
 	if ($el.children -and $el.children.Count -gt 0) {
 		X "$inner<ChildItems>"
-		foreach ($child in $el.children) { Emit-Element -el $child -indent "$inner`t" }
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t" -inCmdBar $true
+		}
 		X "$inner</ChildItems>"
 	}
+
 	X "$indent</CommandBar>"
+}
+
+function Emit-ButtonGroup {
+	param($el, [string]$name, [int]$id, [string]$indent)
+
+	X "$indent<ButtonGroup name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
+	$inner = "$indent`t"
+
+	Emit-Title -el $el -name $name -indent $inner
+
+	if ($el.commandSource) { X "$inner<CommandSource>$($el.commandSource)</CommandSource>" }
+
+	if ($el.representation) {
+		X "$inner<Representation>$($el.representation)</Representation>"
+	}
+
+	Emit-CommonFlags -el $el -indent $inner
+	Emit-Layout -el $el -indent $inner
+
+	# Companion: ExtendedTooltip
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	# Children (кнопки в контексте командной панели)
+	if ($el.children -and $el.children.Count -gt 0) {
+		X "$inner<ChildItems>"
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t" -inCmdBar $true
+		}
+		X "$inner</ChildItems>"
+	}
+
+	X "$indent</ButtonGroup>"
 }
 
 function Emit-Popup {
 	param($el, [string]$name, [int]$id, [string]$indent)
-	X "$indent<Popup name=`"$name`" id=`"$id`">"
+
+	X "$indent<Popup name=`"$name`" id=`"$id`"$(DI-Attr $el)>"
 	$inner = "$indent`t"
-	Emit-Title -el $el -name $name -indent $inner
+
+	Emit-Title -el $el -name $name -indent $inner -auto
 	Emit-CommonFlags -el $el -indent $inner
-	if ($el.picture) {
-		X "$inner<Picture>"; X "$inner`t<xr:Ref>$($el.picture)</xr:Ref>"; X "$inner`t<xr:LoadTransparent>true</xr:LoadTransparent>"; X "$inner</Picture>"
+
+	# Источник команд попапа (после Title/ToolTip, перед компаньоном) — как у ButtonGroup/CommandBar
+	if ($el.commandSource) { X "$inner<CommandSource>$($el.commandSource)</CommandSource>" }
+
+	Emit-CommandPicture -pic $el.picture -elemLt $el.loadTransparent -indent $inner
+
+	if ($el.representation) {
+		X "$inner<Representation>$($el.representation)</Representation>"
 	}
-	if ($el.representation) { X "$inner<Representation>$($el.representation)</Representation>" }
+	Emit-Layout -el $el -indent $inner
+
+	# Оформление попапа (TitleTextColor / TitleFont) — перед компаньоном
+	Emit-Appearance -el $el -indent $inner -profile 'field'
+
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner -content $el.extendedTooltip
+
+	# Children
 	if ($el.children -and $el.children.Count -gt 0) {
 		X "$inner<ChildItems>"
-		foreach ($child in $el.children) { Emit-Element -el $child -indent "$inner`t" }
+		foreach ($child in $el.children) {
+			Emit-Element -el $child -indent "$inner`t" -inCmdBar $true
+		}
 		X "$inner</ChildItems>"
 	}
+
 	X "$indent</Popup>"
 }
 
-# --- Element dispatcher ---
-
-function Emit-Element {
-	param($el, [string]$indent)
-
-	$typeKey = $null
-	foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")) {
-		if ($el.$key -ne $null) { $typeKey = $key; break }
+function Normalize-PanelSynonyms {
+	param($el)
+	if ($null -eq $el) { return }
+	$panelSyns = @{
+		'commandBar' = @('commandBar','autoCommandBar','AutoCommandBar','autoCmdBar','cmdBar','КоманднаяПанель')
+		'contextMenu' = @('contextMenu','ContextMenu','КонтекстноеМеню')
 	}
-	if (-not $typeKey) { Write-Warning "Unknown element type, skipping"; return }
-
-	# Validate known keys — warn about typos
-	$knownKeys = @{
-		"group"=1;"input"=1;"check"=1;"label"=1;"labelField"=1;"table"=1;"pages"=1;"page"=1
-		"button"=1;"picture"=1;"picField"=1;"calendar"=1;"cmdBar"=1;"popup"=1
-		"name"=1;"path"=1;"title"=1
-		"visible"=1;"hidden"=1;"enabled"=1;"disabled"=1;"readOnly"=1
-		"on"=1;"handlers"=1
-		"titleLocation"=1;"representation"=1;"width"=1;"height"=1
-		"horizontalStretch"=1;"verticalStretch"=1;"autoMaxWidth"=1;"autoMaxHeight"=1
-		"multiLine"=1;"passwordMode"=1;"choiceButton"=1;"clearButton"=1
-		"spinButton"=1;"dropListButton"=1;"markIncomplete"=1;"skipOnInput"=1;"inputHint"=1
-		"hyperlink"=1;"showTitle"=1;"united"=1;"children"=1;"columns"=1
-		"changeRowSet"=1;"changeRowOrder"=1;"header"=1;"footer"=1
-		"commandBarLocation"=1;"searchStringLocation"=1;"pagesRepresentation"=1
-		"type"=1;"command"=1;"stdCommand"=1;"defaultButton"=1;"locationInCommandBar"=1
-		"src"=1;"autofill"=1
-		"into"=1;"after"=1;"before"=1;"first"=1
-	}
-	foreach ($p in $el.PSObject.Properties) {
-		if (-not $knownKeys.ContainsKey($p.Name)) {
-			Write-Warning "Element '$($el.$typeKey)': unknown key '$($p.Name)' — ignored."
+	foreach ($canon in $panelSyns.Keys) {
+		foreach ($syn in $panelSyns[$canon]) {
+			$p = $el.PSObject.Properties[$syn]
+			if ($null -ne $p -and ($p.Value -is [array] -or $p.Value -is [System.Management.Automation.PSCustomObject])) {
+				if ($syn -ne $canon -and $null -eq $el.PSObject.Properties[$canon]) {
+					$v = $p.Value
+					$el.PSObject.Properties.Remove($syn) | Out-Null
+					$el | Add-Member -NotePropertyName $canon -NotePropertyValue $v -Force
+				}
+				break
+			}
 		}
 	}
+}
 
-	$name = Get-ElementName -el $el -typeKey $typeKey
-	$id = New-Id
+function Normalize-ElementSynonyms {
+	param($el)
+	if ($null -eq $el) { return }
+	Normalize-PanelSynonyms $el
+	# Тип-синонимы (commandBar/autoCommandBar → элемент-тип) применяем ТОЛЬКО к строковому
+	# значению (имя элемента); объект/массив уже отнесён к панель-свойству выше.
+	$typeSyn = @{ "commandBar" = "cmdBar"; "autoCommandBar" = "autoCmdBar" }
+	foreach ($pair in $typeSyn.GetEnumerator()) {
+		$src = $el.PSObject.Properties[$pair.Key]
+		if ($null -ne $src -and ($src.Value -is [string]) -and $null -eq $el.PSObject.Properties[$pair.Value]) {
+			$val = $el.($pair.Key)
+			$el.PSObject.Properties.Remove($pair.Key) | Out-Null
+			$el | Add-Member -NotePropertyName $pair.Value -NotePropertyValue $val -Force
+		}
+	}
+	if ($el.PSObject.Properties["extTooltip"] -and $null -eq $el.PSObject.Properties["extendedTooltip"]) {
+		$val = $el.extTooltip
+		$el.PSObject.Properties.Remove("extTooltip") | Out-Null
+		$el | Add-Member -NotePropertyName "extendedTooltip" -NotePropertyValue $val -Force
+	}
+	# Рекурсия в детей панелей (commandBar/contextMenu) — нормализуем кнопки/группы внутри
+	foreach ($pk in @('commandBar','contextMenu')) {
+		$pp = $el.PSObject.Properties[$pk]
+		if ($null -ne $pp) {
+			$kids = if ($pp.Value -is [array]) { $pp.Value } elseif ($null -ne $pp.Value) { $pp.Value.children } else { $null }
+			if ($kids) { foreach ($child in $kids) { Normalize-ElementSynonyms $child } }
+		}
+	}
+	if ($el.PSObject.Properties["children"] -and $el.children) {
+		foreach ($child in $el.children) { Normalize-ElementSynonyms $child }
+	}
+	if ($el.PSObject.Properties["columns"] -and $el.columns) {
+		foreach ($child in $el.columns) { Normalize-ElementSynonyms $child }
+	}
+}
 
-	switch ($typeKey) {
-		"group"     { Emit-Group -el $el -name $name -id $id -indent $indent }
-		"input"     { Emit-Input -el $el -name $name -id $id -indent $indent }
-		"check"     { Emit-Check -el $el -name $name -id $id -indent $indent }
-		"label"     { Emit-Label -el $el -name $name -id $id -indent $indent }
-		"labelField" { Emit-LabelField -el $el -name $name -id $id -indent $indent }
-		"table"     { Emit-Table -el $el -name $name -id $id -indent $indent }
-		"pages"     { Emit-Pages -el $el -name $name -id $id -indent $indent }
-		"page"      { Emit-Page -el $el -name $name -id $id -indent $indent }
-		"button"    { Emit-Button -el $el -name $name -id $id -indent $indent }
-		"picture"   { Emit-PictureDecoration -el $el -name $name -id $id -indent $indent }
-		"picField"  { Emit-PictureField -el $el -name $name -id $id -indent $indent }
-		"calendar"  { Emit-Calendar -el $el -name $name -id $id -indent $indent }
-		"cmdBar"    { Emit-CommandBarEl -el $el -name $name -id $id -indent $indent }
-		"popup"     { Emit-Popup -el $el -name $name -id $id -indent $indent }
+function ApplyDynamicListTableHeuristic {
+	param($el, [string]$listName, [bool]$hasMainTable)
+	if ($null -eq $el) { return }
+	if ($el.PSObject.Properties["table"] -and $null -ne $el.table -and "$($el.path)" -eq $listName) {
+		# Маркер дин-список-таблицы → Emit-Table эмитит блок свойств (Group A defaults)
+		$el | Add-Member -NotePropertyName "_dynList" -NotePropertyValue $true -Force
+		if ($null -eq $el.PSObject.Properties["tableAutofill"]) {
+			$el | Add-Member -NotePropertyName "tableAutofill" -NotePropertyValue $false -Force
+		}
+		if ($null -eq $el.PSObject.Properties["commandBarLocation"]) {
+			$el | Add-Member -NotePropertyName "commandBarLocation" -NotePropertyValue "None" -Force
+		}
+		# RowPictureDataPath: умный дефолт <Список>.DefaultPicture, если ключ ОТСУТСТВУЕТ.
+		# Декомпилятор опускает ключ при rpdp == smart-default (ждёт реинъекции); реальное отсутствие
+		# фиксирует ""-маркером (НЕ перезатирается). Гейт hasMainTable снят: дин-список без mainTable
+		# (напр. query-based) тоже несёт RowPictureDataPath.
+		if ($null -eq $el.PSObject.Properties["rowPictureDataPath"]) {
+			$el | Add-Member -NotePropertyName "rowPictureDataPath" -NotePropertyValue "$listName.DefaultPicture" -Force
+		}
+	}
+	if ($el.PSObject.Properties["children"] -and $el.children) {
+		foreach ($child in $el.children) { ApplyDynamicListTableHeuristic $child $listName $hasMainTable }
 	}
 }
 
@@ -1044,7 +3207,8 @@ function Insert-IntoContainer($container, $newNode, $afterName, $childIndent) {
 
 # === 9. Generate fragment, parse, import nodes ===
 
-$allNsDecl = 'xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema"'
+# Все пространства имён корня формы — эмиттер пишет xsi:type, ent:, style: и др.
+$allNsDecl = 'xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
 
 function Parse-Fragment([string]$xmlText) {
 	$fragDoc = New-Object System.Xml.XmlDocument
@@ -1320,9 +3484,16 @@ function Resolve-Position($op, [string]$ctx, [bool]$required) {
 $script:containerTags = @('UsualGroup','Page','Pages','Table','ColumnGroup','CommandBar','AutoCommandBar','ButtonGroup','Popup','ContextMenu')
 $script:barTags = @('CommandBar','AutoCommandBar','ButtonGroup','Popup','ContextMenu')
 $script:barItemTags = @('Button','ButtonGroup','Popup')
+$script:additionTags = @('SearchStringAddition','ViewStatusAddition','SearchControlAddition')
 $script:tableItemTags = @('InputField','CheckBoxField','LabelField','PictureField','ColumnGroup')
 $script:companionTags = @('ContextMenu','ExtendedTooltip','AutoCommandBar','SearchStringAddition','ViewStatusAddition','SearchControlAddition')
 $script:dslTagMap = @{
+	"radio"="RadioButtonField"; "columnGroup"="ColumnGroup"; "buttonGroup"="ButtonGroup"
+	"searchString"="SearchStringAddition"; "viewStatus"="ViewStatusAddition"; "searchControl"="SearchControlAddition"
+	"spreadsheet"="SpreadSheetDocumentField"; "html"="HTMLDocumentField"; "textDoc"="TextDocumentField"
+	"formattedDoc"="FormattedDocumentField"; "progressBar"="ProgressBarField"; "trackBar"="TrackBarField"
+	"chart"="ChartField"; "ganttChart"="GanttChartField"; "graphicalSchema"="GraphicalSchemaField"
+	"planner"="PlannerField"; "periodField"="PeriodField"; "dendrogram"="DendrogramField"
 	"group"="UsualGroup"; "input"="InputField"; "check"="CheckBoxField"; "label"="LabelDecoration"
 	"labelField"="LabelField"; "table"="Table"; "pages"="Pages"; "page"="Page"; "button"="Button"
 	"picture"="PictureDecoration"; "picField"="PictureField"; "calendar"="CalendarField"; "cmdBar"="CommandBar"; "popup"="Popup"
@@ -1337,7 +3508,7 @@ function Assert-Placement([string]$nt, [string]$name, $node, $container, [string
 	if ($null -ne $node -and (Test-IsInside $container $node)) { Fail "${ctx}: '$name' нельзя перенести внутрь самого себя — '$cl' лежит внутри '$name'" }
 	if ($nt -eq 'Page' -and $ct -ne 'Pages') { Fail "${ctx}: страница '$name' может лежать только в группе страниц (Pages), а '$cl' — $ct" }
 	if ($ct -eq 'Pages' -and $nt -ne 'Page') { Fail "${ctx}: в группе страниц '$cl' лежат только страницы (Page), а '$name' — $nt" }
-	if ($script:barTags -contains $ct -and $script:barItemTags -notcontains $nt) { Fail "${ctx}: в командной панели '$cl' лежат только кнопки, группы кнопок и подменю, а '$name' — $nt" }
+	if ($script:barTags -contains $ct -and $script:barItemTags -notcontains $nt -and $script:additionTags -notcontains $nt) { Fail "${ctx}: в командной панели '$cl' лежат только кнопки, группы кнопок, подменю и дополнения таблицы, а '$name' — $nt" }
 	# Группа кнопок и подменю — только внутри командной панели, меню, подменю или группы кнопок (по корпусу)
 	if (@('ButtonGroup','Popup') -contains $nt -and $script:barTags -notcontains $ct) { Fail "${ctx}: '$name' ($nt) лежит только в командной панели, контекстном меню, подменю или группе кнопок, а '$cl' — $ct" }
 	if ($nt -eq 'ColumnGroup' -and $null -eq (Get-NearestTable $container $true)) { Fail "${ctx}: группа колонок '$name' может лежать только внутри таблицы" }
@@ -1398,20 +3569,92 @@ function Invoke-Add($op, [string]$typeKey, [int]$idx) {
 	}
 	Assert-Placement $script:dslTagMap[$typeKey] $name $null $pos.Container $ctx
 
+	# Эмиттеру — копия элемента без ключей позиции (это не свойства элемента)
+	$el = ($op | ConvertTo-Json -Depth 100 -Compress | ConvertFrom-Json) | Select-Object -Property * -ExcludeProperty into, after, before, first
+	Normalize-ElementSynonyms $el
+	# Таблица динамического списка получает поведение списка, как в form-compile
+	foreach ($a in $root.SelectNodes("f:Attributes/f:Attribute", $nsMgr)) {
+		$t = $a.SelectSingleNode("f:Type/v8:Type", $nsMgr)
+		if ($null -ne $t -and $t.InnerText.Trim() -eq 'cfg:DynamicList') { ApplyDynamicListTableHeuristic $el $a.GetAttribute('name') $true }
+	}
+	# Пул имён эмиттера — имена элементов формы на момент операции (без узлов событий)
+	$script:seenElementNames = @{}
+	foreach ($sc in (Get-ElementScopes)) {
+		foreach ($n in $sc.SelectNodes(".//*[@name]")) {
+			if ($n.NamespaceURI -eq $formNs -and ($n.ParentNode.LocalName -eq 'ChildItems' -or $script:companionTags -contains $n.LocalName)) {
+				$script:seenElementNames[$n.GetAttribute('name')] = $true
+			}
+		}
+	}
+	$script:currentTableName = $null
+	# Дополнение таблицы: источник — source или таблица, внутри которой оно лежит
+	if ($script:additionTags -contains $script:dslTagMap[$typeKey]) {
+		if ($el.source) {
+			$src = Find-FormElement "$($el.source)"
+			if ($null -eq $src -or $src.LocalName -ne 'Table') { Fail "${ctx}: source '$($el.source)' — нет такой таблицы в форме" }
+			$el.source = $src.GetAttribute('name')
+		} else {
+			$tbl = if (Same $pos.Container $root) { $null } else { Get-NearestTable $pos.Container $true }
+			if ($null -eq $tbl) { Fail "${ctx}: укажите source — таблицу, к которой относится дополнение" }
+			$script:currentTableName = $tbl.GetAttribute('name')
+		}
+	}
+
 	$ci = Get-OrCreateChildItems $pos.Container
 	$indent = Get-ChildIndent $ci
 	$script:xml = New-Object System.Text.StringBuilder 4096
+	# Внутри командной панели, меню, подменю или группы кнопок кнопка — кнопка панели
+	$inBar = $false
+	$cur = $pos.Container
+	while ($null -ne $cur -and $cur.NodeType -eq 'Element') {
+		if ($script:barTags -contains $cur.LocalName) { $inBar = $true; break }
+		$cur = $cur.ParentNode
+	}
 	X "<_F $allNsDecl>"
-	Emit-Element -el $op -indent $indent
+	Emit-Element -el $el -indent $indent -inCmdBar $inBar
 	X "</_F>"
 	$node = @(Import-ElementNodes (Parse-Fragment $script:xml.ToString()))[0]
 	Insert-NodeAt $ci $node $pos.Ref $indent
 	if ($chained) { $script:chainNode = $node }
 
 	$pathStr = if ($op.path) { " -> $($op.path)" } else { "" }
-	$evtStr = if ($op.on) { " {$((@($op.on) | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.event } }) -join ', ')}" } else { "" }
+	$evtNames = @($node.SelectNodes("f:Events/f:Event", $nsMgr) | ForEach-Object { $_.GetAttribute('name') })
+	$evtStr = if ($evtNames.Count -gt 0) { " {$($evtNames -join ', ')}" } else { "" }
 	$script:opLog += "  + [$($node.LocalName)] $name$pathStr$evtStr → $($pos.Desc)"
 	$script:addedCount++
+}
+
+# --- Командная панель формы (autoCmdBar, как в form-compile) ---
+
+# Кнопки из children — в командную панель формы (в конец, по порядку); autofill и horizontalAlign — её свойства.
+function Invoke-AutoCmdBar($op, [int]$idx) {
+	$ctx = "elements[$idx] autoCmdBar"
+	$acbNode = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr)
+	if ($null -eq $acbNode) { Fail "${ctx}: у формы нет командной панели" }
+	Assert-OpKeys $op @('autoCmdBar','children','autofill','horizontalAlign') $ctx
+	if ($null -ne $op.PSObject.Properties['autofill']) {
+		if (-not ($op.autofill -is [bool])) { Fail "${ctx}: autofill — true или false" }
+		Set-ValueTag $acbNode 'Autofill' $(if ($op.autofill) { 'true' } else { 'false' })
+		$script:opLog += "  * $($acbNode.GetAttribute('name')): Autofill=$($op.autofill.ToString().ToLower())"
+	}
+	if ($op.horizontalAlign) {
+		Set-SimpleTag $acbNode 'HorizontalAlign' "$($op.horizontalAlign)"
+		$script:opLog += "  * $($acbNode.GetAttribute('name')): HorizontalAlign=$($op.horizontalAlign)"
+	}
+	foreach ($child in @($op.children)) {
+		if ($null -eq $child) { continue }
+		if (-not ($child -is [System.Management.Automation.PSCustomObject])) { Fail "${ctx}: в children — не элемент (нужна кнопка, группа кнопок или подменю)" }
+		foreach ($pk in @('into','after','before','first')) {
+			if ($null -ne $child.PSObject.Properties[$pk]) { Fail "${ctx}: у кнопок в children нет позиции — они встают в конец панели по порядку; для места укажите кнопку отдельным элементом с into и after/before" }
+		}
+		Normalize-ElementTypeSynonyms $child
+		$tk = $null
+		foreach ($k in $elemTypeKeys) { if ($null -ne $child.PSObject.Properties[$k]) { $tk = $k; break } }
+		if ($null -eq $tk) { Fail "${ctx}: в children — не элемент (нужна кнопка, группа кнопок или подменю)" }
+		$c = $child | Select-Object -Property *
+		$c | Add-Member -NotePropertyName 'into' -NotePropertyValue $acbNode.GetAttribute('name') -Force
+		Invoke-Add $c $tk $idx
+	}
 }
 
 # --- Перенос ---
@@ -1485,6 +3728,7 @@ $script:tagDefaults = @{
 $script:enumDefaults = @{
 	'UsualGroup/Group'='HorizontalIfPossible'; 'Page/Group'='Vertical'; 'ColumnGroup/Group'='Vertical'
 	'UsualGroup/Representation'='WeakSeparation'; 'Button/Representation'='Auto'; 'Popup/Representation'='Auto'
+	'AutoCommandBar/Autofill'='true'
 }
 
 function Get-TagDefault([string]$nt, [string]$tag) {
@@ -2172,7 +4416,9 @@ $script:movedCount = 0
 $script:changedCount = 0
 $companionCount = 0
 
-$elemTypeKeys = @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")
+# Ключи типов — в порядке form-compile: ключ, который бывает и свойством (group у страницы,
+# picture у кнопки), проверяется после типа, у которого он свойство.
+$elemTypeKeys = @("columnGroup","buttonGroup","pages","page","group","input","check","radio","label","labelField","table","button","calendar","cmdBar","popup","searchString","viewStatus","searchControl","picField","picture","spreadsheet","html","textDoc","formattedDoc","progressBar","trackBar","chart","ganttChart","graphicalSchema","planner","periodField","dendrogram")
 
 if ($def.elements -and @($def.elements).Count -gt 0) {
 	$ops = @($def.elements)
@@ -2183,9 +4429,12 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 		$op = $ops[$i]
 		$kinds = @()
 		foreach ($k in @('move','set','remove')) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k } }
+		# Тип элемента XML-именем или по-русски (InputField, ПолеВвода) → канонический ключ
+		if ($kinds.Count -eq 0 -and $op -is [System.Management.Automation.PSCustomObject]) { Normalize-ElementTypeSynonyms $op }
 		# У set ключ типа — свойство (group — ориентация); остальные ключи типа set отвергнет сам.
 		if ($kinds -notcontains 'set') {
-			foreach ($k in $elemTypeKeys) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k; break } }
+			if ($null -ne $op.PSObject.Properties['autoCmdBar']) { $kinds += 'autoCmdBar' }
+			else { foreach ($k in $elemTypeKeys) { if ($null -ne $op.PSObject.Properties[$k]) { $kinds += $k; break } } }
 		}
 		if ($kinds.Count -eq 0) { Fail "elements[$i]: не понять действие — нужен тип элемента (input, group, …), move, set или remove" }
 		if ($kinds.Count -gt 1) { Fail "elements[$i]: одна запись — одно действие, а здесь $($kinds -join ' и ')" }
@@ -2203,7 +4452,7 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 	}
 	$dslElemNames = @{}
 	for ($i = 0; $i -lt $ops.Count; $i++) {
-		if ($opKinds[$i] -in @('move','set','remove')) { continue }
+		if ($opKinds[$i] -in @('move','set','remove','autoCmdBar')) { continue }
 		Walk-ElemNames $ops[$i] $dslElemNames
 	}
 
@@ -2213,6 +4462,7 @@ if ($def.elements -and @($def.elements).Count -gt 0) {
 			'move' { Invoke-Move $ops[$i] $i }
 			'set'  { Invoke-Set $ops[$i] $i }
 			'remove' { Invoke-Remove $ops[$i] $i }
+			'autoCmdBar' { Invoke-AutoCmdBar $ops[$i] $i }
 			default { Invoke-Add $ops[$i] $opKinds[$i] $i }
 		}
 	}

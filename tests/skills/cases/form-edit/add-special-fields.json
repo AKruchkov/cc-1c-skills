@@ -1,0 +1,29 @@
+{
+  "name": "Табличный документ, индикатор и HTML-поле с событием",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "spreadsheet": "ТабДок",
+        "path": "Объект.Номер",
+        "into": "СтраницаДополнительно"
+      },
+      {
+        "progressBar": "Прогресс",
+        "path": "Объект.Приоритет",
+        "into": "СтраницаДополнительно"
+      },
+      {
+        "html": "Хтмл",
+        "path": "Объект.Номер",
+        "into": "СтраницаДополнительно",
+        "events": {
+          "DocumentComplete": null
+        }
+      }
+    ]
+  }
+}

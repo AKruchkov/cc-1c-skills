@@ -10,10 +10,12 @@
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">
 		<ChildItems>
 			<Button name="КнопкаБ" id="69">
+				<Type>CommandBarButton</Type>
 				<CommandName>Form.StandardCommand.Help</CommandName>
 				<ExtendedTooltip name="КнопкаБРасширеннаяПодсказка" id="70"/>
 			</Button>
 			<Button name="КнопкаА" id="67">
+				<Type>CommandBarButton</Type>
 				<CommandName>Form.StandardCommand.Close</CommandName>
 				<ExtendedTooltip name="КнопкаАРасширеннаяПодсказка" id="68"/>
 			</Button>

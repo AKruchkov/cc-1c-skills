@@ -1,0 +1,19 @@
+{
+  "name": "Дополнение вне таблицы без source — отказ, форма не тронута",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "searchString": "ПоискТоваров",
+        "into": "СтраницаТовары"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "укажите source"
+  }
+}

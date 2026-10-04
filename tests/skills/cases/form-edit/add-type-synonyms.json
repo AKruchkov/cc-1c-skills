@@ -1,0 +1,22 @@
+{
+  "name": "Тип элемента XML-именем и по-русски, как в form-compile",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "InputField": "ПолеСиноним",
+        "path": "Объект.Номер",
+        "after": "Номер"
+      },
+      {
+        "ПолеНадписи": "НадписьСиноним",
+        "path": "Объект.Дата",
+        "hyperlink": true,
+        "into": "ГруппаПраво"
+      }
+    ]
+  }
+}

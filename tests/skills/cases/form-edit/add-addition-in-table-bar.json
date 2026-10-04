@@ -1,0 +1,15 @@
+{
+  "name": "Строка поиска в командной панели таблицы — источник берётся от таблицы",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "searchString": "ПоискТоваров",
+        "into": "ТоварыКоманднаяПанель"
+      }
+    ]
+  }
+}

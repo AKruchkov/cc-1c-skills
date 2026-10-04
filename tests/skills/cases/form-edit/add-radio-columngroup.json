@@ -1,0 +1,39 @@
+{
+  "name": "Переключатель и группа колонок — типы, которых раньше в form-edit не было",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "radio": "Вариант",
+        "path": "Объект.Приоритет",
+        "radioType": "Tumbler",
+        "choiceList": [
+          {
+            "value": 1,
+            "presentation": "Один"
+          },
+          {
+            "value": 2,
+            "presentation": "Два"
+          }
+        ],
+        "after": "Приоритет"
+      },
+      {
+        "columnGroup": "horizontal",
+        "name": "ГруппаКолонок",
+        "into": "Товары",
+        "after": "ТоварыНоменклатура",
+        "children": [
+          {
+            "input": "ТоварыКолВГруппе",
+            "path": "Объект.Товары.Количество"
+          }
+        ]
+      }
+    ]
+  }
+}

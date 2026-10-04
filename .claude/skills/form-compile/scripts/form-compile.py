@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-compile v1.200 — Compile 1C managed form from JSON or object metadata
+# form-compile v1.201 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -2268,10 +2268,10 @@ def new_id():
 _seen_element_names = set()  # пул имён элементов (глобально по всей форме)
 
 def _ensure_unique(name, seen, kind):
-    if name in seen:
+    if name.lower() in seen:
         print(f"[ERROR] Duplicate {kind} name '{name}' — names must be unique within their collection in a 1C form (set a unique 'name')", file=sys.stderr)
         sys.exit(1)
-    seen.add(name)
+    seen.add(name.lower())
 
 
 # --- Event handler name generator ---
@@ -2859,20 +2859,42 @@ def get_event_pairs(el, element_name):
     events = el.get('events')
     if events:
         for ev_name, val in events.items():
-            handler = '' if val is None else str(val)
-            if not handler:
-                handler = get_handler_name(element_name, ev_name)
-            pairs.append((ev_name, handler))
+            # Значение — имя обработчика; null — имя по шаблону; объект { handler, callType } или массив
+            # таких объектов (в расширении на одно событие вешают и Before, и After)
+            for v in (val if isinstance(val, list) else [val]):
+                if isinstance(v, dict):
+                    handler = '' if v.get('handler') is None else str(v.get('handler'))
+                    call_type = normalize_call_type(v.get('callType'), element_name, ev_name)
+                else:
+                    handler = '' if v is None else str(v)
+                    call_type = ''
+                if not handler:
+                    handler = get_handler_name(element_name, ev_name)
+                pairs.append((ev_name, handler, call_type))
     elif el.get('on'):
         handlers = el.get('handlers') or {}
-        for evt in el['on']:
-            evt_name = str(evt)
-            if handlers.get(evt_name):
-                handler = str(handlers[evt_name])
+        for evt in (el['on'] if isinstance(el['on'], list) else [el['on']]):
+            if isinstance(evt, dict):
+                evt_name = str(evt.get('event', ''))
+                handler = '' if evt.get('handler') is None else str(evt.get('handler'))
+                call_type = normalize_call_type(evt.get('callType'), element_name, evt_name)
             else:
-                handler = get_handler_name(element_name, evt_name)
-            pairs.append((evt_name, handler))
+                evt_name, handler, call_type = str(evt), '', ''
+            if not handler:
+                handler = str(handlers[evt_name]) if handlers.get(evt_name) else get_handler_name(element_name, evt_name)
+            pairs.append((evt_name, handler, call_type))
     return pairs
+
+
+# Вид вызова обработчика в расширении: Before / After / Override (регистр не важен); пусто — не указан.
+def normalize_call_type(raw, element_name, event_name):
+    if raw is None or str(raw) == '':
+        return ''
+    for v in ('Before', 'After', 'Override'):
+        if str(raw).lower() == v.lower():
+            return v
+    print(f"[ERROR] Element '{element_name}', event '{event_name}': callType '{raw}' — expected Before, After or Override", file=sys.stderr)
+    sys.exit(1)
 
 
 # Проверить, подключено ли событие к элементу (в любом из форматов).
@@ -2880,7 +2902,11 @@ def test_element_event(el, event_name):
     events = el.get('events')
     if events and event_name in events:
         return True
-    return event_name in (el.get('on') or [])
+    on = el.get('on') or []
+    for evt in (on if isinstance(on, list) else [on]):
+        if (str(evt.get('event', '')) if isinstance(evt, dict) else str(evt)) == event_name:
+            return True
+    return False
 
 
 def emit_events(lines, el, element_name, indent, type_key):
@@ -2891,13 +2917,14 @@ def emit_events(lines, el, element_name, indent, type_key):
     # Validate event names
     if type_key and type_key in KNOWN_EVENTS:
         allowed = KNOWN_EVENTS[type_key]
-        for ev_name, _ in pairs:
+        for ev_name, _, _ in pairs:
             if allowed and str(ev_name) not in allowed:
                 print(f"[WARN] Unknown event '{ev_name}' for {type_key} '{element_name}'. Known: {', '.join(allowed)}")
 
     lines.append(f"{indent}<Events>")
-    for ev_name, handler in pairs:
-        lines.append(f'{indent}\t<Event name="{ev_name}">{handler}</Event>')
+    for ev_name, handler, call_type in pairs:
+        ct_attr = f' callType="{call_type}"' if call_type else ''
+        lines.append(f'{indent}\t<Event name="{ev_name}"{ct_attr}>{handler}</Event>')
     lines.append(f"{indent}</Events>")
 
 
@@ -4080,10 +4107,7 @@ def emit_type(lines, type_str, indent, tag="Type", tag_attrs=""):
 
 # --- Element emitters ---
 
-def emit_element(lines, el, indent, in_cmd_bar=False):
-    # Companion-панели (объект/массив-значение) → commandBar/contextMenu, до тип-синонимов.
-    normalize_panel_synonyms(el)
-
+def normalize_element_type_synonyms(el):
     # Silent synonyms: model often writes XML name or Russian (ПолеПереключателя/RadioButtonField → radio).
     # commandBar/autoCommandBar/КоманднаяПанель → тип-элемент ТОЛЬКО при строковом значении (имя).
     for src, dst in ELEMENT_TYPE_SYNONYMS.items():
@@ -4091,6 +4115,14 @@ def emit_element(lines, el, indent, in_cmd_bar=False):
             if src in STR_ONLY_TYPE_SYNONYMS and not isinstance(el[src], str):
                 continue
             el[dst] = el.pop(src)
+
+
+def emit_element(lines, el, indent, in_cmd_bar=False):
+    # Companion-панели (объект/массив-значение) → commandBar/contextMenu, до тип-синонимов.
+    normalize_panel_synonyms(el)
+
+    # Синонимы типа (XML-имя, русское имя) → канонический ключ DSL
+    normalize_element_type_synonyms(el)
 
     # Синонимы ключей-свойств (русские имена 1С → канон. англ.). Case/space-insensitive.
     # Канон побеждает: если задан и русский, и англ. ключ — англ. остаётся, русский отбрасываем.
@@ -6579,7 +6611,7 @@ def main():
     def _apply_dlist_table_heuristic(el, list_name, has_main_table):
         if not isinstance(el, dict):
             return
-        if el.get('table') is not None and str(el.get('path', '')) == list_name:
+        if el.get('table') is not None and str(el.get('path', '')).lower() == list_name.lower():
             # Маркер дин-список-таблицы → emit_table эмитит блок свойств
             el['_dynList'] = True
             if 'tableAutofill' not in el:

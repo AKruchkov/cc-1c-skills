@@ -1,4 +1,4 @@
-# form-edit v1.21 — Edit 1C managed form elements (Python port)
+# form-edit v1.22 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -327,16 +327,25 @@ NS = {
     "v8": V8_NS,
 }
 
+# Все пространства имён корня формы — эмиттер пишет xsi:type, ent:, style: и др.
 ALL_NS_DECL = (
     'xmlns="http://v8.1c.ru/8.3/xcf/logform"'
-    ' xmlns:v8="http://v8.1c.ru/8.1/data/core"'
-    ' xmlns:v8ui="http://v8.1c.ru/8.1/data/ui"'
-    ' xmlns:xr="http://v8.1c.ru/8.3/xcf/readable"'
-    ' xmlns:xs="http://www.w3.org/2001/XMLSchema"'
+    ' xmlns:app="http://v8.1c.ru/8.2/managed-application/core"'
     ' xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config"'
-    ' xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings"'
     ' xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core"'
     ' xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema"'
+    ' xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings"'
+    ' xmlns:ent="http://v8.1c.ru/8.1/data/enterprise"'
+    ' xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform"'
+    ' xmlns:style="http://v8.1c.ru/8.1/data/ui/style"'
+    ' xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system"'
+    ' xmlns:v8="http://v8.1c.ru/8.1/data/core"'
+    ' xmlns:v8ui="http://v8.1c.ru/8.1/data/ui"'
+    ' xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web"'
+    ' xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows"'
+    ' xmlns:xr="http://v8.1c.ru/8.3/xcf/readable"'
+    ' xmlns:xs="http://www.w3.org/2001/XMLSchema"'
+    ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
 )
 
 
@@ -346,18 +355,6 @@ def local_name(node):
 
 # ── helpers ──────────────────────────────────────────────────
 
-def esc_xml(s):
-    # Эскейп ЗНАЧЕНИЯ АТРИБУТА: & < > и кавычка — внутри "..." литеральная " невалидна.
-    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-
-
-def esc_xml_text(s):
-    """Экранирование ТЕКСТА элемента: только & < > . Кавычки платформа в тексте не экранирует
-    (92142 сырых кавычки на корпус, ни одной &quot;); &quot; она принимает, но нормализует обратно."""
-    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-
-# ── 1. Load Form.xml ────────────────────────────────────────
 
 if not os.path.exists(form_path):
     print(f"File not found: {form_path}", file=sys.stderr)
@@ -482,7 +479,9 @@ def new_cmd_id():
     return _id
 
 
-new_id = new_elem_id  # alias for element emitters
+def new_id():
+    """Id элемента — из пула элементов (у формы расширения — со сдвигом 1000000)."""
+    return new_elem_id()
 
 # ── 5. Fragment helpers (StringBuilder + Emit-* from form-compile) ──
 
@@ -516,6 +515,1411 @@ _FORM_TYPE_SYNONYMS = {
 # Алиас на локальный словарь: тело resolve_type_str ниже — общая реализация,
 # одинаковая во всех навыках (реестр в tests/skills/check-inline-drift.mjs).
 TYPE_SYNONYMS = _FORM_TYPE_SYNONYMS
+
+
+def _assert_edit_unique(name, seen, ctx):
+    # Уникальность имён внутри JSON-определения (1С: своя коллекция — свой неймспейс).
+    if name in seen:
+        print(f"[ERROR] Duplicate {ctx} '{name}' in JSON definition — names must be unique in 1C form")
+        sys.exit(1)
+    seen.add(name)
+
+
+# ── 5b. Эмиттер элементов — общий с form-compile (эталон там; копии держит check-inline-drift) ──
+
+_seen_element_names = set()  # пул имён элементов (глобально по всей форме)
+
+EVENT_SUFFIX_MAP = {
+    "OnChange": "\u041f\u0440\u0438\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0438",
+    "StartChoice": "\u041d\u0430\u0447\u0430\u043b\u043e\u0412\u044b\u0431\u043e\u0440\u0430",
+    "ChoiceProcessing": "\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430\u0412\u044b\u0431\u043e\u0440\u0430",
+    "AutoComplete": "\u0410\u0432\u0442\u043e\u041f\u043e\u0434\u0431\u043e\u0440",
+    "Clearing": "\u041e\u0447\u0438\u0441\u0442\u043a\u0430",
+    "Opening": "\u041e\u0442\u043a\u0440\u044b\u0442\u0438\u0435",
+    "Click": "\u041d\u0430\u0436\u0430\u0442\u0438\u0435",
+    "OnActivateRow": "\u041f\u0440\u0438\u0410\u043a\u0442\u0438\u0432\u0438\u0437\u0430\u0446\u0438\u0438\u0421\u0442\u0440\u043e\u043a\u0438",
+    "BeforeAddRow": "\u041f\u0435\u0440\u0435\u0434\u041d\u0430\u0447\u0430\u043b\u043e\u043c\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u0438\u044f",
+    "BeforeDeleteRow": "\u041f\u0435\u0440\u0435\u0434\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435\u043c",
+    "BeforeRowChange": "\u041f\u0435\u0440\u0435\u0434\u041d\u0430\u0447\u0430\u043b\u043e\u043c\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f",
+    "OnStartEdit": "\u041f\u0440\u0438\u041d\u0430\u0447\u0430\u043b\u0435\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
+    "OnEditEnd": "\u041f\u0440\u0438\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0438\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
+    "Selection": "\u0412\u044b\u0431\u043e\u0440\u0421\u0442\u0440\u043e\u043a\u0438",
+    "OnCurrentPageChange": "\u041f\u0440\u0438\u0421\u043c\u0435\u043d\u0435\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
+    "TextEditEnd": "\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0435\u0412\u0432\u043e\u0434\u0430\u0422\u0435\u043a\u0441\u0442\u0430",
+    "URLProcessing": "\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430\u041d\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u043e\u043d\u043d\u043e\u0439\u0421\u0441\u044b\u043b\u043a\u0438",
+    "DragStart": "\u041d\u0430\u0447\u0430\u043b\u043e\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
+    "Drag": "\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u0435",
+    "DragCheck": "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
+    "Drop": "\u041f\u043e\u043c\u0435\u0449\u0435\u043d\u0438\u0435",
+    "AfterDeleteRow": "\u041f\u043e\u0441\u043b\u0435\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u044f",
+}
+
+KNOWN_EVENTS = {
+    "input": ["OnChange", "StartChoice", "ChoiceProcessing", "AutoComplete", "TextEditEnd", "Clearing", "Creating", "EditTextChange"],
+    "check": ["OnChange"],
+    "radio": ["OnChange"],
+    "label": ["Click", "URLProcessing"],
+    "labelField": ["OnChange", "StartChoice", "ChoiceProcessing", "Click", "URLProcessing", "Clearing"],
+    "table": ["Selection", "BeforeAddRow", "AfterDeleteRow", "BeforeDeleteRow", "OnActivateRow", "OnEditEnd", "OnStartEdit", "BeforeRowChange", "BeforeEditEnd", "ValueChoice", "OnActivateCell", "OnActivateField", "Drag", "DragStart", "DragCheck", "DragEnd", "OnGetDataAtServer", "BeforeLoadUserSettingsAtServer", "OnUpdateUserSettingSetAtServer", "OnChange"],
+    "pages": ["OnCurrentPageChange"],
+    "page": ["OnCurrentPageChange"],
+    "button": ["Click"],
+    "picField": ["OnChange", "StartChoice", "ChoiceProcessing", "Click", "Clearing"],
+    "calendar": ["OnChange", "OnActivate"],
+    "picture": ["Click"],
+    "cmdBar": [],
+    "popup": [],
+    "group": [],
+}
+
+KNOWN_KEYS = {
+    "group", "columnGroup", "buttonGroup", "input", "check", "radio", "label", "labelField", "table", "pages", "page",
+    "button", "picture", "picField", "calendar", "cmdBar", "popup",
+    "showInHeader",
+    "radioButtonType", "choiceList", "columnsCount", "checkBoxType", "editMode",
+    "name", "path", "title", "tooltip", "tooltipRepresentation", "extendedTooltip",
+    "visible", "hidden", "enabled", "disabled", "readOnly", "userVisible",
+    "events", "on", "handlers",
+    "selectionMode", "showCurrentDate", "widthInMonths", "heightInMonths", "showMonthsPanel",
+    "titleLocation", "representation", "width", "height",
+    "horizontalStretch", "verticalStretch", "autoMaxWidth", "autoMaxHeight",
+    "maxWidth", "maxHeight",
+    "groupHorizontalAlign", "groupVerticalAlign", "horizontalAlign",
+    "multiLine", "passwordMode", "choiceButton", "clearButton",
+    "spinButton", "dropListButton", "markIncomplete", "skipOnInput", "inputHint",
+    "textEdit", "choiceList",
+    "wrap", "openButton", "listChoiceMode", "showInHeader", "showInFooter",
+    "extendedEditMultipleValues", "chooseType", "autoCellHeight",
+    "choiceButtonRepresentation", "footerHorizontalAlign", "headerHorizontalAlign",
+    "headerDataPath", "headerFormat", "currentRowUse",
+    "format", "editFormat", "choiceParameters", "choiceParameterLinks", "typeLink",
+    "hyperlink", "formatted",
+    "collapsedTitle", "showTitle", "united", "collapsed", "behavior",
+    "children", "columns",
+    "changeRowSet", "changeRowOrder", "autoInsertNewRow", "rowFilter", "header", "footer",
+    "commandBarLocation", "searchStringLocation", "viewStatusLocation", "searchControlLocation",
+    "excludedCommands",
+    "pagesRepresentation",
+    "type", "command", "commandName", "stdCommand", "parameter", "defaultButton", "locationInCommandBar", "displayImportance",
+    "commandBar", "contextMenu", "commandSource",
+    "src", "valuesPicture", "loadTransparent", "headerPicture", "footerPicture",
+    "autofill",
+    "choiceMode", "initialTreeView", "enableDrag", "enableStartDrag",
+    "rowSelectionMode", "verticalLines", "horizontalLines",
+    "rowPictureDataPath", "tableAutofill", "heightInTableRows",
+    "multipleChoice", "searchOnInput", "shortcut",
+    # dynamic-list table block
+    "defaultItem", "useAlternationRowColor", "fileDragMode", "autoRefresh",
+    "autoRefreshPeriod", "choiceFoldersAndItems", "restoreCurrentRow", "showRoot",
+    "allowRootChoice", "updateOnDataChange", "allowGettingCurrentRowURL",
+    "userSettingsGroup", "rowsPicture",
+    # AutoCommandBar-маркер (autofill heuristic) на элементе/таблице
+    "autoCmdBar",
+    # дополнения командной панели таблицы (тип-ключи + свойства)
+    "searchString", "viewStatus", "searchControl", "source", "horizontalLocation", "additions",
+    # generic-скаляры (pass-through)
+    "verticalAlign", "throughAlign", "enableContentChange", "pictureSize", "titleHeight",
+    "childItemsWidth", "showLeftMargin", "cellHyperlink", "viewMode", "verticalScrollBar",
+    "rowInputMode", "mask", "createButton", "fixingInTable", "verticalSpacing",
+    # InputField choice-скаляры
+    "choiceListButton", "quickChoice", "autoChoiceIncomplete",
+    "choiceForm", "choiceHistoryOnInput", "footerDataPath", "minValue", "maxValue",
+    # Button — пометка toggle-кнопки
+    "checked",
+    # спец-поля (документ/датчик/диаграмма) — тип-ключи + типоспец. скаляры
+    "spreadsheet", "html", "textDoc", "formattedDoc", "progressBar", "trackBar",
+    "chart", "ganttChart", "graphicalSchema", "planner", "periodField", "dendrogram", "ganttTable",
+    "showPercent", "largeStep", "markingStep", "step",
+    "horizontalScrollBar", "viewScalingMode", "output", "selectionShowMode", "protection",
+    "edit", "showGrid", "showGroups", "showHeaders", "showRowAndColumnNames", "showCellNames",
+    "pointerType", "drawingSelectionShowMode", "warningOnEditRepresentation", "markingAppearance",
+    # report-form контекст (generic-скаляры элементов)
+    "horizontalSpacing", "representationInContextMenu", "settingsNamedItemDetailedRepresentation",
+    # хвост: высота элемента списка / ширина выпадающего списка / картинка кнопки выбора / прозрачный пиксель
+    "itemHeight", "dropListWidth", "choiceButtonPicture", "transparentPixel",
+    # хвост CI-форм: динамический заголовок / расширенное редактирование / высота таблицы
+    "titleDataPath", "extendedEdit", "maxRowsCount", "autoMaxRowsCount", "heightControlVariant",
+    "warningOnEdit", "nonselectedPictureText", "editTextUpdate", "footerText",
+}
+
+TYPE_KEYS = ["columnGroup", "buttonGroup", "pages", "page", "group", "input", "check", "radio", "label", "labelField", "table",
+             "button", "calendar", "cmdBar", "popup", "searchString", "viewStatus", "searchControl", "picField", "picture",
+             "spreadsheet", "html", "textDoc", "formattedDoc", "progressBar", "trackBar",
+             "chart", "ganttChart", "graphicalSchema", "planner", "periodField", "dendrogram"]
+
+ELEMENT_TYPE_SYNONYMS = {
+    "commandBar": "cmdBar",
+    "autoCommandBar": "autoCmdBar",
+    "КоманднаяПанель": "cmdBar",
+    "InputField": "input",
+    "ПолеВвода": "input",
+    "CheckBoxField": "check",
+    "ПолеФлажка": "check",
+    "RadioButtonField": "radio",
+    "ПолеПереключателя": "radio",
+    "radioButton": "radio",
+    "PictureField": "picField",
+    "ПолеКартинки": "picField",
+    "LabelField": "labelField",
+    "ПолеНадписи": "labelField",
+    "CalendarField": "calendar",
+    "ПолеКалендаря": "calendar",
+    "LabelDecoration": "label",
+    "Надпись": "label",
+    "PictureDecoration": "picture",
+    "Картинка": "picture",
+    "UsualGroup": "group",
+    "Группа": "group",
+    "ОбычнаяГруппа": "group",
+    "ColumnGroup": "columnGroup",
+    "ГруппаКолонок": "columnGroup",
+    "Pages": "pages",
+    "ГруппаСтраниц": "pages",
+    "Page": "page",
+    "Страница": "page",
+    "Table": "table",
+    "Таблица": "table",
+    "Button": "button",
+    "Кнопка": "button",
+    "Popup": "popup",
+    "ВсплывающееМеню": "popup",
+    # дополнения командной панели таблицы — forgiving: XML-тег/Type/рус.имя → канон
+    "SearchStringAddition": "searchString",
+    "SearchStringRepresentation": "searchString",
+    "строкаПоиска": "searchString",
+    "отображениеСтрокиПоиска": "searchString",
+    "Отображение строки поиска": "searchString",
+    "ViewStatusAddition": "viewStatus",
+    "ViewStatusRepresentation": "viewStatus",
+    "состояниеПросмотра": "viewStatus",
+    "Состояние просмотра": "viewStatus",
+    "SearchControlAddition": "searchControl",
+    "SearchControl": "searchControl",
+    "управлениеПоиском": "searchControl",
+    "Управление поиском": "searchControl",
+    # Спец-поля (документ/датчик) — XML-имя/рус. → канон
+    "SpreadSheetDocumentField": "spreadsheet",
+    "ПолеТабличногоДокумента": "spreadsheet",
+    "HTMLDocumentField": "html",
+    "ПолеHTMLДокумента": "html",
+    "TextDocumentField": "textDoc",
+    "ПолеТекстовогоДокумента": "textDoc",
+    "FormattedDocumentField": "formattedDoc",
+    "ПолеФорматированногоДокумента": "formattedDoc",
+    "ProgressBarField": "progressBar",
+    "ПолеИндикатора": "progressBar",
+    "TrackBarField": "trackBar",
+    "ПолеПолосыРегулирования": "trackBar",
+    "ChartField": "chart",
+    "ПолеДиаграммы": "chart",
+    "GanttChartField": "ganttChart",
+    "ПолеДиаграммыГанта": "ganttChart",
+    "GraphicalSchemaField": "graphicalSchema",
+    "ПолеГрафическойСхемы": "graphicalSchema",
+    "PlannerField": "planner",
+    "ПолеПланировщика": "planner",
+    "PeriodField": "periodField",
+    "ПолеПериода": "periodField",
+    "DendrogramField": "dendrogram",
+    "ПолеДендрограммы": "dendrogram",
+}
+
+STR_ONLY_TYPE_SYNONYMS = {"commandBar", "autoCommandBar", "КоманднаяПанель"}
+
+PANEL_SYNONYMS = {
+    'commandBar': ['commandBar', 'autoCommandBar', 'AutoCommandBar', 'autoCmdBar', 'cmdBar', 'КоманднаяПанель'],
+    'contextMenu': ['contextMenu', 'ContextMenu', 'КонтекстноеМеню'],
+}
+
+REF_ROOT_SYNONYMS = {
+    "Перечисление": "Enum",
+    "Справочник": "Catalog",
+    "Документ": "Document",
+    "ПланСчетов": "ChartOfAccounts",
+    "ПланВидовХарактеристик": "ChartOfCharacteristicTypes",
+    "ПланВидовРасчета": "ChartOfCalculationTypes",
+    "ПланВидовРасчёта": "ChartOfCalculationTypes",
+    "ПланОбмена": "ExchangePlan",
+    "БизнесПроцесс": "BusinessProcess",
+    "Задача": "Task",
+    "РегистрСведений": "InformationRegister",
+    "РегистрНакопления": "AccumulationRegister",
+    "РегистрБухгалтерии": "AccountingRegister",
+    "РегистрРасчета": "CalculationRegister",
+    "РегистрРасчёта": "CalculationRegister",
+    "ЖурналДокументов": "DocumentJournal",
+    "КритерийОтбора": "FilterCriterion",
+}
+
+ENUM_VALUE_SYNONYMS = {"EnumValue", "ЗначениеПеречисления"}
+
+_FMT_MARKUP_RE = re.compile(r'</>|<\s*(?:link|b|i|u|s|color|colorStyle|bgColor|bgColorStyle|font|fontSize|fontStyle|img)(?:\s|>)', re.I)
+
+COMPANION_STRUCT_KEYS = {
+    'width', 'autoMaxWidth', 'maxWidth', 'height', 'autoMaxHeight', 'maxHeight', 'verticalAlign', 'titleHeight',
+    'horizontalStretch', 'verticalStretch', 'horizontalAlign', 'groupHorizontalAlign', 'groupVerticalAlign',
+    'visible', 'hidden', 'enabled', 'disabled', 'hyperlink', 'events', 'tooltip',
+    'textColor', 'backColor', 'borderColor', 'font', 'border', 'цветтекста', 'цветфона', 'цветрамки', 'шрифт', 'рамка',
+}
+
+ADDITION_TYPE_MAP = {
+    'searchString':  {'tag': 'SearchStringAddition',  'type': 'SearchStringRepresentation', 'suffix': 'СтрокаПоиска'},
+    'viewStatus':    {'tag': 'ViewStatusAddition',    'type': 'ViewStatusRepresentation',   'suffix': 'СостояниеПросмотра'},
+    'searchControl': {'tag': 'SearchControlAddition', 'type': 'SearchControl',               'suffix': 'УправлениеПоиском'},
+}
+
+ADDITION_KEY_SYNONYMS = {
+    'searchString':  ['SearchStringAddition', 'SearchStringRepresentation', 'строкаПоиска', 'отображениеСтрокиПоиска'],
+    'viewStatus':    ['ViewStatusAddition', 'ViewStatusRepresentation', 'состояниеПросмотра'],
+    'searchControl': ['SearchControlAddition', 'SearchControl', 'управлениеПоиском'],
+}
+
+_current_table_name = {'name': None}
+
+APPEARANCE_SPEC = {
+    'titleTextColor':  ('TitleTextColor', 'color'),
+    'titleBackColor':  ('TitleBackColor', 'color'),
+    'titleFont':       ('TitleFont', 'font'),
+    'footerTextColor': ('FooterTextColor', 'color'),
+    'footerBackColor': ('FooterBackColor', 'color'),
+    'footerFont':      ('FooterFont', 'font'),
+    'textColor':       ('TextColor', 'color'),
+    'backColor':       ('BackColor', 'color'),
+    'borderColor':     ('BorderColor', 'color'),
+    'border':          ('Border', 'border'),
+    'font':            ('Font', 'font'),
+}
+
+APPEARANCE_SYNONYMS = {
+    'цветтекста': 'textColor', 'цветфона': 'backColor', 'цветрамки': 'borderColor',
+    'цветтекстазаголовка': 'titleTextColor', 'цветфоназаголовка': 'titleBackColor', 'шрифтзаголовка': 'titleFont',
+    'цветтекстаподвала': 'footerTextColor', 'цветфонаподвала': 'footerBackColor', 'шрифтподвала': 'footerFont',
+    'шрифт': 'font', 'рамка': 'border',
+}
+
+PROP_SYNONYMS = {
+    'пометка': 'checked',
+    'кнопкавыбора': 'choiceButton', 'кнопкаочистки': 'clearButton', 'кнопкарегулирования': 'spinButton',
+    'кнопкавыпадающегосписка': 'dropListButton', 'кнопкасписковоговыбора': 'choiceListButton',
+    'кнопкаоткрытия': 'openButton', 'кнопкапоумолчанию': 'defaultButton',
+    'быстрыйвыбор': 'quickChoice', 'формавыбора': 'choiceForm', 'историявыборапривводе': 'choiceHistoryOnInput',
+    'выборгруппиэлементов': 'choiceFoldersAndItems', 'фиксациявтаблице': 'fixingInTable',
+    'путькданнымподвала': 'footerDataPath', 'автоотметканезаполненного': 'markIncomplete',
+    'многострочныйрежим': 'multiLine', 'режимпароля': 'passwordMode', 'переноспословам': 'wrap',
+    'расположениезаголовка': 'titleLocation', 'пропускатьпривводе': 'skipOnInput',
+    'заголовок': 'title', 'ширина': 'width', 'высота': 'height', 'подсказкаввода': 'inputHint',
+}
+
+APP_ORDER_FIELD =['titleTextColor', 'titleBackColor', 'titleFont', 'footerTextColor', 'footerBackColor', 'footerFont', 'textColor', 'backColor', 'borderColor', 'border', 'font']
+
+APP_ORDER_DECORATION = ['textColor', 'font', 'backColor', 'borderColor', 'border']
+
+APP_ORDER_BUTTON = ['textColor', 'backColor', 'borderColor', 'font']
+
+GENERIC_SCALARS = [
+    ('VerticalAlign', 'verticalAlign', 'value'),
+    ('ThroughAlign', 'throughAlign', 'value'),
+    ('EnableContentChange', 'enableContentChange', 'bool'),
+    ('PictureSize', 'pictureSize', 'value'),
+    ('TitleHeight', 'titleHeight', 'value'),
+    ('ChildItemsWidth', 'childItemsWidth', 'value'),
+    ('ShowLeftMargin', 'showLeftMargin', 'bool'),
+    ('CellHyperlink', 'cellHyperlink', 'bool'),
+    ('ViewMode', 'viewMode', 'value'),
+    ('VerticalScrollBar', 'verticalScrollBar', 'value'),
+    ('RowInputMode', 'rowInputMode', 'value'),
+    ('Mask', 'mask', 'value'),
+    ('CreateButton', 'createButton', 'bool'),
+    ('FixingInTable', 'fixingInTable', 'value'),
+    ('VerticalSpacing', 'verticalSpacing', 'value'),
+    # Spec-fields (document/gauge) - type-specific enum/bool scalars pass-through
+    ('HorizontalScrollBar', 'horizontalScrollBar', 'value'),
+    ('ViewScalingMode', 'viewScalingMode', 'value'),
+    ('Output', 'output', 'value'),
+    ('SelectionShowMode', 'selectionShowMode', 'value'),
+    ('PointerType', 'pointerType', 'value'),
+    ('DrawingSelectionShowMode', 'drawingSelectionShowMode', 'value'),
+    ('WarningOnEditRepresentation', 'warningOnEditRepresentation', 'value'),
+    ('MarkingAppearance', 'markingAppearance', 'value'),
+    ('Protection', 'protection', 'bool'),
+    ('Edit', 'edit', 'bool'),
+    ('ShowGrid', 'showGrid', 'bool'),
+    ('ShowGroups', 'showGroups', 'bool'),
+    ('ShowHeaders', 'showHeaders', 'bool'),
+    ('ShowRowAndColumnNames', 'showRowAndColumnNames', 'bool'),
+    ('ShowCellNames', 'showCellNames', 'bool'),
+    ('ShowPercent', 'showPercent', 'bool'),
+    # Report-form контекст: интервал группы / представление кнопки в контекстном меню / детальное представление настройки таблицы
+    ('HorizontalSpacing', 'horizontalSpacing', 'value'),
+    ('RepresentationInContextMenu', 'representationInContextMenu', 'value'),
+    ('SettingsNamedItemDetailedRepresentation', 'settingsNamedItemDetailedRepresentation', 'bool'),
+    # Хвост: высота элемента списка (radio) / ширина выпадающего списка (input)
+    ('ItemHeight', 'itemHeight', 'value'),
+    ('DropListWidth', 'dropListWidth', 'value'),
+    # Хвост CI-форм: динамический заголовок (Page/Group) / расширенное ред. (input) / высота таблицы по строкам
+    ('TitleDataPath', 'titleDataPath', 'value'),
+    ('ExtendedEdit', 'extendedEdit', 'bool'),
+    ('MaxRowsCount', 'maxRowsCount', 'value'),
+    ('AutoMaxRowsCount', 'autoMaxRowsCount', 'bool'),
+    ('HeightControlVariant', 'heightControlVariant', 'value'),
+    ('EditTextUpdate', 'editTextUpdate', 'value'),
+    # Корпусный хвост: свёртка группы / форма попапа / авто-добавление / выделение отрицательных /
+    # нач. позиция списка / высота списка выбора / три состояния / прокрутка страницы при сжатии
+    ('ControlRepresentation', 'controlRepresentation', 'value'),
+    ('ShapeRepresentation', 'shapeRepresentation', 'value'),
+    ('AutoAddIncomplete', 'autoAddIncomplete', 'bool'),
+    ('MarkNegatives', 'markNegatives', 'bool'),
+    ('InitialListView', 'initialListView', 'value'),
+    ('ChoiceListHeight', 'choiceListHeight', 'value'),
+    ('ThreeState', 'threeState', 'bool'),
+    ('ScrollOnCompress', 'scrollOnCompress', 'bool'),
+    # Сочетание клавиш — общее свойство (команда — отдельный путь)
+    ('Shortcut', 'shortcut', 'value'),
+    # Батч простых скаляров (input/radio/group/picDecoration/button; Table-специфичные — отдельно)
+    ('IncompleteChoiceMode', 'incompleteChoiceMode', 'value'),
+    ('EqualColumnsWidth', 'equalColumnsWidth', 'bool'),
+    ('ChildrenAlign', 'childrenAlign', 'value'),
+    ('ImageScale', 'imageScale', 'value'),
+    ('Zoomable', 'zoomable', 'bool'),
+    ('Shape', 'shape', 'value'),
+    ('PictureLocation', 'pictureLocation', 'value'),
+    # Равная ширина элементов (check/radio) / высота заголовка пункта (radio)
+    ('EqualItemsWidth', 'equalItemsWidth', 'bool'),
+    ('ItemTitleHeight', 'itemTitleHeight', 'value'),
+    # Спец-режим ввода текста (input, моб.: Email/PhoneNumber/...) — листовой enum-скаляр
+    ('SpecialTextInputMode', 'specialTextInputMode', 'value'),
+    # Ширина пункта (radio/check) / выбор нескольких значений из выпадающего (input)
+    ('ItemWidth', 'itemWidth', 'value'),
+    ('ShowCheckBoxesInDropList', 'showCheckBoxesInDropList', 'bool'),
+    ('MultipleValueDataPath', 'multipleValueDataPath', 'value'),
+    ('MultipleValuePresentDataPath', 'multipleValuePresentDataPath', 'value'),
+    # Режим авто-показа кнопок открытия/очистки (input, enum)
+    ('AutoShowOpenButtonMode', 'autoShowOpenButtonMode', 'value'),
+    ('AutoShowClearButtonMode', 'autoShowClearButtonMode', 'value'),
+    # Оформление/картинка множественного выбора (input, редко; цвета — текст-контент)
+    ('MultipleValuesTextColor', 'multipleValuesTextColor', 'value'),
+    ('MultipleValuesBackColor', 'multipleValuesBackColor', 'value'),
+    ('MultipleValuePictureShape', 'multipleValuePictureShape', 'value'),
+    ('MultipleValuePictureDataPath', 'multipleValuePictureDataPath', 'value'),
+    # Хвост листовых скаляров (по 1): автокоррекция / уникальность команды / пустое множ.значение / гориз.сжатие
+    ('AutoCorrectionOnTextInput', 'autoCorrectionOnTextInput', 'value'),
+    ('SpellCheckingOnTextInput', 'spellCheckingOnTextInput', 'value'),
+    ('CommandUniqueness', 'commandUniqueness', 'bool'),
+    ('AllowInputEmptyMultipleValues', 'allowInputEmptyMultipleValues', 'bool'),
+    ('BehaviorOnHorizontalCompression', 'behaviorOnHorizontalCompression', 'value'),
+]
+
+GENERIC_SCALAR_KEYS = {k for _, k, _ in GENERIC_SCALARS}
+
+_TITLE_LOC_MAP = {'none': 'None', 'left': 'Left', 'right': 'Right', 'top': 'Top', 'bottom': 'Bottom', 'auto': 'Auto'}
+
+V8_TYPES = {
+    "ValueTable": "v8:ValueTable",
+    "ValueTree": "v8:ValueTree",
+    "ValueList": "v8:ValueListType",
+    "TypeDescription": "v8:TypeDescription",
+    "Universal": "v8:Universal",
+    "FixedArray": "v8:FixedArray",
+    "FixedStructure": "v8:FixedStructure",
+}
+
+UI_TYPES = {
+    "FormattedString": "v8ui:FormattedString",
+    "Picture": "v8ui:Picture",
+    "Color": "v8ui:Color",
+    "Font": "v8ui:Font",
+}
+
+DCS_MAP = {
+    "DataCompositionSettings": "dcsset:DataCompositionSettings",
+    "DataCompositionSchema": "dcssch:DataCompositionSchema",
+    "DataCompositionComparisonType": "dcscor:DataCompositionComparisonType",
+}
+
+CFG_REF_PATTERN = re.compile(
+    r'^(CatalogRef|CatalogObject|DocumentRef|DocumentObject|EnumRef|'
+    r'ChartOfAccountsRef|ChartOfAccountsObject|ChartOfCharacteristicTypesRef|ChartOfCharacteristicTypesObject|'
+    r'ChartOfCalculationTypesRef|ChartOfCalculationTypesObject|'
+    r'ExchangePlanRef|ExchangePlanObject|BusinessProcessRef|BusinessProcessObject|TaskRef|TaskObject|'
+    r'InformationRegisterRecordSet|InformationRegisterRecordManager|'
+    r'AccumulationRegisterRecordSet|AccountingRegisterRecordSet|'
+    r'ConstantsSet|DataProcessorObject|ReportObject)\.'
+)
+
+KNOWN_INVALID_TYPES = {
+    'FormDataStructure': 'Runtime type. Use object type without cfg: prefix (e.g. CatalogObject.Контрагенты, DocumentObject.Приход)',
+    'FormDataCollection': 'Runtime type. Use ValueTable',
+    'FormDataTree': 'Runtime type. Use ValueTree',
+    'FormDataTreeItem': 'Runtime type, not valid in XML',
+    'FormDataCollectionItem': 'Runtime type, not valid in XML',
+    'FormGroup': 'UI element type, not a data type',
+    'FormField': 'UI element type, not a data type',
+    'FormButton': 'UI element type, not a data type',
+    'FormDecoration': 'UI element type, not a data type',
+    'FormTable': 'UI element type, not a data type',
+}
+
+_FORM_TYPE_SYNONYMS = {
+    "строка": "string", "число": "decimal", "булево": "boolean",
+    "дата": "date", "датавремя": "dateTime",
+    "number": "decimal", "bool": "boolean",
+    "справочникссылка": "CatalogRef", "справочникобъект": "CatalogObject",
+    "документссылка": "DocumentRef", "документобъект": "DocumentObject",
+    "перечислениессылка": "EnumRef",
+    "плансчетовссылка": "ChartOfAccountsRef",
+    "планвидовхарактеристикссылка": "ChartOfCharacteristicTypesRef",
+    "планвидоврасчётассылка": "ChartOfCalculationTypesRef",
+    "планвидоврасчетассылка": "ChartOfCalculationTypesRef",
+    "планобменассылка": "ExchangePlanRef",
+    "бизнеспроцессссылка": "BusinessProcessRef",
+    "задачассылка": "TaskRef",
+    "определяемыйтип": "DefinedType",
+    "характеристика": "Characteristic",
+    "любаяссылка": "AnyRef",
+    "любаяссылкаиб": "AnyIBRef",
+    # Платформенные v8-типы (forgiving: англ. без префикса + рус.) → каноничный с префиксом v8:
+    "standardperiod": "v8:StandardPeriod",
+    "стандартныйпериод": "v8:StandardPeriod",
+    "standardbeginningdate": "v8:StandardBeginningDate",
+    "стандартнаядатаначала": "v8:StandardBeginningDate",
+    "uuid": "v8:UUID",
+    "уникальныйидентификатор": "v8:UUID",
+    "списокзначений": "ValueList",
+}
+
+TYPE_SYNONYMS = _FORM_TYPE_SYNONYMS
+
+def esc_xml(s):
+    # Эскейп ЗНАЧЕНИЯ АТРИБУТА: & < > и кавычка — внутри "..." литеральная " невалидна.
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+
+def esc_xml_text(s):
+    # Экранирование ТЕКСТА элемента (<v8:content>, <Value>): только & < > .
+    # Кавычки/апострофы в тексте 1С не экранирует (пишет литерально) — &quot; ломал бы раундтрип.
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def di_attr(el):
+    # DisplayImportance — атрибут открывающего тега элемента (адаптивная важность). "" если нет.
+    if isinstance(el, dict) and el.get('displayImportance'):
+        return f' DisplayImportance="{esc_xml(str(el["displayImportance"]))}"'
+    return ''
+
+
+# Базовая директория для @file-ссылок в query динсписка (устанавливается в main)
+# Без -JsonPath (режим по метаданным объекта) запросов во входе нет, но база пути должна
+# оставаться валидной — как и в PS-порте, где в этой ветке берётся текущий каталог.
+
+
+def emit_ml_items(lines, indent, val):
+    # строка → один ru-элемент; объект {lang: text} → по элементу на язык
+    if isinstance(val, dict):
+        for k, v in val.items():
+            lines.append(f"{indent}<v8:item>")
+            lines.append(f"{indent}\t<v8:lang>{k}</v8:lang>")
+            lines.append(f"{indent}\t<v8:content>{esc_xml_text(str(v))}</v8:content>")
+            lines.append(f"{indent}</v8:item>")
+    else:
+        lines.append(f"{indent}<v8:item>")
+        lines.append(f"{indent}\t<v8:lang>ru</v8:lang>")
+        lines.append(f"{indent}\t<v8:content>{esc_xml_text(str(val))}</v8:content>")
+        lines.append(f"{indent}</v8:item>")
+
+
+def emit_mltext(lines, indent, tag, text, xsi_type=None):
+    attr = f' xsi:type="{xsi_type}"' if xsi_type else ''
+    if not text:
+        lines.append(f"{indent}<{tag}{attr}/>")
+        return
+    lines.append(f"{indent}<{tag}{attr}>")
+    emit_ml_items(lines, f"{indent}\t", text)
+    lines.append(f"{indent}</{tag}>")
+
+
+def _ensure_unique(name, seen, kind):
+    if name.lower() in seen:
+        print(f"[ERROR] Duplicate {kind} name '{name}' — names must be unique within their collection in a 1C form (set a unique 'name')", file=sys.stderr)
+        sys.exit(1)
+    seen.add(name.lower())
+
+
+# --- Event handler name generator ---
+
+
+def normalize_panel_synonyms(el):
+    if not isinstance(el, dict):
+        return
+    for canon, syns in PANEL_SYNONYMS.items():
+        for syn in syns:
+            if syn in el and isinstance(el[syn], (list, dict)):
+                if syn != canon and canon not in el:
+                    el[canon] = el.pop(syn)
+                break
+
+
+# Maps Russian/English root of typed reference path to canonical English root
+
+
+def normalize_choice_value(value):
+    """Returns dict {xsi_type, text} for a choiceList item value."""
+    if isinstance(value, bool):
+        return {"xsi_type": "xs:boolean", "text": "true" if value else "false"}
+    if isinstance(value, (int, float)):
+        return {"xsi_type": "xs:decimal", "text": str(value)}
+
+    s = "" if value is None else str(value)
+    if not s:
+        return {"xsi_type": "xs:string", "text": ""}
+
+    # ISO datetime ("2020-01-01T00:00:00") → xs:dateTime
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}', s):
+        return {"xsi_type": "xs:dateTime", "text": s}
+
+    # Raw-ссылка по GUID (метаданные.значение) "GUID.GUID" → xr:DesignTimeRef (всегда ссылка, не строка)
+    if re.fullmatch(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.[0-9a-fA-F]{8}-[0-9a-fA-F-]+', s):
+        return {"xsi_type": "xr:DesignTimeRef", "text": s}
+
+    parts = s.split(".")
+    if len(parts) >= 2:
+        root = parts[0]
+        canon_root = None
+        if root in REF_ROOT_SYNONYMS:
+            canon_root = REF_ROOT_SYNONYMS[root]
+        elif root in REF_ROOT_SYNONYMS.values():
+            canon_root = root
+
+        if canon_root:
+            type_name = parts[1]
+            normalized = None
+            if canon_root == "Enum":
+                if len(parts) == 3 and parts[2] == 'EmptyRef':
+                    # "Enum.X.EmptyRef" — пустая ссылка, НЕ значение перечисления (без .EnumValue.)
+                    normalized = f"Enum.{type_name}.EmptyRef"
+                elif len(parts) == 3:
+                    normalized = f"Enum.{type_name}.EnumValue.{parts[2]}"
+                elif len(parts) >= 4:
+                    member = parts[2]
+                    if member in ENUM_VALUE_SYNONYMS:
+                        rest = ".".join(parts[3:])
+                    else:
+                        rest = ".".join(parts[2:])
+                    normalized = f"Enum.{type_name}.EnumValue.{rest}"
+            else:
+                if len(parts) >= 3:
+                    tail = ".".join(parts[1:])
+                    normalized = f"{canon_root}.{tail}"
+
+            if normalized:
+                return {"xsi_type": "xr:DesignTimeRef", "text": normalized}
+
+    return {"xsi_type": "xs:string", "text": s}
+
+
+def emit_choice_presentation(lines, pres, indent):
+    """Accepts None/empty → <Presentation/>; str → ru only; dict → multi-lang."""
+    if pres is None or (isinstance(pres, str) and pres == ""):
+        lines.append(f"{indent}<Presentation/>")
+        return
+
+    if isinstance(pres, str):
+        pairs = [("ru", pres)]
+    elif isinstance(pres, dict):
+        pairs = [(str(k), str(v)) for k, v in pres.items()]
+    else:
+        pairs = [("ru", str(pres))]
+
+    lines.append(f"{indent}<Presentation>")
+    for lang, content in pairs:
+        lines.append(f"{indent}\t<v8:item>")
+        lines.append(f"{indent}\t\t<v8:lang>{lang}</v8:lang>")
+        lines.append(f"{indent}\t\t<v8:content>{esc_xml_text(content)}</v8:content>")
+        lines.append(f"{indent}\t</v8:item>")
+    lines.append(f"{indent}</Presentation>")
+
+
+def choice_value_tag(norm):
+    # <Value> для choiceList/choiceParameters: пустой текст → самозакрывающийся тег (зеркало платформы).
+    if not norm["text"]:
+        return f'<Value xsi:type="{norm["xsi_type"]}"/>'
+    return f'<Value xsi:type="{norm["xsi_type"]}">{esc_xml_text(norm["text"])}</Value>'
+
+
+def emit_choice_list(lines, el, indent):
+    # <ChoiceList> — у RadioButtonField и InputField. Элемент: { value, presentation?/title? }.
+    choice_list = el.get('choiceList') or []
+    if not choice_list:
+        return
+    lines.append(f'{indent}<ChoiceList>')
+    item_indent = f'{indent}\t'
+    for item in choice_list:
+        if not isinstance(item, dict):
+            continue
+        val_raw = item.get('value', item.get('значение'))
+        has_pres = any(k in item for k in ('presentation', 'представление', 'title'))
+        pres_raw = item.get('presentation', item.get('представление', item.get('title')))
+
+        # valueType: явный xsi:type значения (системное перечисление ent:*, иной не-примитив) —
+        # переопределяет авто-детект (normalize_choice_value вывела бы xs:string).
+        vt_raw = item.get('valueType')
+        if vt_raw == 'nil':
+            norm = {'xsi_type': None, 'text': None, 'nil': True}
+        elif vt_raw:
+            norm = {'xsi_type': str(vt_raw), 'text': '' if val_raw is None else str(val_raw)}
+        else:
+            norm = normalize_choice_value(val_raw)
+
+        if not has_pres:
+            if norm.get('xsi_type') == 'xr:DesignTimeRef':
+                tail = norm['text'].split('.')[-1]
+                pres_raw = title_from_name(tail)
+            else:
+                pres_raw = norm.get('text')
+
+        lines.append(f'{item_indent}<xr:Item>')
+        val_indent = f'{item_indent}\t'
+        lines.append(f'{val_indent}<xr:Presentation/>')
+        lines.append(f'{val_indent}<xr:CheckState>0</xr:CheckState>')
+        lines.append(f'{val_indent}<xr:Value xsi:type="FormChoiceListDesTimeValue">')
+        emit_choice_presentation(lines, pres_raw, f'{val_indent}\t')
+        val_tag = '<Value xsi:nil="true"/>' if norm.get('nil') else choice_value_tag(norm)
+        lines.append(f'{val_indent}\t{val_tag}')
+        lines.append(f'{val_indent}</xr:Value>')
+        lines.append(f'{item_indent}</xr:Item>')
+    lines.append(f'{indent}</ChoiceList>')
+
+
+def get_el_prop(obj, names):
+    # Читает свойство из dict по списку синонимов (первый найденный, иначе None).
+    if not isinstance(obj, dict):
+        return None
+    for n in names:
+        if n in obj:
+            return obj[n]
+    return None
+
+
+def to_scalar_literal(s):
+    # Литерал shorthand → тип: true/false → bool, целое/дробное → число, иначе строка.
+    t = str(s).strip()
+    if t.lower() == 'true':
+        return True
+    if t.lower() == 'false':
+        return False
+    if re.fullmatch(r'-?\d+', t):
+        return int(t)
+    if re.fullmatch(r'-?\d+\.\d+', t):
+        return float(t)
+    return t
+
+
+def from_choice_param_shorthand(s):
+    # "name=value" либо "name=v1, v2, …" (запятые → массив). → {name, value}.
+    eq = s.find('=')
+    if eq < 0:
+        return {'name': s.strip()}
+    name = s[:eq].strip()
+    rest = s[eq + 1:]
+    if ',' in rest:
+        return {'name': name, 'value': [to_scalar_literal(p) for p in rest.split(',')]}
+    return {'name': name, 'value': to_scalar_literal(rest)}
+
+
+def from_choice_param_link_shorthand(s):
+    # "name=dataPath" либо "name=dataPath:DontChange". → {name, dataPath, valueChange?}.
+    eq = s.find('=')
+    if eq < 0:
+        return {'name': s.strip()}
+    o = {'name': s[:eq].strip()}
+    rest = s[eq + 1:].strip()
+    m = re.fullmatch(r'(.*):(Clear|DontChange|очистить|неизменять)', rest, re.IGNORECASE)
+    if m:
+        o['dataPath'] = m.group(1).strip()
+        o['valueChange'] = m.group(2)
+    else:
+        o['dataPath'] = rest
+    return o
+
+
+def from_type_link_shorthand(s):
+    # "dataPath" либо "dataPath#linkItem". → {dataPath, linkItem}.
+    m = re.fullmatch(r'(.*)#(\d+)', str(s))
+    if m:
+        return {'dataPath': m.group(1).strip(), 'linkItem': int(m.group(2))}
+    return {'dataPath': str(s).strip()}
+
+
+def emit_choice_param_value(lines, value, indent):
+    # Внутреннее значение параметра выбора (FormChoiceListDesTimeValue): <Presentation/> + <Value>.
+    # Скаляр → один Value; массив → v8:FixedArray из вложенных FormChoiceListDesTimeValue.
+    lines.append(f'{indent}<Presentation/>')
+    if isinstance(value, (list, tuple)):
+        lines.append(f'{indent}<Value xsi:type="v8:FixedArray">')
+        for v in value:
+            norm = normalize_choice_value(v)
+            lines.append(f'{indent}\t<v8:Value xsi:type="FormChoiceListDesTimeValue">')
+            lines.append(f'{indent}\t\t<Presentation/>')
+            lines.append(f'{indent}\t\t{choice_value_tag(norm)}')
+            lines.append(f'{indent}\t</v8:Value>')
+        lines.append(f'{indent}</Value>')
+    else:
+        norm = normalize_choice_value(value)
+        lines.append(f'{indent}{choice_value_tag(norm)}')
+
+
+def emit_choice_parameters(lines, el, indent):
+    # <ChoiceParameters> (параметры выбора поля ввода) — [{name, value}]. value через
+    # normalize_choice_value; массив значений → FixedArray. Рус. синонимы имя/значение.
+    cp = el.get('choiceParameters') or []
+    if not cp:
+        return
+    lines.append(f'{indent}<ChoiceParameters>')
+    for item in cp:
+        if isinstance(item, str):
+            item = from_choice_param_shorthand(item)
+        name = get_el_prop(item, ('name', 'имя'))
+        has_val = isinstance(item, dict) and ('value' in item or 'значение' in item)
+        val = get_el_prop(item, ('value', 'значение'))
+        name_s = '' if name is None else str(name)
+        lines.append(f'{indent}\t<app:item name="{esc_xml(name_s)}">')
+        # Параметр выбора без значения → <app:value xsi:nil="true"/> (платформа, 13 в корпусе);
+        # со значением (в т.ч. пустой строкой) → FormChoiceListDesTimeValue.
+        if not has_val:
+            lines.append(f'{indent}\t\t<app:value xsi:nil="true"/>')
+        else:
+            lines.append(f'{indent}\t\t<app:value xsi:type="FormChoiceListDesTimeValue">')
+            emit_choice_param_value(lines, val, f'{indent}\t\t\t')
+            lines.append(f'{indent}\t\t</app:value>')
+        lines.append(f'{indent}\t</app:item>')
+    lines.append(f'{indent}</ChoiceParameters>')
+
+
+def emit_choice_parameter_links(lines, el, indent):
+    # <ChoiceParameterLinks> (связи параметров выбора) — [{name, dataPath, valueChange?}].
+    # valueChange всегда эмитится, дефолт Clear; forgiving Clear/DontChange + рус. синонимы.
+    cpl = el.get('choiceParameterLinks') or []
+    if not cpl:
+        return
+    lines.append(f'{indent}<ChoiceParameterLinks>')
+    for lk in cpl:
+        if isinstance(lk, str):
+            lk = from_choice_param_link_shorthand(lk)
+        name = get_el_prop(lk, ('name', 'имя'))
+        dp = get_el_prop(lk, ('dataPath', 'path', 'путь'))
+        vc_raw = get_el_prop(lk, ('valueChange', 'режимИзменения'))
+        vc = 'Clear'
+        if vc_raw:
+            s = str(vc_raw).lower()
+            if s in ('clear', 'очистить', 'очистка'):
+                vc = 'Clear'
+            elif s in ('dontchange', 'неизменять', 'неменять', 'нет'):
+                vc = 'DontChange'
+            else:
+                vc = str(vc_raw)
+        name_s = '' if name is None else str(name)
+        dp_s = '' if dp is None else str(dp)
+        lines.append(f'{indent}\t<xr:Link>')
+        lines.append(f'{indent}\t\t<xr:Name>{esc_xml_text(name_s)}</xr:Name>')
+        lines.append(f'{indent}\t\t<xr:DataPath xsi:type="xs:string">{esc_xml_text(dp_s)}</xr:DataPath>')
+        lines.append(f'{indent}\t\t<xr:ValueChange>{vc}</xr:ValueChange>')
+        lines.append(f'{indent}\t</xr:Link>')
+    lines.append(f'{indent}</ChoiceParameterLinks>')
+
+
+def emit_type_link(lines, el, indent):
+    # <TypeLink> (связь по типу) — {dataPath, linkItem}. linkItem дефолт 0.
+    tl = el.get('typeLink')
+    if not tl:
+        return
+    if isinstance(tl, str):
+        tl = from_type_link_shorthand(tl)
+    dp = get_el_prop(tl, ('dataPath', 'path', 'путь'))
+    li = get_el_prop(tl, ('linkItem', 'элементСвязи'))
+    if li is None:
+        li = 0
+    dp_s = '' if dp is None else str(dp)
+    lines.append(f'{indent}<TypeLink>')
+    lines.append(f'{indent}\t<xr:DataPath>{esc_xml_text(dp_s)}</xr:DataPath>')
+    lines.append(f'{indent}\t<xr:LinkItem>{li}</xr:LinkItem>')
+    lines.append(f'{indent}</TypeLink>')
+
+
+def normalize_radio_button_type(raw):
+    if not raw:
+        return "Auto"
+    s = str(raw).strip().lower()
+    if s in ("auto", "авто"):
+        return "Auto"
+    if s in ("radiobutton", "radiobuttons", "переключатель", "радио"):
+        return "RadioButtons"
+    if s in ("tumbler", "тумблер"):
+        return "Tumbler"
+    return str(raw).strip()
+
+
+def get_handler_name(element_name, event_name):
+    suffix = EVENT_SUFFIX_MAP.get(event_name)
+    if suffix:
+        return f"{element_name}{suffix}"
+    return f"{element_name}{event_name}"
+
+
+def get_element_name(el, type_key):
+    if el.get('name'):
+        return str(el['name'])
+    return str(el.get(type_key, ''))
+
+
+# Собрать упорядоченный список событий элемента (имя, обработчик) из DSL.
+# Основной формат: el['events'] = { Событие: ИмяОбработчика } (None/"" → авто-имя по конвенции).
+# Legacy (принимается ради совместимости): el['on'] (массив) + el['handlers'] (переопределение имён).
+
+
+def get_event_pairs(el, element_name):
+    pairs = []
+    events = el.get('events')
+    if events:
+        for ev_name, val in events.items():
+            # Значение — имя обработчика; null — имя по шаблону; объект { handler, callType } или массив
+            # таких объектов (в расширении на одно событие вешают и Before, и After)
+            for v in (val if isinstance(val, list) else [val]):
+                if isinstance(v, dict):
+                    handler = '' if v.get('handler') is None else str(v.get('handler'))
+                    call_type = normalize_call_type(v.get('callType'), element_name, ev_name)
+                else:
+                    handler = '' if v is None else str(v)
+                    call_type = ''
+                if not handler:
+                    handler = get_handler_name(element_name, ev_name)
+                pairs.append((ev_name, handler, call_type))
+    elif el.get('on'):
+        handlers = el.get('handlers') or {}
+        for evt in (el['on'] if isinstance(el['on'], list) else [el['on']]):
+            if isinstance(evt, dict):
+                evt_name = str(evt.get('event', ''))
+                handler = '' if evt.get('handler') is None else str(evt.get('handler'))
+                call_type = normalize_call_type(evt.get('callType'), element_name, evt_name)
+            else:
+                evt_name, handler, call_type = str(evt), '', ''
+            if not handler:
+                handler = str(handlers[evt_name]) if handlers.get(evt_name) else get_handler_name(element_name, evt_name)
+            pairs.append((evt_name, handler, call_type))
+    return pairs
+
+
+# Вид вызова обработчика в расширении: Before / After / Override (регистр не важен); пусто — не указан.
+
+
+def normalize_call_type(raw, element_name, event_name):
+    if raw is None or str(raw) == '':
+        return ''
+    for v in ('Before', 'After', 'Override'):
+        if str(raw).lower() == v.lower():
+            return v
+    print(f"[ERROR] Element '{element_name}', event '{event_name}': callType '{raw}' — expected Before, After or Override", file=sys.stderr)
+    sys.exit(1)
+
+
+# Проверить, подключено ли событие к элементу (в любом из форматов).
+
+
+def emit_events(lines, el, element_name, indent, type_key):
+    pairs = get_event_pairs(el, element_name)
+    if not pairs:
+        return
+
+    # Validate event names
+    if type_key and type_key in KNOWN_EVENTS:
+        allowed = KNOWN_EVENTS[type_key]
+        for ev_name, _, _ in pairs:
+            if allowed and str(ev_name) not in allowed:
+                print(f"[WARN] Unknown event '{ev_name}' for {type_key} '{element_name}'. Known: {', '.join(allowed)}")
+
+    lines.append(f"{indent}<Events>")
+    for ev_name, handler, call_type in pairs:
+        ct_attr = f' callType="{call_type}"' if call_type else ''
+        lines.append(f'{indent}\t<Event name="{ev_name}"{ct_attr}>{handler}</Event>')
+    lines.append(f"{indent}</Events>")
+
+
+# Детектор «настоящей» inline-разметки (1С: <link>/<b>/<color>/… и </>). Должен быть
+# идентичен form-decompile/form-compile.ps1, иначе гибрид-раундтрип поедет.
+
+
+def _has_real_markup(text):
+    if text is None:
+        return False
+    vals = list(text.values()) if isinstance(text, dict) else [text]
+    return any(_FMT_MARKUP_RE.search(str(v)) for v in vals)
+
+
+def resolve_ml_formatted(val):
+    # {text, formatted} = явный override; строка/мапа → авто-детект formatted
+    if isinstance(val, dict) and 'text' in val:
+        return val['text'], bool(val.get('formatted'))
+    return val, _has_real_markup(val)
+
+
+# ExtendedTooltip — это LabelDecoration: own-content (layout/оформление/флаги/hyperlink) ±текст.
+# Признак структурированной формы: объект с любым НЕ-текстовым ключом ({text,formatted}/{ru,en} → текст).
+
+
+def emit_companion_title(lines, content, indent):
+    text, fmt = resolve_ml_formatted(content)
+    lines.append(f'{indent}<Title formatted="{"true" if fmt else "false"}">')
+    emit_ml_items(lines, f'{indent}\t', text)
+    lines.append(f'{indent}</Title>')
+
+
+def emit_companion(lines, tag, name, indent, content=None):
+    cid = new_id()
+    has_content = content is not None and not (isinstance(content, str) and content == '')
+    if not has_content:
+        lines.append(f'{indent}<{tag} name="{name}" id="{cid}"/>')
+        return
+    inner = f'{indent}\t'
+    # DI-Attr от собственного объекта компаньона (не от владельца) — зеркало ps1
+    lines.append(f'{indent}<{tag} name="{name}" id="{cid}"{di_attr(content if isinstance(content, dict) else None)}>')
+    if isinstance(content, dict) and any(k in content for k in COMPANION_STRUCT_KEYS):
+        # own-content ПЕРЕД Title (в корпусе layout-first 582 vs 10).
+        emit_common_flags(lines, content, inner)
+        if content.get('hyperlink') is True:
+            lines.append(f'{inner}<Hyperlink>true</Hyperlink>')
+        emit_layout(lines, content, inner)
+        emit_appearance(lines, content, inner, 'decoration')
+        if 'text' in content:
+            emit_companion_title(lines, content, inner)
+        # ToolTip компаньона (подсказка самой расширенной подсказки) — после Title (порядок схемы LabelDecoration)
+        if content.get('tooltip'):
+            emit_mltext(lines, inner, 'ToolTip', content['tooltip'])
+        # События компаньона (ExtendedTooltip = LabelDecoration: напр. URLProcessing у hyperlink-подсказки)
+        emit_events(lines, content, name, inner, 'label')
+    else:
+        emit_companion_title(lines, content, inner)
+    lines.append(f'{indent}</{tag}>')
+
+
+def emit_companion_panel(lines, tag, name, indent, panel):
+    # Companion-командная-панель (ContextMenu/AutoCommandBar) с контентом: { autofill?, horizontalAlign?, children?[] }
+    # или массив = shorthand для { children }. Пусто/нет → self-closing.
+    cid = new_id()
+    autofill = None
+    halign = None
+    children = None
+    if isinstance(panel, list):
+        children = panel
+    elif panel is not None:
+        if panel.get('autofill') is not None:
+            autofill = bool(panel.get('autofill'))
+        if panel.get('horizontalAlign'):
+            halign = str(panel.get('horizontalAlign'))
+        children = panel.get('children')
+    has_children = bool(children) and len(children) > 0
+    # Платформа пишет <Autofill> только при false; true = дефолт (тег опускается).
+    emit_af_false = (autofill is False)
+    if not emit_af_false and not has_children and not halign:
+        lines.append(f'{indent}<{tag} name="{name}" id="{cid}"/>')
+        return
+    lines.append(f'{indent}<{tag} name="{name}" id="{cid}"{di_attr(panel if isinstance(panel, dict) else None)}>')
+    if halign:
+        lines.append(f'{indent}\t<HorizontalAlign>{halign}</HorizontalAlign>')
+    if emit_af_false:
+        lines.append(f'{indent}\t<Autofill>false</Autofill>')
+    if has_children:
+        lines.append(f'{indent}\t<ChildItems>')
+        for c in children:
+            emit_element(lines, c, f'{indent}\t\t', in_cmd_bar=True)
+        lines.append(f'{indent}\t</ChildItems>')
+    lines.append(f'{indent}</{tag}>')
+
+
+# Дополнения командной панели таблицы: тип DSL → XML-тег + AdditionSource.Type + суффикс имени.
+
+
+def get_hlocation(el):
+    # HorizontalLocation: auto (дефолт, опускаем) / left / right; forgiving + рус.
+    if not isinstance(el, dict):
+        return None
+    v = el.get('horizontalLocation')
+    if not v:
+        return None
+    s = str(v).lower()
+    if s in ('auto', 'авто'):
+        return None
+    if s in ('left', 'слева', 'лево'):
+        return 'Left'
+    if s in ('right', 'справа', 'право'):
+        return 'Right'
+    if s in ('center', 'центр', 'по центру'):
+        return 'Center'
+    return str(v)
+
+
+def emit_addition_body(lines, props, source, src_type, add_name, indent):
+    # Тело дополнения: AdditionSource + свойства (как у поля) + companions. props может быть None.
+    inner = f'{indent}\t'
+    lines.append(f'{inner}<AdditionSource>')
+    lines.append(f'{inner}\t<Item>{source}</Item>')
+    lines.append(f'{inner}\t<Type>{src_type}</Type>')
+    lines.append(f'{inner}</AdditionSource>')
+    if props:
+        if props.get('title'):
+            emit_mltext(lines, inner, 'Title', props['title'])
+        emit_common_flags(lines, props, inner)
+        if props.get('tooltip'):
+            emit_mltext(lines, inner, 'ToolTip', props['tooltip'])
+        if props.get('tooltipRepresentation'):
+            lines.append(f'{inner}<ToolTipRepresentation>{props["tooltipRepresentation"]}</ToolTipRepresentation>')
+        hl = get_hlocation(props)
+        if hl:
+            lines.append(f'{inner}<HorizontalLocation>{hl}</HorizontalLocation>')
+        emit_layout(lines, props, inner)
+        emit_appearance(lines, props, inner, 'field')
+    emit_companion(lines, 'ContextMenu', f'{add_name}КонтекстноеМеню', inner)
+    emit_companion(lines, 'ExtendedTooltip', f'{add_name}РасширеннаяПодсказка', inner)
+
+
+def emit_addition(lines, el, name, eid, type_key, indent):
+    # Кастомное дополнение (тип-элемент в commandBar): source дефолтит в текущую таблицу.
+    m = ADDITION_TYPE_MAP[type_key]
+    source = el.get('source') or _current_table_name['name'] or ''
+    lines.append(f'{indent}<{m["tag"]} name="{name}" id="{eid}"{di_attr(el)}>')
+    emit_addition_body(lines, el, source, m['type'], name, indent)
+    lines.append(f'{indent}</{m["tag"]}>')
+
+
+def emit_table_addition(lines, type_key, table_name, indent, override=None):
+    # Стандартное табличное дополнение (авто-генерация). override — объект отклонений из карты additions.
+    m = ADDITION_TYPE_MAP[type_key]
+    add_name = f'{table_name}{m["suffix"]}'
+    aid = new_id()
+    lines.append(f'{indent}<{m["tag"]} name="{add_name}" id="{aid}">')
+    emit_addition_body(lines, override, table_name, m['type'], add_name, indent)
+    lines.append(f'{indent}</{m["tag"]}>')
+
+
+def get_addition_override(additions, type_key):
+    # Прочитать override-объект для типа из per-table карты additions (с синонимами).
+    if not isinstance(additions, dict):
+        return None
+    for k in [type_key] + ADDITION_KEY_SYNONYMS[type_key]:
+        if k in additions:
+            return additions[k]
+    return None
+
+
+# Role-adjustable boolean (xr:Common + 0..N xr:Value name="Role.X").
+# Единый механизм платформы: UserVisible (элементы), View/Edit (атрибуты), Use (команды/кнопки).
+# Значение DSL: скаляр bool → только <xr:Common>; объект { common, roles:{ Имя: bool } } → +пер-ролевые исключения.
+# Имя роли принимаем с/без префикса "Role." (forgiving); на выход всегда с префиксом.
+
+
+def emit_xr_flag(lines, tag, val, indent):
+    if val is None:
+        return
+    if isinstance(val, bool):
+        lines.append(f"{indent}<{tag}>")
+        lines.append(f"{indent}\t<xr:Common>{'true' if val else 'false'}</xr:Common>")
+        lines.append(f"{indent}</{tag}>")
+        return
+    # объектная форма { common, roles }
+    common = bool(val.get('common')) if val.get('common') is not None else False
+    lines.append(f"{indent}<{tag}>")
+    lines.append(f"{indent}\t<xr:Common>{'true' if common else 'false'}</xr:Common>")
+    roles = val.get('roles')
+    if roles:
+        for rname, rval in roles.items():
+            # Forgiving: имя без префикса, с "Role." или кириллическим "Роль." → нормализуем в "Role.".
+            # Роль по GUID (заимствованная/расширение — name="<guid>" без префикса) эмитим как есть.
+            rn = re.sub(r'^(Role|Роль)\.', '', rname)
+            if not re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', rn):
+                rn = "Role." + rn
+            lines.append(f"{indent}\t<xr:Value name=\"{rn}\">{'true' if rval else 'false'}</xr:Value>")
+    lines.append(f"{indent}</{tag}>")
+
+
+def emit_common_flags(lines, el, indent):
+    if el.get('visible') is False or el.get('hidden') is True:
+        lines.append(f"{indent}<Visible>false</Visible>")
+    if el.get('userVisible') is not None:
+        emit_xr_flag(lines, 'UserVisible', el.get('userVisible'), indent)
+    if el.get('enabled') is False or el.get('disabled') is True:
+        lines.append(f"{indent}<Enabled>false</Enabled>")
+    if el.get('readOnly') is True:
+        lines.append(f"{indent}<ReadOnly>true</ReadOnly>")
+
+
+# Общие свойства элемента (любой тип, включая Button/cmdBar): default/skip/drag.
+
+
+def emit_common_element_props(lines, el, indent):
+    if el.get('defaultItem') is True:
+        lines.append(f"{indent}<DefaultItem>true</DefaultItem>")
+    if 'skipOnInput' in el and el['skipOnInput'] is not None:
+        siv = 'true' if el['skipOnInput'] is True else 'false'
+        lines.append(f"{indent}<SkipOnInput>{siv}</SkipOnInput>")
+    # EnableStartDrag — фактическое значение (платформа эмитит и явный false, напр. SpreadSheet)
+    if el.get('enableStartDrag') is not None:
+        lines.append(f'{indent}<EnableStartDrag>{"true" if el["enableStartDrag"] else "false"}</EnableStartDrag>')
+    if el.get('fileDragMode'):
+        lines.append(f"{indent}<FileDragMode>{el['fileDragMode']}</FileDragMode>")
+    # Cell-свойства поля в таблице (общие для Input/Label/Picture/CheckBox): захват «как есть»
+    for key, tag in (('showInHeader', 'ShowInHeader'), ('showInFooter', 'ShowInFooter'), ('autoCellHeight', 'AutoCellHeight')):
+        if el.get(key) is not None:
+            lines.append(f'{indent}<{tag}>{"true" if el[key] else "false"}</{tag}>')
+    # Динамический заголовок колонки-группы из данных (HeaderDataPath) — перед HeaderHorizontalAlign (порядок XSD)
+    if el.get('headerDataPath'):
+        lines.append(f"{indent}<HeaderDataPath>{esc_xml_text(str(el['headerDataPath']))}</HeaderDataPath>")
+    if el.get('footerHorizontalAlign'):
+        lines.append(f"{indent}<FooterHorizontalAlign>{el['footerHorizontalAlign']}</FooterHorizontalAlign>")
+    if el.get('headerHorizontalAlign'):
+        lines.append(f"{indent}<HeaderHorizontalAlign>{el['headerHorizontalAlign']}</HeaderHorizontalAlign>")
+    # Формат заголовка колонки-группы (ML-текст) — после HeaderHorizontalAlign (порядок XSD)
+    if el.get('headerFormat'):
+        emit_mltext(lines, indent, 'HeaderFormat', el['headerFormat'])
+
+
+def emit_picture_ref(lines, val, pic_tag, indent):
+    """Картинка-ссылка с прозрачностью (HeaderPicture/FooterPicture/ValuesPicture/Page Picture).
+    Платформа ВСЕГДА эмитит <xr:LoadTransparent> → пишем всегда (false по умолчанию).
+    Значение: скаляр (Ref) ИЛИ объект {src, loadTransparent, transparentPixel}.
+    src с префиксом "abs:" → встроенная картинка <xr:Abs>; иначе <xr:Ref>."""
+    if not val:
+        return
+    tpx = None
+    if isinstance(val, str):
+        src, lt = val, False
+    else:
+        src = val.get('src')
+        lt = val.get('loadTransparent') is True
+        tpx = val.get('transparentPixel')
+    if not src:
+        return
+    src_str = str(src)
+    lines.append(f"{indent}<{pic_tag}>")
+    if src_str.startswith('abs:'):
+        lines.append(f"{indent}\t<xr:Abs>{esc_xml_text(src_str[4:])}</xr:Abs>")
+    else:
+        lines.append(f"{indent}\t<xr:Ref>{esc_xml_text(src_str)}</xr:Ref>")
+    lines.append(f'{indent}\t<xr:LoadTransparent>{"true" if lt else "false"}</xr:LoadTransparent>')
+    if tpx:
+        lines.append(f'{indent}\t<xr:TransparentPixel x="{tpx.get("x")}" y="{tpx.get("y")}"/>')
+    lines.append(f"{indent}</{pic_tag}>")
+
+
+def emit_column_pics(lines, el, indent):
+    """Картинки заголовка/подвала колонки поля — по схеме сразу после <EditMode>,
+    перед тип-специфичными элементами и layout (порядок XDTO строгий именно здесь)."""
+    emit_picture_ref(lines, el.get('headerPicture'), 'HeaderPicture', indent)
+    emit_picture_ref(lines, el.get('footerPicture'), 'FooterPicture', indent)
+
+
+def emit_command_picture(lines, pic, elem_lt, indent):
+    """<Picture> кнопки/попапа/команды. Дефолт LoadTransparent=true, отклонение false
+    (обратная конвенция относительно header/values-картинок). Прощающий ввод:
+    принимает скаляр (Ref) ИЛИ объект {src, loadTransparent} — на случай если модель
+    опишет картинку объектно по аналогии с headerPicture. elem_lt — legacy
+    элемент-уровневый ключ loadTransparent (если в объекте флаг не задан)."""
+    if not pic:
+        return
+    lt = None
+    tpx = None
+    if isinstance(pic, str):
+        src = pic
+    else:
+        src = pic.get('src')
+        if pic.get('loadTransparent') is not None:
+            lt = bool(pic.get('loadTransparent'))
+        tpx = pic.get('transparentPixel')
+    if not src:
+        return
+    if lt is None and elem_lt is not None:
+        lt = bool(elem_lt)
+    src_str = str(src)
+    lines.append(f'{indent}<Picture>')
+    if src_str.startswith('abs:'):
+        lines.append(f'{indent}\t<xr:Abs>{esc_xml_text(src_str[4:])}</xr:Abs>')
+    else:
+        lines.append(f'{indent}\t<xr:Ref>{esc_xml_text(src_str)}</xr:Ref>')
+    lines.append(f'{indent}\t<xr:LoadTransparent>{"false" if lt is False else "true"}</xr:LoadTransparent>')
+    if tpx:
+        lines.append(f'{indent}\t<xr:TransparentPixel x="{tpx.get("x")}" y="{tpx.get("y")}"/>')
+    lines.append(f'{indent}</Picture>')
+
+
+# --- Оформление элемента: цвета / шрифты / граница (зеркало form-compile.ps1 Emit-Appearance) ---
+# Прямые свойства элемента (<TextColor>/<Font>/<Border> + header/footer у полей). Ключи англ.
+# camelCase 1:1 с тегами + приём рус. синонимов. Цвет — verbatim-строка (style:/web:/win:/#RRGGBB);
+# шрифт — строка-ref/объект-атрибуты; граница — строка-ref/
+# объект {width,style}. Порядок тегов — XSD (профиль по базовому типу).
+
+
+def get_appearance_value(el, canonical):
+    if not isinstance(el, dict):
+        return None
+    if canonical in el:
+        return el[canonical]
+    lowmap = {k.lower(): k for k in el.keys()}
+    if canonical.lower() in lowmap:
+        return el[lowmap[canonical.lower()]]
+    for syn, canon in APPEARANCE_SYNONYMS.items():
+        if canon == canonical and syn in lowmap:
+            return el[lowmap[syn]]
+    return None
+
+
+def emit_font_tag(lines, tag, val, indent):
+    if isinstance(val, str):
+        lines.append(f'{indent}<{tag} ref="{esc_xml(val)}" kind="StyleItem"/>')
+        return
+    attrs = []
+    for a in ('ref', 'faceName', 'height', 'bold', 'italic', 'underline', 'strikeout', 'kind', 'scale'):
+        if a in val and val[a] is not None:
+            v = val[a]
+            if isinstance(v, bool):
+                v = 'true' if v else 'false'
+            attrs.append(f'{a}="{esc_xml(str(v))}"')
+    lines.append(f'{indent}<{tag} {" ".join(attrs)}/>')
+
+
+def emit_border_tag(lines, val, indent):
+    if isinstance(val, str):
+        lines.append(f'{indent}<Border ref="{esc_xml(val)}"/>')
+        return
+    if val.get('ref'):
+        lines.append(f'{indent}<Border ref="{esc_xml(str(val["ref"]))}"/>')
+        return
+    width = val['width'] if val.get('width') is not None else 1
+    style = str(val['style']) if 'style' in val else None
+    lines.append(f'{indent}<Border width="{width}">')
+    if style:
+        lines.append(f'{indent}\t<v8ui:style xsi:type="v8ui:ControlBorderType">{esc_xml_text(style)}</v8ui:style>')
+    lines.append(f'{indent}</Border>')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Planner design-time <Settings xsi:type="pl:Planner"> — зеркало Emit-PlannerSettings (ps1).
+
+
+def emit_appearance(lines, el, indent, profile='field'):
+    if not isinstance(el, dict):
+        return
+    order = {'decoration': APP_ORDER_DECORATION, 'button': APP_ORDER_BUTTON}.get(profile, APP_ORDER_FIELD)
+    for key in order:
+        val = get_appearance_value(el, key)
+        if val is None or (isinstance(val, str) and val == ''):
+            continue
+        tag, kind = APPEARANCE_SPEC[key]
+        if kind == 'color':
+            lines.append(f'{indent}<{tag}>{esc_xml_text(str(val))}</{tag}>')
+        elif kind == 'font':
+            emit_font_tag(lines, tag, val, indent)
+        else:
+            emit_border_tag(lines, val, indent)
+
+
+# Простые скаляры элемента (pass-through, зеркало $script:genericScalars). kind bool/value.
+
+
+def emit_generic_scalars(lines, el, indent):
+    for tag, key, kind in GENERIC_SCALARS:
+        if key not in el or el[key] is None:
+            continue
+        if kind == 'bool':
+            lines.append(f'{indent}<{tag}>{"true" if el[key] else "false"}</{tag}>')
+        else:
+            v = str(el[key])
+            if v == '':
+                continue
+            lines.append(f'{indent}<{tag}>{esc_xml_text(v)}</{tag}>')
+
+
+def emit_layout(lines, el, indent, skip_height=False, multi_line_default=False):
+    # Общие layout-свойства — применимы ко всем элементам. Порядок согласован
+    # с историческим выводом input/label, чтобы не сдвигать существующие снапшоты.
+    # skip_height: подавить <Height> (зарезервирован; Table теперь эмитит <Height> generic-ом + свой <HeightInTableRows>).
+    # multi_line_default: input без явного autoMaxWidth при multiLine → AutoMaxWidth=false.
+    # CommandSet (отключённые команды редактора) — общее свойство поля; в схеме рано (после TitleLocation).
+    if el.get('excludedCommands') and len(el['excludedCommands']) > 0:
+        lines.append(f'{indent}<CommandSet>')
+        for cmd in el['excludedCommands']:
+            lines.append(f'{indent}\t<ExcludedCommand>{cmd}</ExcludedCommand>')
+        lines.append(f'{indent}</CommandSet>')
+    emit_common_element_props(lines, el, indent)
+    if 'autoMaxWidth' in el:
+        if el.get('autoMaxWidth') is False:
+            lines.append(f"{indent}<AutoMaxWidth>false</AutoMaxWidth>")
+    elif multi_line_default:
+        lines.append(f"{indent}<AutoMaxWidth>false</AutoMaxWidth>")
+    if el.get('maxWidth') is not None:
+        lines.append(f"{indent}<MaxWidth>{el['maxWidth']}</MaxWidth>")
+    if el.get('autoMaxHeight') is False:
+        lines.append(f"{indent}<AutoMaxHeight>false</AutoMaxHeight>")
+    if el.get('maxHeight') is not None:
+        lines.append(f"{indent}<MaxHeight>{el['maxHeight']}</MaxHeight>")
+    if el.get('width'):
+        lines.append(f"{indent}<Width>{el['width']}</Width>")
+    if not skip_height and el.get('height'):
+        lines.append(f"{indent}<Height>{el['height']}</Height>")
+    if el.get('horizontalStretch') is not None:
+        lines.append(f'{indent}<HorizontalStretch>{"true" if el["horizontalStretch"] else "false"}</HorizontalStretch>')
+    if el.get('verticalStretch') is not None:
+        lines.append(f'{indent}<VerticalStretch>{"true" if el["verticalStretch"] else "false"}</VerticalStretch>')
+    if el.get('groupHorizontalAlign'):
+        lines.append(f"{indent}<GroupHorizontalAlign>{el['groupHorizontalAlign']}</GroupHorizontalAlign>")
+    if el.get('groupVerticalAlign'):
+        lines.append(f"{indent}<GroupVerticalAlign>{el['groupVerticalAlign']}</GroupVerticalAlign>")
+    if el.get('horizontalAlign'):
+        lines.append(f"{indent}<HorizontalAlign>{el['horizontalAlign']}</HorizontalAlign>")
+    emit_generic_scalars(lines, el, indent)
+
+
+def title_from_name(name):
+    """СуммаДокумента → 'Сумма документа'. НДСВключен → 'НДС включен'."""
+    if not name:
+        return ''
+    s = re.sub(r'([А-ЯA-Z])([А-ЯA-Z][а-яa-z])', r'\1 \2', name)
+    s = re.sub(r'([а-яa-z0-9])([А-ЯA-Z])', r'\1 \2', s)
+    parts = s.split(' ')
+    if not parts:
+        return s
+    out = [parts[0]]
+    for p in parts[1:]:
+        out.append(p if (len(p) > 1 and p.isupper()) else p.lower())
+    return ' '.join(out)
+
+
+def emit_title(lines, el, name, indent, auto=False):
+    # Нет ключа title → авто-вывод из имени (помощь модели).
+    # Явный title "" (или None) → подавить. Явный непустой → как есть.
+    if 'title' in el:
+        if el.get('title'):
+            emit_mltext(lines, indent, 'Title', el['title'])
+    elif auto and name:
+        emit_mltext(lines, indent, 'Title', title_from_name(name))
+    # ToolTip элемента (всплывающая подсказка) — по схеме сразу после Title.
+    if el.get('tooltip'):
+        emit_mltext(lines, indent, 'ToolTip', el['tooltip'])
+    # ToolTipRepresentation — режим показа подсказки (None/Button/ShowBottom/…), после ToolTip.
+    if el.get('tooltipRepresentation'):
+        lines.append(f'{indent}<ToolTipRepresentation>{el["tooltipRepresentation"]}</ToolTipRepresentation>')
+
+
+def map_title_loc(v):
+    return _TITLE_LOC_MAP.get(str(v).lower(), str(v))
+
+
+def emit_title_location(lines, el, indent, smart_default):
+    # Нет ключа → умный дефолт (Right/None), эмитится. "" → подавить (дефолт платформы).
+    # Значение → эмитить с маппингом регистра.
+    if 'titleLocation' in el:
+        if el.get('titleLocation'):
+            lines.append(f"{indent}<TitleLocation>{map_title_loc(el['titleLocation'])}</TitleLocation>")
+    elif smart_default:
+        lines.append(f"{indent}<TitleLocation>{smart_default}</TitleLocation>")
+
+
+# --- Type emitter ---
 
 
 def resolve_type_str(type_str):
@@ -562,621 +1966,1327 @@ def resolve_type_str(type_str):
     if resolved:
         return resolved
     return type_str
-def emit_type(type_str, indent):
-    if not type_str:
-        X(f"{indent}<Type/>")
-        return
-    type_string = str(type_str)
-    parts = [p.strip() for p in re.split(r'[|+]', type_string)]
-    X(f"{indent}<Type>")
-    for part in parts:
-        emit_single_type(part, indent + "\t")
-    X(f"{indent}</Type>")
 
 
-def emit_single_type(type_str, indent):
+def emit_single_type(lines, type_str, indent):
     type_str = resolve_type_str(type_str)
-    if type_str == "boolean":
-        X(f"{indent}<v8:Type>xs:boolean</v8:Type>")
-        return
-
-    m = re.match(r'^string(\((\d+)\))?$', type_str)
+    # TypeId — тип, заданный глобальным стабильным GUID (<v8:TypeId>, не <v8:Type>). Платформа так
+    # сериализует типы, чьё имя в этом контексте недоступно (определяемые/характеристики). GUID
+    # глобально стабилен → эмитим verbatim (как роль-по-GUID). Маркер декомпилятора: 'typeid:GUID'.
+    m = re.match(r'^typeid:([0-9a-fA-F-]{36})$', type_str)
     if m:
-        length = m.group(2) if m.group(2) else "0"
-        X(f"{indent}<v8:Type>xs:string</v8:Type>")
-        X(f"{indent}<v8:StringQualifiers>")
-        X(f"{indent}\t<v8:Length>{length}</v8:Length>")
-        X(f"{indent}\t<v8:AllowedLength>Variable</v8:AllowedLength>")
-        X(f"{indent}</v8:StringQualifiers>")
+        lines.append(f'{indent}<v8:TypeId>{m.group(1)}</v8:TypeId>')
+        return
+    # boolean
+    if type_str == 'boolean':
+        lines.append(f'{indent}<v8:Type>xs:boolean</v8:Type>')
         return
 
+    # string or string(N) or string(N,fixed) (AllowedLength: Variable дефолт / Fixed)
+    m = re.match(r'^string(\((\d+)(\s*,\s*(fixed|variable))?\))?$', type_str, re.IGNORECASE)
+    if m:
+        length = m.group(2) if m.group(2) else '0'
+        al = 'Fixed' if (m.group(4) and m.group(4).lower() == 'fixed') else 'Variable'
+        lines.append(f'{indent}<v8:Type>xs:string</v8:Type>')
+        lines.append(f'{indent}<v8:StringQualifiers>')
+        lines.append(f'{indent}\t<v8:Length>{length}</v8:Length>')
+        lines.append(f'{indent}\t<v8:AllowedLength>{al}</v8:AllowedLength>')
+        lines.append(f'{indent}</v8:StringQualifiers>')
+        return
+
+    # decimal(D,F) or decimal(D,F,nonneg)
     m = re.match(r'^decimal\((\d+),(\d+)(,nonneg)?\)$', type_str)
     if m:
         digits = m.group(1)
         fraction = m.group(2)
-        sign = "Nonnegative" if m.group(3) else "Any"
-        X(f"{indent}<v8:Type>xs:decimal</v8:Type>")
-        X(f"{indent}<v8:NumberQualifiers>")
-        X(f"{indent}\t<v8:Digits>{digits}</v8:Digits>")
-        X(f"{indent}\t<v8:FractionDigits>{fraction}</v8:FractionDigits>")
-        X(f"{indent}\t<v8:AllowedSign>{sign}</v8:AllowedSign>")
-        X(f"{indent}</v8:NumberQualifiers>")
+        sign = 'Nonnegative' if m.group(3) else 'Any'
+        lines.append(f'{indent}<v8:Type>xs:decimal</v8:Type>')
+        lines.append(f'{indent}<v8:NumberQualifiers>')
+        lines.append(f'{indent}\t<v8:Digits>{digits}</v8:Digits>')
+        lines.append(f'{indent}\t<v8:FractionDigits>{fraction}</v8:FractionDigits>')
+        lines.append(f'{indent}\t<v8:AllowedSign>{sign}</v8:AllowedSign>')
+        lines.append(f'{indent}</v8:NumberQualifiers>')
         return
 
+    # date / dateTime / time
     m = re.match(r'^(date|dateTime|time)$', type_str)
     if m:
-        fractions_map = {"date": "Date", "dateTime": "DateTime", "time": "Time"}
+        fractions_map = {'date': 'Date', 'dateTime': 'DateTime', 'time': 'Time'}
         fractions = fractions_map[type_str]
-        X(f"{indent}<v8:Type>xs:dateTime</v8:Type>")
-        X(f"{indent}<v8:DateQualifiers>")
-        X(f"{indent}\t<v8:DateFractions>{fractions}</v8:DateFractions>")
-        X(f"{indent}</v8:DateQualifiers>")
+        lines.append(f'{indent}<v8:Type>xs:dateTime</v8:Type>')
+        lines.append(f'{indent}<v8:DateQualifiers>')
+        lines.append(f'{indent}\t<v8:DateFractions>{fractions}</v8:DateFractions>')
+        lines.append(f'{indent}</v8:DateQualifiers>')
         return
 
-    v8_types = {
-        "ValueTable": "v8:ValueTable", "ValueTree": "v8:ValueTree", "ValueList": "v8:ValueListType",
-        "TypeDescription": "v8:TypeDescription", "Universal": "v8:Universal",
-        "FixedArray": "v8:FixedArray", "FixedStructure": "v8:FixedStructure",
-    }
-    if type_str in v8_types:
-        X(f"{indent}<v8:Type>{v8_types[type_str]}</v8:Type>")
+    # V8 types
+    if type_str in V8_TYPES:
+        lines.append(f'{indent}<v8:Type>{V8_TYPES[type_str]}</v8:Type>')
         return
 
-    ui_types = {"FormattedString": "v8ui:FormattedString", "Picture": "v8ui:Picture", "Color": "v8ui:Color", "Font": "v8ui:Font"}
-    if type_str in ui_types:
-        X(f"{indent}<v8:Type>{ui_types[type_str]}</v8:Type>")
+    # UI types
+    if type_str in UI_TYPES:
+        lines.append(f'{indent}<v8:Type>{UI_TYPES[type_str]}</v8:Type>')
         return
 
-    if type_str == "DynamicList":
-        X(f"{indent}<v8:Type>cfg:DynamicList</v8:Type>")
-        return
-
-    if type_str.startswith("DataComposition"):
-        dcs_map = {
-            "DataCompositionSettings": "dcsset:DataCompositionSettings",
-            "DataCompositionSchema": "dcssch:DataCompositionSchema",
-            "DataCompositionComparisonType": "dcscor:DataCompositionComparisonType",
-        }
-        if type_str in dcs_map:
-            X(f"{indent}<v8:Type>{dcs_map[type_str]}</v8:Type>")
+    # DCS types
+    if type_str.startswith('DataComposition'):
+        if type_str in DCS_MAP:
+            lines.append(f'{indent}<v8:Type>{DCS_MAP[type_str]}</v8:Type>')
             return
 
-    if re.match(r'^(CatalogRef|CatalogObject|DocumentRef|DocumentObject|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef|ExchangePlanRef|BusinessProcessRef|TaskRef|InformationRegisterRecordSet|AccumulationRegisterRecordSet|DataProcessorObject)\.', type_str):
-        X(f"{indent}<v8:Type>cfg:{type_str}</v8:Type>")
+    # Голые конфигурационные типы (cfg: без .Имя): дин-список, набор констант, общий объект отчёта.
+    # Корпус (acc+erp 8.3.24): DynamicList 5205, ConstantsSet 103, ReportObject 10.
+    if type_str in ('DynamicList', 'ConstantsSet', 'ReportObject'):
+        lines.append(f'{indent}<v8:Type>cfg:{type_str}</v8:Type>')
         return
 
-    if "." in type_str:
-        X(f"{indent}<v8:Type>cfg:{type_str}</v8:Type>")
+    # TypeSet (набор типов) → <v8:TypeSet>: определяемый тип / характеристика (именованные)
+    # + «любая ссылка вида» (голый ref-вид без .Имя). Развязка с обычным типом — по наличию точки.
+    if re.match(r'^(DefinedType|Characteristic)\.', type_str):
+        lines.append(f'{indent}<v8:TypeSet>cfg:{type_str}</v8:TypeSet>')
+        return
+    if re.match(r'^(AnyRef|AnyIBRef|CatalogRef|DocumentRef|EnumRef|ExchangePlanRef|TaskRef|BusinessProcessRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef)$', type_str):
+        lines.append(f'{indent}<v8:TypeSet>cfg:{type_str}</v8:TypeSet>')
+        return
+
+    # cfg: references
+    if CFG_REF_PATTERN.match(type_str):
+        lines.append(f'{indent}<v8:Type>cfg:{type_str}</v8:Type>')
+        return
+
+    # Спец-типы платформы с собственным namespace (объявляется ЛОКАЛЬНО на <v8:Type>).
+    # Префикс d5p1 неоднозначен (5 разных URI), поэтому маппинг по полному значению типа.
+    # К таким типам привязаны спец-поля: mxl→SpreadSheetDocumentField, fd→FormattedDocumentField,
+    # d5p1:TextDocument→TextDocumentField, pdfdoc→PDF, pl→Planner, chart/geo/graphscheme/data-analysis.
+    special_type_ns = {
+        "mxl:SpreadsheetDocument": "http://v8.1c.ru/8.2/data/spreadsheet",
+        "fd:FormattedDocument": "http://v8.1c.ru/8.2/data/formatted-document",
+        "d5p1:TextDocument": "http://v8.1c.ru/8.1/data/txtedt",
+        "d5p1:Chart": "http://v8.1c.ru/8.2/data/chart",
+        "d5p1:GanttChart": "http://v8.1c.ru/8.2/data/chart",
+        "d5p1:Dendrogram": "http://v8.1c.ru/8.2/data/chart",
+        "d5p1:FlowchartContextType": "http://v8.1c.ru/8.2/data/graphscheme",
+        "d5p1:DataAnalysisTimeIntervalUnitType": "http://v8.1c.ru/8.2/data/data-analysis",
+        "d5p1:GeographicalSchema": "http://v8.1c.ru/8.2/data/geo",
+        "pdfdoc:PDFDocument": "http://v8.1c.ru/8.3/data/pdf",
+        "pl:Planner": "http://v8.1c.ru/8.3/data/planner",
+    }
+    if type_str in special_type_ns:
+        pref = type_str.split(':', 1)[0]
+        lines.append(f'{indent}<v8:Type xmlns:{pref}="{special_type_ns[type_str]}">{type_str}</v8:Type>')
+        return
+
+    # Fallback with validation
+    if type_str in KNOWN_INVALID_TYPES:
+        raise ValueError(f"Invalid form attribute type '{type_str}': {KNOWN_INVALID_TYPES[type_str]}")
+    # Платформенный тип с префиксом (v8:/v8ui:/xs:/dcs*:) — verbatim (напр. v8:UUID, v8:StandardPeriod).
+    if re.match(r'^(v8|v8ui|xs|ent|style|sys|web|win|dcs\w*):', type_str):
+        lines.append(f'{indent}<v8:Type>{type_str}</v8:Type>')
+    elif '.' in type_str:
+        lines.append(f'{indent}<v8:Type>cfg:{type_str}</v8:Type>')
     else:
-        X(f"{indent}<v8:Type>{type_str}</v8:Type>")
+        print(f"WARNING: Unrecognized bare type '{type_str}' — will be emitted without namespace prefix", file=sys.stderr)
+        lines.append(f'{indent}<v8:Type>{type_str}</v8:Type>')
 
 
-def emit_mltext(tag, text, indent):
-    X(f"{indent}<{tag}>")
-    X(f"{indent}\t<v8:item>")
-    X(f"{indent}\t\t<v8:lang>ru</v8:lang>")
-    X(f"{indent}\t\t<v8:content>{esc_xml_text(text)}</v8:content>")
-    X(f"{indent}\t</v8:item>")
-    X(f"{indent}</{tag}>")
-
-
-# --- Event handler name generator ---
-
-event_suffix_map = {
-    "OnChange": "\u041f\u0440\u0438\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0438",
-    "StartChoice": "\u041d\u0430\u0447\u0430\u043b\u043e\u0412\u044b\u0431\u043e\u0440\u0430",
-    "ChoiceProcessing": "\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430\u0412\u044b\u0431\u043e\u0440\u0430",
-    "AutoComplete": "\u0410\u0432\u0442\u043e\u041f\u043e\u0434\u0431\u043e\u0440",
-    "Clearing": "\u041e\u0447\u0438\u0441\u0442\u043a\u0430",
-    "Opening": "\u041e\u0442\u043a\u0440\u044b\u0442\u0438\u0435",
-    "Click": "\u041d\u0430\u0436\u0430\u0442\u0438\u0435",
-    "OnActivateRow": "\u041f\u0440\u0438\u0410\u043a\u0442\u0438\u0432\u0438\u0437\u0430\u0446\u0438\u0438\u0421\u0442\u0440\u043e\u043a\u0438",
-    "BeforeAddRow": "\u041f\u0435\u0440\u0435\u0434\u041d\u0430\u0447\u0430\u043b\u043e\u043c\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u0438\u044f",
-    "BeforeDeleteRow": "\u041f\u0435\u0440\u0435\u0434\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435\u043c",
-    "BeforeRowChange": "\u041f\u0435\u0440\u0435\u0434\u041d\u0430\u0447\u0430\u043b\u043e\u043c\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f",
-    "OnStartEdit": "\u041f\u0440\u0438\u041d\u0430\u0447\u0430\u043b\u0435\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
-    "OnEditEnd": "\u041f\u0440\u0438\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0438\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
-    "Selection": "\u0412\u044b\u0431\u043e\u0440\u0421\u0442\u0440\u043e\u043a\u0438",
-    "OnCurrentPageChange": "\u041f\u0440\u0438\u0421\u043c\u0435\u043d\u0435\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
-    "TextEditEnd": "\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0435\u0412\u0432\u043e\u0434\u0430\u0422\u0435\u043a\u0441\u0442\u0430",
-    "URLProcessing": "\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430\u041d\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u043e\u043d\u043d\u043e\u0439\u0421\u0441\u044b\u043b\u043a\u0438",
-    "DragStart": "\u041d\u0430\u0447\u0430\u043b\u043e\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
-    "Drag": "\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u0435",
-    "DragCheck": "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
-    "Drop": "\u041f\u043e\u043c\u0435\u0449\u0435\u043d\u0438\u0435",
-    "AfterDeleteRow": "\u041f\u043e\u0441\u043b\u0435\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u044f",
-}
-
-
-def get_handler_name(element_name, event_name):
-    suffix = event_suffix_map.get(event_name)
-    if suffix:
-        return f"{element_name}{suffix}"
-    return f"{element_name}{event_name}"
-
-
-# --- Element helpers ---
-
-def get_element_name(el, type_key):
-    if "name" in el and el["name"]:
-        return str(el["name"])
-    return str(el[type_key])
-
-
-def _assert_edit_unique(name, seen, ctx):
-    # Уникальность имён внутри JSON-определения (1С: своя коллекция — свой неймспейс).
-    if name in seen:
-        print(f"[ERROR] Duplicate {ctx} '{name}' in JSON definition — names must be unique in 1C form")
-        sys.exit(1)
-    seen.add(name)
-
-
-known_events = {
-    "input": ["OnChange", "StartChoice", "ChoiceProcessing", "AutoComplete", "TextEditEnd", "Clearing", "Creating", "EditTextChange"],
-    "check": ["OnChange"],
-    "label": ["Click", "URLProcessing"],
-    "labelField": ["OnChange", "StartChoice", "ChoiceProcessing", "Click", "URLProcessing", "Clearing"],
-    "table": ["Selection", "BeforeAddRow", "AfterDeleteRow", "BeforeDeleteRow", "OnActivateRow", "OnEditEnd", "OnStartEdit", "BeforeRowChange", "BeforeEditEnd", "ValueChoice", "OnActivateCell", "OnActivateField", "Drag", "DragStart", "DragCheck", "DragEnd", "OnGetDataAtServer", "BeforeLoadUserSettingsAtServer", "OnUpdateUserSettingSetAtServer", "OnChange"],
-    "pages": ["OnCurrentPageChange"],
-    "page": ["OnCurrentPageChange"],
-    "button": ["Click"],
-    "picField": ["OnChange", "StartChoice", "ChoiceProcessing", "Click", "Clearing"],
-    "calendar": ["OnChange", "OnActivate"],
-    "picture": ["Click"],
-    "cmdBar": [],
-    "popup": [],
-    "group": [],
-}
-
-
-def emit_events(el, element_name, indent, type_key):
-    on_list = el.get("on")
-    if not on_list:
+def emit_type(lines, type_str, indent, tag="Type", tag_attrs=""):
+    # tag/tag_attrs — обёртка (по умолчанию <Type>); для valueType ValueList вызывается с
+    # tag="Settings", tag_attrs=' xsi:type="v8:TypeDescription"'.
+    if not type_str:
+        lines.append(f'{indent}<{tag}{tag_attrs}/>')
         return
 
-    # Validate event names
-    if type_key and type_key in known_events:
-        allowed = known_events[type_key]
-        for evt in on_list:
-            evt_str = evt if isinstance(evt, str) else str(evt.get("event", ""))
-            if allowed and evt_str not in allowed:
-                print(f"[WARN] Unknown event '{evt_str}' for {type_key} '{element_name}'. Known: {', '.join(allowed)}")
+    type_string = str(type_str)
+    parts = [p.strip() for p in re.split(r'[|+]', type_string)]
 
-    X(f"{indent}<Events>")
-    handlers_map = el.get("handlers", {}) or {}
-    for evt in on_list:
-        if isinstance(evt, str):
-            evt_name = evt
-            handler = handlers_map.get(evt_name) or get_handler_name(element_name, evt_name)
-            X(f'{indent}\t<Event name="{evt_name}">{handler}</Event>')
-        elif not evt.get("event"):
-            evt_name = str(evt)
-            handler = handlers_map.get(evt_name) or get_handler_name(element_name, evt_name)
-            X(f'{indent}\t<Event name="{evt_name}">{handler}</Event>')
-        else:
-            evt_name = str(evt["event"])
-            handler = evt.get("handler") or handlers_map.get(evt_name) or get_handler_name(element_name, evt_name)
-            call_type_attr = f' callType="{evt["callType"]}"' if evt.get("callType") else ""
-            X(f'{indent}\t<Event name="{evt_name}"{call_type_attr}>{handler}</Event>')
-    X(f"{indent}</Events>")
-
-
-def emit_companion(tag, name, indent):
-    _id = new_id()
-    X(f'{indent}<{tag} name="{name}" id="{_id}"/>')
-
-
-def emit_common_flags(el, indent):
-    if el.get("visible") is False or el.get("hidden") is True:
-        X(f"{indent}<Visible>false</Visible>")
-    if el.get("enabled") is False or el.get("disabled") is True:
-        X(f"{indent}<Enabled>false</Enabled>")
-    if el.get("readOnly") is True:
-        X(f"{indent}<ReadOnly>true</ReadOnly>")
-
-
-def emit_title(el, name, indent):
-    if el.get("title"):
-        emit_mltext("Title", str(el["title"]), indent)
+    lines.append(f'{indent}<{tag}{tag_attrs}>')
+    for part in parts:
+        emit_single_type(lines, part, f'{indent}\t')
+    lines.append(f'{indent}</{tag}>')
 
 
 # --- Element emitters ---
 
-def emit_group(el, name, _id, indent):
-    X(f'{indent}<UsualGroup name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    emit_title(el, name, inner)
-    group_val = str(el.get("group", ""))
-    orientation_map = {"horizontal": "Horizontal", "vertical": "Vertical", "alwaysHorizontal": "AlwaysHorizontal", "alwaysVertical": "AlwaysVertical"}
-    orientation = orientation_map.get(group_val)
-    if orientation:
-        X(f"{inner}<Group>{orientation}</Group>")
-    if group_val == "collapsible":
-        X(f"{inner}<Group>Vertical</Group>")
-        X(f"{inner}<Behavior>Collapsible</Behavior>")
-    if el.get("representation"):
-        repr_map = {"none": "None", "normal": "NormalSeparation", "weak": "WeakSeparation", "strong": "StrongSeparation"}
-        repr_val = repr_map.get(str(el["representation"]), str(el["representation"]))
-        X(f"{inner}<Representation>{repr_val}</Representation>")
-    if el.get("showTitle") is False:
-        X(f"{inner}<ShowTitle>false</ShowTitle>")
-    if el.get("united") is False:
-        X(f"{inner}<United>false</United>")
-    emit_common_flags(el, inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    children = el.get("children")
-    if children and len(children) > 0:
-        X(f"{inner}<ChildItems>")
-        for child in children:
-            emit_element(child, inner + "\t")
-        X(f"{inner}</ChildItems>")
-    X(f"{indent}</UsualGroup>")
+
+def normalize_element_type_synonyms(el):
+    # Silent synonyms: model often writes XML name or Russian (ПолеПереключателя/RadioButtonField → radio).
+    # commandBar/autoCommandBar/КоманднаяПанель → тип-элемент ТОЛЬКО при строковом значении (имя).
+    for src, dst in ELEMENT_TYPE_SYNONYMS.items():
+        if src in el and dst not in el:
+            if src in STR_ONLY_TYPE_SYNONYMS and not isinstance(el[src], str):
+                continue
+            el[dst] = el.pop(src)
 
 
-def emit_input(el, name, _id, indent):
-    X(f'{indent}<InputField name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("path"):
-        X(f"{inner}<DataPath>{el['path']}</DataPath>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("titleLocation"):
-        loc_map = {"none": "None", "left": "Left", "right": "Right", "top": "Top", "bottom": "Bottom"}
-        loc = loc_map.get(str(el["titleLocation"]), str(el["titleLocation"]))
-        X(f"{inner}<TitleLocation>{loc}</TitleLocation>")
-    if el.get("multiLine") is True:
-        X(f"{inner}<MultiLine>true</MultiLine>")
-    if el.get("passwordMode") is True:
-        X(f"{inner}<PasswordMode>true</PasswordMode>")
-    if el.get("choiceButton") is False:
-        X(f"{inner}<ChoiceButton>false</ChoiceButton>")
-    if el.get("clearButton") is True:
-        X(f"{inner}<ClearButton>true</ClearButton>")
-    if el.get("spinButton") is True:
-        X(f"{inner}<SpinButton>true</SpinButton>")
-    if el.get("dropListButton") is True:
-        X(f"{inner}<DropListButton>true</DropListButton>")
-    if el.get("markIncomplete") is True:
-        X(f"{inner}<AutoMarkIncomplete>true</AutoMarkIncomplete>")
-    if el.get("skipOnInput") is True:
-        X(f"{inner}<SkipOnInput>true</SkipOnInput>")
-    if el.get("autoMaxWidth") is False:
-        X(f"{inner}<AutoMaxWidth>false</AutoMaxWidth>")
-    if el.get("autoMaxHeight") is False:
-        X(f"{inner}<AutoMaxHeight>false</AutoMaxHeight>")
-    if el.get("width"):
-        X(f"{inner}<Width>{el['width']}</Width>")
-    if el.get("height"):
-        X(f"{inner}<Height>{el['height']}</Height>")
-    if el.get("horizontalStretch") is True:
-        X(f"{inner}<HorizontalStretch>true</HorizontalStretch>")
-    if el.get("verticalStretch") is True:
-        X(f"{inner}<VerticalStretch>true</VerticalStretch>")
-    if el.get("inputHint"):
-        emit_mltext("InputHint", str(el["inputHint"]), inner)
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "input")
-    X(f"{indent}</InputField>")
+def emit_element(lines, el, indent, in_cmd_bar=False):
+    # Companion-панели (объект/массив-значение) → commandBar/contextMenu, до тип-синонимов.
+    normalize_panel_synonyms(el)
 
+    # Синонимы типа (XML-имя, русское имя) → канонический ключ DSL
+    normalize_element_type_synonyms(el)
 
-def emit_check(el, name, _id, indent):
-    X(f'{indent}<CheckBoxField name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("path"):
-        X(f"{inner}<DataPath>{el['path']}</DataPath>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("titleLocation"):
-        X(f"{inner}<TitleLocation>{el['titleLocation']}</TitleLocation>")
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "check")
-    X(f"{indent}</CheckBoxField>")
+    # Синонимы ключей-свойств (русские имена 1С → канон. англ.). Case/space-insensitive.
+    # Канон побеждает: если задан и русский, и англ. ключ — англ. остаётся, русский отбрасываем.
+    for p_name in list(el.keys()):
+        norm = p_name.replace(' ', '').lower()
+        canon = PROP_SYNONYMS.get(norm)
+        if canon and p_name != canon:
+            val = el.pop(p_name)
+            if canon not in el:
+                el[canon] = val
 
-
-def emit_label(el, name, _id, indent):
-    X(f'{indent}<LabelDecoration name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("title"):
-        formatted = "true" if el.get("hyperlink") is True else "false"
-        X(f'{inner}<Title formatted="{formatted}">')
-        X(f"{inner}\t<v8:item>")
-        X(f"{inner}\t\t<v8:lang>ru</v8:lang>")
-        X(f"{inner}\t\t<v8:content>{esc_xml_text(str(el['title']))}</v8:content>")
-        X(f"{inner}\t</v8:item>")
-        X(f"{inner}</Title>")
-    emit_common_flags(el, inner)
-    if el.get("hyperlink") is True:
-        X(f"{inner}<Hyperlink>true</Hyperlink>")
-    if el.get("autoMaxWidth") is False:
-        X(f"{inner}<AutoMaxWidth>false</AutoMaxWidth>")
-    if el.get("autoMaxHeight") is False:
-        X(f"{inner}<AutoMaxHeight>false</AutoMaxHeight>")
-    if el.get("width"):
-        X(f"{inner}<Width>{el['width']}</Width>")
-    if el.get("height"):
-        X(f"{inner}<Height>{el['height']}</Height>")
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "label")
-    X(f"{indent}</LabelDecoration>")
-
-
-def emit_label_field(el, name, _id, indent):
-    X(f'{indent}<LabelField name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("path"):
-        X(f"{inner}<DataPath>{el['path']}</DataPath>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("hyperlink") is True:
-        X(f"{inner}<Hyperlink>true</Hyperlink>")
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "labelField")
-    X(f"{indent}</LabelField>")
-
-
-def emit_table(el, name, _id, indent):
-    X(f'{indent}<Table name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("path"):
-        X(f"{inner}<DataPath>{el['path']}</DataPath>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("representation"):
-        X(f"{inner}<Representation>{el['representation']}</Representation>")
-    if el.get("changeRowSet") is True:
-        X(f"{inner}<ChangeRowSet>true</ChangeRowSet>")
-    if el.get("changeRowOrder") is True:
-        X(f"{inner}<ChangeRowOrder>true</ChangeRowOrder>")
-    if el.get("height"):
-        X(f"{inner}<HeightInTableRows>{el['height']}</HeightInTableRows>")
-    if el.get("header") is False:
-        X(f"{inner}<Header>false</Header>")
-    if el.get("footer") is True:
-        X(f"{inner}<Footer>true</Footer>")
-    if el.get("commandBarLocation"):
-        X(f"{inner}<CommandBarLocation>{el['commandBarLocation']}</CommandBarLocation>")
-    if el.get("searchStringLocation"):
-        X(f"{inner}<SearchStringLocation>{el['searchStringLocation']}</SearchStringLocation>")
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("AutoCommandBar", f"{name}\u041a\u043e\u043c\u0430\u043d\u0434\u043d\u0430\u044f\u041f\u0430\u043d\u0435\u043b\u044c", inner)
-    emit_companion("SearchStringAddition", f"{name}\u0421\u0442\u0440\u043e\u043a\u0430\u041f\u043e\u0438\u0441\u043a\u0430", inner)
-    emit_companion("ViewStatusAddition", f"{name}\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435\u041f\u0440\u043e\u0441\u043c\u043e\u0442\u0440\u0430", inner)
-    emit_companion("SearchControlAddition", f"{name}\u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435\u041f\u043e\u0438\u0441\u043a\u043e\u043c", inner)
-    columns = el.get("columns")
-    if columns and len(columns) > 0:
-        X(f"{inner}<ChildItems>")
-        for col in columns:
-            emit_element(col, inner + "\t")
-        X(f"{inner}</ChildItems>")
-    emit_events(el, name, inner, "table")
-    X(f"{indent}</Table>")
-
-
-def emit_pages(el, name, _id, indent):
-    X(f'{indent}<Pages name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("pagesRepresentation"):
-        X(f"{inner}<PagesRepresentation>{el['pagesRepresentation']}</PagesRepresentation>")
-    emit_common_flags(el, inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "pages")
-    children = el.get("children")
-    if children and len(children) > 0:
-        X(f"{inner}<ChildItems>")
-        for child in children:
-            emit_element(child, inner + "\t")
-        X(f"{inner}</ChildItems>")
-    X(f"{indent}</Pages>")
-
-
-def emit_page(el, name, _id, indent):
-    X(f'{indent}<Page name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("group"):
-        orientation_map = {"horizontal": "Horizontal", "vertical": "Vertical", "alwaysHorizontal": "AlwaysHorizontal", "alwaysVertical": "AlwaysVertical"}
-        orientation = orientation_map.get(str(el["group"]))
-        if orientation:
-            X(f"{inner}<Group>{orientation}</Group>")
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    children = el.get("children")
-    if children and len(children) > 0:
-        X(f"{inner}<ChildItems>")
-        for child in children:
-            emit_element(child, inner + "\t")
-        X(f"{inner}</ChildItems>")
-    X(f"{indent}</Page>")
-
-
-def emit_button(el, name, _id, indent):
-    X(f'{indent}<Button name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("type"):
-        btn_map = {"usual": "UsualButton", "hyperlink": "Hyperlink", "commandBar": "CommandBarButton"}
-        btn_type = btn_map.get(str(el["type"]), str(el["type"]))
-        X(f"{inner}<Type>{btn_type}</Type>")
-    if el.get("command"):
-        X(f"{inner}<CommandName>Form.Command.{el['command']}</CommandName>")
-    if el.get("stdCommand"):
-        sc = str(el["stdCommand"])
-        m = re.match(r'^(.+)\.(.+)$', sc)
-        if m:
-            X(f"{inner}<CommandName>Form.Item.{m.group(1)}.StandardCommand.{m.group(2)}</CommandName>")
-        else:
-            X(f"{inner}<CommandName>Form.StandardCommand.{sc}</CommandName>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("defaultButton") is True:
-        X(f"{inner}<DefaultButton>true</DefaultButton>")
-    if el.get("picture"):
-        X(f"{inner}<Picture>")
-        X(f"{inner}\t<xr:Ref>{el['picture']}</xr:Ref>")
-        X(f"{inner}\t<xr:LoadTransparent>true</xr:LoadTransparent>")
-        X(f"{inner}</Picture>")
-    if el.get("representation"):
-        X(f"{inner}<Representation>{el['representation']}</Representation>")
-    if el.get("locationInCommandBar"):
-        X(f"{inner}<LocationInCommandBar>{el['locationInCommandBar']}</LocationInCommandBar>")
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "button")
-    X(f"{indent}</Button>")
-
-
-def emit_picture_decoration(el, name, _id, indent):
-    X(f'{indent}<PictureDecoration name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    ref = el.get("src") or el.get("picture")
-    if ref:
-        X(f"{inner}<Picture>")
-        X(f"{inner}\t<xr:Ref>{ref}</xr:Ref>")
-        X(f"{inner}\t<xr:LoadTransparent>true</xr:LoadTransparent>")
-        X(f"{inner}</Picture>")
-    if el.get("hyperlink") is True:
-        X(f"{inner}<Hyperlink>true</Hyperlink>")
-    if el.get("width"):
-        X(f"{inner}<Width>{el['width']}</Width>")
-    if el.get("height"):
-        X(f"{inner}<Height>{el['height']}</Height>")
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "picture")
-    X(f"{indent}</PictureDecoration>")
-
-
-def emit_picture_field(el, name, _id, indent):
-    X(f'{indent}<PictureField name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("path"):
-        X(f"{inner}<DataPath>{el['path']}</DataPath>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("width"):
-        X(f"{inner}<Width>{el['width']}</Width>")
-    if el.get("height"):
-        X(f"{inner}<Height>{el['height']}</Height>")
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "picField")
-    X(f"{indent}</PictureField>")
-
-
-def emit_calendar(el, name, _id, indent):
-    X(f'{indent}<CalendarField name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("path"):
-        X(f"{inner}<DataPath>{el['path']}</DataPath>")
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    emit_companion("ContextMenu", f"{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e", inner)
-    emit_companion("ExtendedTooltip", f"{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430", inner)
-    emit_events(el, name, inner, "calendar")
-    X(f"{indent}</CalendarField>")
-
-
-def emit_command_bar_el(el, name, _id, indent):
-    X(f'{indent}<CommandBar name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    if el.get("autofill") is True:
-        X(f"{inner}<Autofill>true</Autofill>")
-    emit_common_flags(el, inner)
-    children = el.get("children")
-    if children and len(children) > 0:
-        X(f"{inner}<ChildItems>")
-        for child in children:
-            emit_element(child, inner + "\t")
-        X(f"{inner}</ChildItems>")
-    X(f"{indent}</CommandBar>")
-
-
-def emit_popup(el, name, _id, indent):
-    X(f'{indent}<Popup name="{name}" id="{_id}">')
-    inner = indent + "\t"
-    emit_title(el, name, inner)
-    emit_common_flags(el, inner)
-    if el.get("picture"):
-        X(f"{inner}<Picture>")
-        X(f"{inner}\t<xr:Ref>{el['picture']}</xr:Ref>")
-        X(f"{inner}\t<xr:LoadTransparent>true</xr:LoadTransparent>")
-        X(f"{inner}</Picture>")
-    if el.get("representation"):
-        X(f"{inner}<Representation>{el['representation']}</Representation>")
-    children = el.get("children")
-    if children and len(children) > 0:
-        X(f"{inner}<ChildItems>")
-        for child in children:
-            emit_element(child, inner + "\t")
-        X(f"{inner}</ChildItems>")
-    X(f"{indent}</Popup>")
-
-
-# --- Element dispatcher ---
-
-ELEMENT_KEYS = ["group", "input", "check", "label", "labelField", "table", "pages", "page", "button", "picture", "picField", "calendar", "cmdBar", "popup"]
-
-KNOWN_KEYS = {
-    "group", "input", "check", "label", "labelField", "table", "pages", "page",
-    "button", "picture", "picField", "calendar", "cmdBar", "popup",
-    "name", "path", "title",
-    "visible", "hidden", "enabled", "disabled", "readOnly",
-    "on", "handlers",
-    "titleLocation", "representation", "width", "height",
-    "horizontalStretch", "verticalStretch", "autoMaxWidth", "autoMaxHeight",
-    "multiLine", "passwordMode", "choiceButton", "clearButton",
-    "spinButton", "dropListButton", "markIncomplete", "skipOnInput", "inputHint",
-    "hyperlink", "showTitle", "united", "children", "columns",
-    "changeRowSet", "changeRowOrder", "header", "footer",
-    "commandBarLocation", "searchStringLocation", "pagesRepresentation",
-    "type", "command", "stdCommand", "defaultButton", "locationInCommandBar",
-    "src", "autofill",
-    "into", "after", "before", "first",
-}
-
-EMITTER_MAP = {
-    "group": emit_group,
-    "input": emit_input,
-    "check": emit_check,
-    "label": emit_label,
-    "labelField": emit_label_field,
-    "table": emit_table,
-    "pages": emit_pages,
-    "page": emit_page,
-    "button": emit_button,
-    "picture": emit_picture_decoration,
-    "picField": emit_picture_field,
-    "calendar": emit_calendar,
-    "cmdBar": emit_command_bar_el,
-    "popup": emit_popup,
-}
-
-
-def emit_element(el, indent):
     type_key = None
-    for key in ELEMENT_KEYS:
-        if key in el and el[key] is not None:
+    for key in TYPE_KEYS:
+        if el.get(key) is not None:
             type_key = key
             break
+
     if not type_key:
-        print("[WARN] Unknown element type, skipping")
+        print("WARNING: Unknown element type, skipping", file=sys.stderr)
         return
 
-    # Validate known keys
-    for p in el:
-        if p not in KNOWN_KEYS:
-            print(f"[WARN] Element '{el[type_key]}': unknown key '{p}' -- ignored.")
+    # Validate known keys (внутренние маркеры на _ пропускаем). Оформление (цвета/шрифты/граница)
+    # проверяем против самих структур appearance — канонические ключи + forgiving-синонимы, чтобы
+    # allowlist не дрейфовал при добавлении новых.
+    for p_name in el.keys():
+        if p_name.startswith('_'):
+            continue
+        if p_name not in KNOWN_KEYS and p_name not in APPEARANCE_SPEC and p_name not in APPEARANCE_SYNONYMS \
+                and p_name not in GENERIC_SCALAR_KEYS:
+            print(f"WARNING: Element '{el.get(type_key, '')}': unknown key '{p_name}' -- ignored. Check SKILL.md for valid keys.", file=sys.stderr)
 
     name = get_element_name(el, type_key)
-    _id = new_id()
+    _ensure_unique(name, _seen_element_names, 'element')
+    eid = new_id()
 
-    emitter = EMITTER_MAP.get(type_key)
+    emitters = {
+        'group': emit_group,
+        'columnGroup': emit_column_group,
+        'buttonGroup': emit_button_group,
+        'input': emit_input,
+        'check': emit_check,
+        'radio': emit_radio_button_field,
+        'label': emit_label,
+        'labelField': emit_label_field,
+        'table': emit_table,
+        'pages': emit_pages,
+        'page': emit_page,
+        'button': emit_button,
+        'picture': emit_picture_decoration,
+        'picField': emit_picture_field,
+        'calendar': emit_calendar,
+        'cmdBar': emit_command_bar,
+        'popup': emit_popup,
+        'searchString':  lambda lines, el, name, eid, indent: emit_addition(lines, el, name, eid, 'searchString', indent),
+        'viewStatus':    lambda lines, el, name, eid, indent: emit_addition(lines, el, name, eid, 'viewStatus', indent),
+        'searchControl': lambda lines, el, name, eid, indent: emit_addition(lines, el, name, eid, 'searchControl', indent),
+        'spreadsheet':   lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'SpreadSheetDocumentField', 'spreadsheet'),
+        'html':          lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'HTMLDocumentField', 'html'),
+        'textDoc':       lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'TextDocumentField', 'textDoc'),
+        'formattedDoc':  lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'FormattedDocumentField', 'formattedDoc'),
+        'progressBar':   lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'ProgressBarField', 'progressBar'),
+        'trackBar':      lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'TrackBarField', 'trackBar'),
+        'chart':           lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'ChartField', 'chart'),
+        'graphicalSchema': lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'GraphicalSchemaField', 'graphicalSchema'),
+        'planner':         lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'PlannerField', 'planner'),
+        'periodField':     lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'PeriodField', 'periodField'),
+        'dendrogram':      lambda lines, el, name, eid, indent: emit_simple_field(lines, el, name, eid, indent, 'DendrogramField', 'dendrogram'),
+        'ganttChart':      emit_gantt_chart,
+    }
+
+    emitter = emitters.get(type_key)
     if emitter:
-        emitter(el, name, _id, indent)
+        if type_key == 'button':
+            emitter(lines, el, name, eid, indent, in_cmd_bar=in_cmd_bar)
+        else:
+            emitter(lines, el, name, eid, indent)
+
+
+def _warn_unrecognized(key, raw, valid, owner):
+    # drop-on-miss enum: значение не распознано → тег не эмитится. Громко, чтобы автор увидел потерю.
+    print(f"[WARN] Unrecognized {key} '{raw}' on '{owner}'. Valid values: {', '.join(valid)}. Value ignored.")
+
+
+def emit_group(lines, el, name, eid, indent):
+    lines.append(f'{indent}<UsualGroup name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner)
+
+    # Group orientation
+    # Group orientation (направление). Legacy: group:'collapsible' = Vertical + behavior collapsible.
+    group_val = str(el.get('group', '')).lower()
+    orientation_map = {
+        'horizontal': 'Horizontal',
+        'vertical': 'Vertical',
+        'alwayshorizontal': 'AlwaysHorizontal',
+        'alwaysvertical': 'AlwaysVertical',
+        'horizontalifpossible': 'HorizontalIfPossible',
+        'collapsible': 'Vertical',
+    }
+    orientation = orientation_map.get(group_val)
+    if orientation:
+        lines.append(f'{inner}<Group>{orientation}</Group>')
+    elif group_val:
+        _warn_unrecognized('group orientation', el.get('group'), ('vertical', 'horizontalIfPossible', 'alwaysHorizontal'), name)
+
+    # Behavior: ключ behavior (usual/collapsible/popup) → <Behavior>; отсутствие = Авто (не эмитим).
+    behavior_val = str(el['behavior']).lower() if el.get('behavior') else ('collapsible' if group_val == 'collapsible' else None)
+    bmap = {'usual': 'Usual', 'collapsible': 'Collapsible', 'popup': 'PopUp'}
+    if behavior_val and behavior_val in bmap:
+        lines.append(f'{inner}<Behavior>{bmap[behavior_val]}</Behavior>')
+    elif el.get('behavior') and behavior_val not in bmap:
+        _warn_unrecognized('behavior', el.get('behavior'), ('collapsible', 'popup'), name)
+    # Collapsed — у Collapsible и PopUp (не привязано к одному behavior)
+    if el.get('collapsed') is True:
+        lines.append(f'{inner}<Collapsed>true</Collapsed>')
+
+    # Representation
+    if el.get('representation'):
+        repr_map = {
+            'none': 'None',
+            'normal': 'NormalSeparation',
+            'weak': 'WeakSeparation',
+            'strong': 'StrongSeparation',
+        }
+        repr_val = repr_map.get(str(el['representation']), str(el['representation']))
+        lines.append(f'{inner}<Representation>{repr_val}</Representation>')
+
+    # Использование текущей строки группы (после Representation, порядок XSD)
+    if el.get('currentRowUse'):
+        lines.append(f'{inner}<CurrentRowUse>{el["currentRowUse"]}</CurrentRowUse>')
+
+    # ShowTitle
+    if el.get('showTitle') is not None:
+        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # Заголовок свёрнутого представления (collapsible/popup) — мультиязычный текст
+    if el.get('collapsedTitle'):
+        emit_mltext(lines, inner, 'CollapsedRepresentationTitle', el['collapsedTitle'])
+
+    # United
+    if el.get('united') is False:
+        lines.append(f'{inner}<United>false</United>')
+
+    # Формат значения пути к данным заголовка (<Format>; парный к titleDataPath группы)
+    if el.get('format'):
+        emit_mltext(lines, inner, 'Format', el['format'])
+    if el.get('editFormat'):
+        emit_mltext(lines, inner, 'EditFormat', el['editFormat'])
+
+    emit_common_flags(lines, el, inner)
+    emit_layout(lines, el, inner)
+
+    # Оформление (цвета/шрифты/граница) — перед компаньоном
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companion: ExtendedTooltip
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    # Children
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t')
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</UsualGroup>')
+
+
+def emit_column_group(lines, el, name, eid, indent):
+    lines.append(f'{indent}<ColumnGroup name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner)
+
+    group_val = str(el.get('columnGroup', '')).lower()
+    orientation_map = {
+        'horizontal': 'Horizontal',
+        'vertical': 'Vertical',
+        'incell': 'InCell',
+    }
+    orientation = orientation_map.get(group_val)
+    if orientation:
+        lines.append(f'{inner}<Group>{orientation}</Group>')
+    elif group_val:
+        _warn_unrecognized('columnGroup orientation', el.get('columnGroup'), ('vertical', 'horizontal', 'inCell'), name)
+
+    if el.get('showTitle') is not None:
+        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # showInHeader эмитится общим emit_common_element_props (через emit_layout)
+
+    emit_common_flags(lines, el, inner)
+    emit_layout(lines, el, inner)
+
+    # Картинка заголовка колонки-группы (после ShowInHeader/Layout, перед оформлением — порядок XSD)
+    emit_column_pics(lines, el, inner)
+
+    # Оформление (цвета/шрифты/граница) — перед компаньоном
+    emit_appearance(lines, el, inner, 'field')
+
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t')
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</ColumnGroup>')
+
+
+def emit_input(lines, el, name, eid, indent):
+    lines.append(f'{indent}<InputField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('titleLocation'):
+        loc_map = {'none': 'None', 'left': 'Left', 'right': 'Right', 'top': 'Top', 'bottom': 'Bottom'}
+        loc = loc_map.get(str(el['titleLocation']), str(el['titleLocation']))
+        lines.append(f'{inner}<TitleLocation>{loc}</TitleLocation>')
+
+    if el.get('multiLine') is not None:
+        lines.append(f'{inner}<MultiLine>{"true" if el["multiLine"] else "false"}</MultiLine>')
+    if el.get('passwordMode') is not None:
+        lines.append(f'{inner}<PasswordMode>{"true" if el["passwordMode"] else "false"}</PasswordMode>')
+    # ChoiceButton — захват «как есть» (платформа эмитит явное значение; ref-поля выводят сама,
+    # декомпилятор фиксирует факт. значение). Нет ключа → не эмитим (не додумываем по событию).
+    if el.get('choiceButton') is not None:
+        lines.append(f'{inner}<ChoiceButton>{"true" if el["choiceButton"] else "false"}</ChoiceButton>')
+    # Кнопки поля ввода — захват «как есть» (платформа эмитит явное значение, в т.ч. false)
+    if el.get('clearButton') is not None:
+        lines.append(f'{inner}<ClearButton>{"true" if el["clearButton"] else "false"}</ClearButton>')
+    if el.get('spinButton') is not None:
+        lines.append(f'{inner}<SpinButton>{"true" if el["spinButton"] else "false"}</SpinButton>')
+    if el.get('dropListButton') is not None:
+        lines.append(f'{inner}<DropListButton>{"true" if el["dropListButton"] else "false"}</DropListButton>')
+    if el.get('choiceListButton') is not None:
+        lines.append(f'{inner}<ChoiceListButton>{"true" if el["choiceListButton"] else "false"}</ChoiceListButton>')
+    if el.get('markIncomplete') is not None:
+        lines.append(f'{inner}<AutoMarkIncomplete>{"true" if el["markIncomplete"] else "false"}</AutoMarkIncomplete>')
+    if el.get('editMode'):
+        lines.append(f'{inner}<EditMode>{el["editMode"]}</EditMode>')
+    emit_column_pics(lines, el, inner)
+    if el.get('textEdit') is False:
+        lines.append(f'{inner}<TextEdit>false</TextEdit>')
+    # InputField-специфичные скаляры (захват «как есть»: платформа эмитит явное не-дефолтное значение)
+    for key, tag in (('wrap', 'Wrap'), ('openButton', 'OpenButton'), ('listChoiceMode', 'ListChoiceMode'),
+                     ('extendedEditMultipleValues', 'ExtendedEditMultipleValues'), ('chooseType', 'ChooseType'),
+                     ('quickChoice', 'QuickChoice'), ('autoChoiceIncomplete', 'AutoChoiceIncomplete')):
+        if el.get(key) is not None:
+            lines.append(f'{inner}<{tag}>{"true" if el[key] else "false"}</{tag}>')
+    # Ограничение доступных типов (поле на составном типе): домен типов + явный набор.
+    # availableTypes — формат типа реквизита (§type); emit_type сам разбирает мультитип "a | b".
+    if el.get('typeDomainEnabled') is not None:
+        lines.append(f'{inner}<TypeDomainEnabled>{"true" if el["typeDomainEnabled"] else "false"}</TypeDomainEnabled>')
+    if el.get('availableTypes'):
+        emit_type(lines, el['availableTypes'], inner, tag='AvailableTypes')
+    # InputField-специфичные value-скаляры
+    for key, tag in (('choiceForm', 'ChoiceForm'), ('choiceHistoryOnInput', 'ChoiceHistoryOnInput'),
+                     ('choiceFoldersAndItems', 'ChoiceFoldersAndItems'), ('footerDataPath', 'FooterDataPath')):
+        if el.get(key):
+            lines.append(f'{inner}<{tag}>{esc_xml_text(str(el[key]))}</{tag}>')
+    # MinValue/MaxValue — типизированное. JSON-число → xs:decimal, строка → xs:string (тип сохранён декомпилятором).
+    for key, tag in (('minValue', 'MinValue'), ('maxValue', 'MaxValue')):
+        if el.get(key) is not None:
+            mvt = 'xs:string' if isinstance(el[key], str) else 'xs:decimal'
+            lines.append(f'{inner}<{tag} xsi:type="{mvt}">{esc_xml_text(str(el[key]))}</{tag}>')
+    if el.get('choiceButtonRepresentation'):
+        lines.append(f'{inner}<ChoiceButtonRepresentation>{el["choiceButtonRepresentation"]}</ChoiceButtonRepresentation>')
+    emit_picture_ref(lines, el.get('choiceButtonPicture'), 'ChoiceButtonPicture', inner)
+    emit_layout(lines, el, inner, multi_line_default=(el.get('multiLine') is True))
+
+    if el.get('inputHint'):
+        emit_mltext(lines, inner, 'InputHint', el['inputHint'])
+    if el.get('warningOnEdit') is not None:
+        emit_mltext(lines, inner, 'WarningOnEdit', el['warningOnEdit'])
+    if el.get('footerText') is not None:
+        emit_mltext(lines, inner, 'FooterText', el['footerText'])
+
+    # Формат / формат редактирования (LocalStringType — строка или {ru,en})
+    if el.get('format'):
+        emit_mltext(lines, inner, 'Format', el['format'])
+    if el.get('editFormat'):
+        emit_mltext(lines, inner, 'EditFormat', el['editFormat'])
+
+    emit_choice_list(lines, el, inner)
+
+    # Связи по типу / связи параметров выбора / параметры выбора
+    emit_type_link(lines, el, inner)
+    emit_choice_parameter_links(lines, el, inner)
+    emit_choice_parameters(lines, el, inner)
+
+    # Оформление (цвета/шрифты/граница) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'input')
+
+    lines.append(f'{indent}</InputField>')
+
+
+def emit_check(lines, el, name, eid, indent):
+    lines.append(f'{indent}<CheckBoxField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('editMode'):
+        lines.append(f'{inner}<EditMode>{el["editMode"]}</EditMode>')
+    emit_column_pics(lines, el, inner)
+    # CheckBoxType: нет ключа → умный дефолт Auto; "" → подавить; значение → маппинг
+    _cbt_map = {'auto': 'Auto', 'checkbox': 'CheckBox', 'switcher': 'Switcher', 'tumbler': 'Tumbler'}
+    if 'checkBoxType' in el:
+        if el.get('checkBoxType'):
+            lines.append(f'{inner}<CheckBoxType>{_cbt_map.get(str(el["checkBoxType"]).lower(), el["checkBoxType"])}</CheckBoxType>')
+    else:
+        lines.append(f'{inner}<CheckBoxType>Auto</CheckBoxType>')
+
+    emit_title_location(lines, el, inner, 'Right')
+
+    emit_layout(lines, el, inner)
+
+    if el.get('warningOnEdit') is not None:
+        emit_mltext(lines, inner, 'WarningOnEdit', el['warningOnEdit'])
+    # FooterDataPath / FooterText — общие cell-свойства колонки (как у input/labelField)
+    if el.get('footerDataPath'):
+        lines.append(f'{inner}<FooterDataPath>{esc_xml_text(str(el["footerDataPath"]))}</FooterDataPath>')
+    if el.get('footerText') is not None:
+        emit_mltext(lines, inner, 'FooterText', el['footerText'])
+
+    # Формат / формат редактирования (LocalStringType — строка или {ru,en})
+    if el.get('format'):
+        emit_mltext(lines, inner, 'Format', el['format'])
+    if el.get('editFormat'):
+        emit_mltext(lines, inner, 'EditFormat', el['editFormat'])
+
+    # Оформление (цвета/шрифты/граница) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'check')
+
+    lines.append(f'{indent}</CheckBoxField>')
+
+
+def emit_radio_button_field(lines, el, name, eid, indent):
+    lines.append(f'{indent}<RadioButtonField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('editMode'):
+        lines.append(f'{inner}<EditMode>{el["editMode"]}</EditMode>')
+    emit_title_location(lines, el, inner, 'None')
+
+    rbt = normalize_radio_button_type(el.get('radioButtonType'))
+    lines.append(f'{inner}<RadioButtonType>{rbt}</RadioButtonType>')
+
+    if el.get('columnsCount') is not None:
+        lines.append(f'{inner}<ColumnsCount>{el["columnsCount"]}</ColumnsCount>')
+
+    emit_choice_list(lines, el, inner)
+
+    emit_layout(lines, el, inner)
+
+    if el.get('warningOnEdit') is not None:
+        emit_mltext(lines, inner, 'WarningOnEdit', el['warningOnEdit'])
+
+    # Оформление (цвета/шрифты/граница) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    emit_companion_panel(lines, 'ContextMenu', f'{name}КонтекстноеМеню', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'radio')
+
+    lines.append(f'{indent}</RadioButtonField>')
+
+
+# Заголовок декорации (Label/Picture): formatted-aware <Title> через единую ML-text форму
+# (reuse resolve_ml_formatted, как у extendedTooltip). Sibling-ключ formatted — back-compat override.
+
+
+def emit_decoration_title(lines, el, name, indent, auto=False):
+    has_key = 'title' in el
+    title_val = el['title'] if has_key else (title_from_name(name) if (auto and name) else None)
+    if title_val:
+        text, fmt = resolve_ml_formatted(title_val)
+        if 'formatted' in el:
+            fmt = bool(el['formatted'])
+        lines.append(f'{indent}<Title formatted="{"true" if fmt else "false"}">')
+        emit_ml_items(lines, f'{indent}\t', text)
+        lines.append(f'{indent}</Title>')
+    if el.get('tooltip'):
+        emit_mltext(lines, indent, 'ToolTip', el['tooltip'])
+    if el.get('tooltipRepresentation'):
+        lines.append(f'{indent}<ToolTipRepresentation>{el["tooltipRepresentation"]}</ToolTipRepresentation>')
+
+
+def emit_label(lines, el, name, eid, indent):
+    lines.append(f'{indent}<LabelDecoration name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    # Порядок как у платформы: own-content (флаги/hyperlink/layout/оформление) ПЕРЕД Title
+    # (корпус layout-first 16970 vs 44 — заодно убирает шум атрибуции харнесса на многострочном Title).
+    emit_common_flags(lines, el, inner)
+    if el.get('hyperlink') is True:
+        lines.append(f'{inner}<Hyperlink>true</Hyperlink>')
+    emit_layout(lines, el, inner)
+    emit_appearance(lines, el, inner, 'decoration')
+
+    emit_decoration_title(lines, el, name, inner, auto=True)
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'label')
+
+    lines.append(f'{indent}</LabelDecoration>')
+
+
+def emit_label_field(lines, el, name, eid, indent):
+    lines.append(f'{indent}<LabelField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('titleLocation'):
+        lines.append(f'{inner}<TitleLocation>{map_title_loc(el["titleLocation"])}</TitleLocation>')
+    if el.get('editMode'):
+        lines.append(f'{inner}<EditMode>{el["editMode"]}</EditMode>')
+    # FooterDataPath — путь данных подвала колонки (общий cell-prop, как у input); после EditMode
+    if el.get('footerDataPath'):
+        lines.append(f'{inner}<FooterDataPath>{esc_xml_text(str(el["footerDataPath"]))}</FooterDataPath>')
+    # PasswordMode на LabelField — платформа эмитит явный false (редко); факт. значение
+    if el.get('passwordMode') is not None:
+        lines.append(f'{inner}<PasswordMode>{"true" if el["passwordMode"] else "false"}</PasswordMode>')
+    emit_column_pics(lines, el, inner)
+    # ВНИМАНИЕ: у LabelField платформенный тег <Hiperlink> (опечатка 1С), не <Hyperlink>.
+    if el.get('hyperlink') is True:
+        lines.append(f'{inner}<Hiperlink>true</Hiperlink>')
+    emit_layout(lines, el, inner)
+
+    if el.get('warningOnEdit') is not None:
+        emit_mltext(lines, inner, 'WarningOnEdit', el['warningOnEdit'])
+    if el.get('footerText') is not None:
+        emit_mltext(lines, inner, 'FooterText', el['footerText'])
+
+    # Формат / формат редактирования (LocalStringType — строка или {ru,en})
+    if el.get('format'):
+        emit_mltext(lines, inner, 'Format', el['format'])
+    if el.get('editFormat'):
+        emit_mltext(lines, inner, 'EditFormat', el['editFormat'])
+
+    # Оформление (цвета/шрифты/граница + header/footer) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'labelField')
+
+    lines.append(f'{indent}</LabelField>')
+
+
+# Блок свойств таблицы, привязанной к динамическому списку (Group A defaults + B/C).
+
+
+def emit_dynlist_table_block(lines, el, indent):
+    # (useAlternationRowColor — общее свойство таблицы, эмитится в emit_table)
+    # Group A (гарант. блок): дефолт + override
+    ar = 'true' if el.get('autoRefresh') is True else 'false'
+    lines.append(f'{indent}<AutoRefresh>{ar}</AutoRefresh>')
+    arp = el['autoRefreshPeriod'] if el.get('autoRefreshPeriod') is not None else 60
+    lines.append(f'{indent}<AutoRefreshPeriod>{arp}</AutoRefreshPeriod>')
+    lines.append(f'{indent}<Period>')
+    lines.append(f'{indent}\t<v8:variant xsi:type="v8:StandardPeriodVariant">Custom</v8:variant>')
+    lines.append(f'{indent}\t<v8:startDate>0001-01-01T00:00:00</v8:startDate>')
+    lines.append(f'{indent}\t<v8:endDate>0001-01-01T00:00:00</v8:endDate>')
+    lines.append(f'{indent}</Period>')
+    cfi = el.get('choiceFoldersAndItems') or 'Items'
+    lines.append(f'{indent}<ChoiceFoldersAndItems>{cfi}</ChoiceFoldersAndItems>')
+    rcr = 'true' if el.get('restoreCurrentRow') is True else 'false'
+    lines.append(f'{indent}<RestoreCurrentRow>{rcr}</RestoreCurrentRow>')
+    lines.append(f'{indent}<TopLevelParent xsi:nil="true"/>')
+    sr = 'false' if el.get('showRoot') is False else 'true'
+    lines.append(f'{indent}<ShowRoot>{sr}</ShowRoot>')
+    arc = 'true' if el.get('allowRootChoice') is True else 'false'
+    lines.append(f'{indent}<AllowRootChoice>{arc}</AllowRootChoice>')
+    uodc = el.get('updateOnDataChange') or 'Auto'
+    lines.append(f'{indent}<UpdateOnDataChange>{uodc}</UpdateOnDataChange>')
+    if el.get('userSettingsGroup'):
+        lines.append(f'{indent}<UserSettingsGroup>{el["userSettingsGroup"]}</UserSettingsGroup>')
+    agcru = 'false' if el.get('allowGettingCurrentRowURL') is False else 'true'
+    lines.append(f'{indent}<AllowGettingCurrentRowURL>{agcru}</AllowGettingCurrentRowURL>')
+
+
+def emit_table(lines, el, name, eid, indent):
+    _current_table_name['name'] = name   # дефолт source для кастомных дополнений в commandBar
+    lines.append(f'{indent}<Table name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('representation'):
+        lines.append(f'{inner}<Representation>{el["representation"]}</Representation>')
+    if el.get('titleLocation'):
+        lines.append(f'{inner}<TitleLocation>{map_title_loc(el["titleLocation"])}</TitleLocation>')
+    # ChangeRowSet/Order — явное значение (в т.ч. false: платформа пишет его на ValueTable)
+    if 'changeRowSet' in el and el['changeRowSet'] is not None:
+        lines.append(f'{inner}<ChangeRowSet>{"true" if el["changeRowSet"] is True else "false"}</ChangeRowSet>')
+    if 'changeRowOrder' in el and el['changeRowOrder'] is not None:
+        lines.append(f'{inner}<ChangeRowOrder>{"true" if el["changeRowOrder"] is True else "false"}</ChangeRowOrder>')
+    if el.get('autoInsertNewRow') is True:
+        lines.append(f'{inner}<AutoInsertNewRow>true</AutoInsertNewRow>')
+    # RowFilter — nil-плейсхолдер (ключ присутствует → эмитим)
+    if 'rowFilter' in el:
+        lines.append(f'{inner}<RowFilter xsi:nil="true"/>')
+    # Высота в строках (<HeightInTableRows>) — отдельное свойство от <Height> (высота элемента,
+    # эмитится generic-ом emit_layout ниже). Таблица может нести оба (237 в корпусе).
+    if el.get('heightInTableRows'):
+        lines.append(f'{inner}<HeightInTableRows>{el["heightInTableRows"]}</HeightInTableRows>')
+    if el.get('header') is False:
+        lines.append(f'{inner}<Header>false</Header>')
+    if el.get('footer') is True:
+        lines.append(f'{inner}<Footer>true</Footer>')
+
+    if el.get('commandBarLocation'):
+        lines.append(f'{inner}<CommandBarLocation>{el["commandBarLocation"]}</CommandBarLocation>')
+    if el.get('searchStringLocation'):
+        lines.append(f'{inner}<SearchStringLocation>{el["searchStringLocation"]}</SearchStringLocation>')
+
+    if el.get('choiceMode') is True:
+        lines.append(f'{inner}<ChoiceMode>true</ChoiceMode>')
+    # Скаляры таблицы (захват «как есть»). Autofill — СВОЁ свойство таблицы (≠ AutoCommandBar autofill = tableAutofill).
+    if el.get('autofill') is not None:
+        lines.append(f'{inner}<Autofill>{"true" if el["autofill"] else "false"}</Autofill>')
+    if el.get('multipleChoice') is True:
+        lines.append(f'{inner}<MultipleChoice>true</MultipleChoice>')
+    if el.get('searchOnInput'):
+        lines.append(f'{inner}<SearchOnInput>{el["searchOnInput"]}</SearchOnInput>')
+    if el.get('markIncomplete') is not None:
+        lines.append(f'{inner}<AutoMarkIncomplete>{"true" if el["markIncomplete"] else "false"}</AutoMarkIncomplete>')
+    # Высота шапки/подвала в строках (pass-through; 1С толерантна к порядку детей Table)
+    if el.get('headerHeight') is not None:
+        lines.append(f'{inner}<HeaderHeight>{el["headerHeight"]}</HeaderHeight>')
+    if el.get('footerHeight') is not None:
+        lines.append(f'{inner}<FooterHeight>{el["footerHeight"]}</FooterHeight>')
+    if el.get('useAlternationRowColor') is True:
+        lines.append(f'{inner}<UseAlternationRowColor>true</UseAlternationRowColor>')
+    if el.get('selectionMode'):
+        lines.append(f'{inner}<SelectionMode>{el["selectionMode"]}</SelectionMode>')
+    if el.get('rowSelectionMode'):
+        lines.append(f'{inner}<RowSelectionMode>{el["rowSelectionMode"]}</RowSelectionMode>')
+    if el.get('verticalLines') is False:
+        lines.append(f'{inner}<VerticalLines>false</VerticalLines>')
+    if el.get('horizontalLines') is False:
+        lines.append(f'{inner}<HorizontalLines>false</HorizontalLines>')
+    if el.get('initialTreeView'):
+        lines.append(f'{inner}<InitialTreeView>{el["initialTreeView"]}</InitialTreeView>')
+    if el.get('enableDrag') is not None:
+        lines.append(f'{inner}<EnableDrag>{"true" if el["enableDrag"] else "false"}</EnableDrag>')
+    if el.get('rowPictureDataPath'):
+        lines.append(f'{inner}<RowPictureDataPath>{el["rowPictureDataPath"]}</RowPictureDataPath>')
+    # RowsPicture — та же конвенция, что ValuesPicture (дефолт LoadTransparent=false; abs/TransparentPixel)
+    emit_picture_ref(lines, el.get('rowsPicture'), 'RowsPicture', inner)
+    # Использование текущей строки таблицы (pass-through; в корпусе соседствует с блоком дин-списка)
+    if el.get('currentRowUse'):
+        lines.append(f'{inner}<CurrentRowUse>{el["currentRowUse"]}</CurrentRowUse>')
+    # Запрос обновления дин-списка (pass-through; в корпусе всегда PullFromTop)
+    if el.get('refreshRequest'):
+        lines.append(f'{inner}<RefreshRequest>{el["refreshRequest"]}</RefreshRequest>')
+    # Блок свойств дин-список-таблицы (помечена эвристикой)
+    if el.get('_dynList'):
+        emit_dynlist_table_block(lines, el, inner)
+    if el.get('viewStatusLocation'):
+        lines.append(f'{inner}<ViewStatusLocation>{el["viewStatusLocation"]}</ViewStatusLocation>')
+    if el.get('searchControlLocation'):
+        lines.append(f'{inner}<SearchControlLocation>{el["searchControlLocation"]}</SearchControlLocation>')
+    emit_layout(lines, el, inner)
+
+    # CommandSet таблицы эмитится через emit_layout (общий механизм поля)
+
+    # Оформление (цвета/граница таблицы) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    # AutoCommandBar — with optional Autofill control
+    if el.get('commandBar') is not None:
+        emit_companion_panel(lines, 'AutoCommandBar', f'{name}\u041a\u043e\u043c\u0430\u043d\u0434\u043d\u0430\u044f\u041f\u0430\u043d\u0435\u043b\u044c', inner, el.get('commandBar'))
+    elif el.get('tableAutofill') is not None:
+        acb_id = new_id()
+        acb_name = f'{name}\u041a\u043e\u043c\u0430\u043d\u0434\u043d\u0430\u044f\u041f\u0430\u043d\u0435\u043b\u044c'
+        af_val = 'true' if el['tableAutofill'] else 'false'
+        lines.append(f'{inner}<AutoCommandBar name="{acb_name}" id="{acb_id}">')
+        lines.append(f'{inner}\t<Autofill>{af_val}</Autofill>')
+        lines.append(f'{inner}</AutoCommandBar>')
+    else:
+        emit_companion(lines, 'AutoCommandBar', f'{name}\u041a\u043e\u043c\u0430\u043d\u0434\u043d\u0430\u044f\u041f\u0430\u043d\u0435\u043b\u044c', inner)
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+    adds = el.get('additions')
+    emit_table_addition(lines, 'searchString',  name, inner, get_addition_override(adds, 'searchString'))
+    emit_table_addition(lines, 'viewStatus',    name, inner, get_addition_override(adds, 'viewStatus'))
+    emit_table_addition(lines, 'searchControl', name, inner, get_addition_override(adds, 'searchControl'))
+
+    # Columns
+    if el.get('columns') and len(el['columns']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for col in el['columns']:
+            emit_element(lines, col, f'{inner}\t')
+        lines.append(f'{inner}</ChildItems>')
+
+    emit_events(lines, el, name, inner, 'table')
+
+    lines.append(f'{indent}</Table>')
+
+
+def emit_pages(lines, el, name, eid, indent):
+    lines.append(f'{indent}<Pages name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner)
+
+    if el.get('pagesRepresentation'):
+        lines.append(f'{inner}<PagesRepresentation>{el["pagesRepresentation"]}</PagesRepresentation>')
+    # \u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0438\u0435 \u0442\u0435\u043a\u0443\u0449\u0435\u0439 \u0441\u0442\u0440\u043e\u043a\u0438 (\u043f\u043e\u0441\u043b\u0435 PagesRepresentation, \u043f\u043e\u0440\u044f\u0434\u043e\u043a XSD)
+    if el.get('currentRowUse'):
+        lines.append(f'{inner}<CurrentRowUse>{el["currentRowUse"]}</CurrentRowUse>')
+
+    emit_common_flags(lines, el, inner)
+    emit_layout(lines, el, inner)
+
+    # \u041e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435 (\u0446\u0432\u0435\u0442\u0430/\u0448\u0440\u0438\u0444\u0442\u044b/\u0433\u0440\u0430\u043d\u0438\u0446\u0430) \u0437\u0430\u0433\u043e\u043b\u043e\u0432\u043a\u0430 \u0433\u0440\u0443\u043f\u043f\u044b \u0441\u0442\u0440\u0430\u043d\u0438\u0446 \u2014 TitleFont/TitleTextColor/\u2026 (\u043a\u0430\u043a \u0443 Page)
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companion
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'pages')
+
+    # Children (pages)
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t')
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</Pages>')
+
+
+def emit_page(lines, el, name, eid, indent):
+    lines.append(f'{indent}<Page name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner, auto=True)
+    emit_common_flags(lines, el, inner)
+
+    # Картинка страницы (иконка вкладки): после Title/флагов, перед Group (порядок XSD).
+    # Конвенция как у ValuesPicture (дефолт LoadTransparent=false): скаляр-Ref/'abs:X' или объект.
+    emit_picture_ref(lines, el.get('picture'), 'Picture', inner)
+
+    if el.get('group'):
+        orientation_map = {
+            'horizontal': 'Horizontal',
+            'vertical': 'Vertical',
+            'alwayshorizontal': 'AlwaysHorizontal',
+            'alwaysvertical': 'AlwaysVertical',
+            'horizontalifpossible': 'HorizontalIfPossible',
+        }
+        orientation = orientation_map.get(str(el['group']).lower())
+        if orientation:
+            lines.append(f'{inner}<Group>{orientation}</Group>')
+        else:
+            _warn_unrecognized('page group orientation', el['group'], ('vertical', 'horizontalIfPossible', 'alwaysHorizontal'), name)
+    if el.get('showTitle') is not None:
+        lines.append(f'{inner}<ShowTitle>{"true" if el["showTitle"] else "false"}</ShowTitle>')
+    # Формат значения пути к данным заголовка (<Format>; парный к titleDataPath страницы)
+    if el.get('format'):
+        emit_mltext(lines, inner, 'Format', el['format'])
+    if el.get('editFormat'):
+        emit_mltext(lines, inner, 'EditFormat', el['editFormat'])
+    emit_layout(lines, el, inner)
+
+    # \u041e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b (BackColor / TitleTextColor / TitleFont) \u2014 \u043f\u043e\u0441\u043b\u0435 ShowTitle, \u043f\u0435\u0440\u0435\u0434 \u043a\u043e\u043c\u043f\u0430\u043d\u044c\u043e\u043d\u043e\u043c
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companion
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    # Children
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t')
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</Page>')
+
+
+def emit_button(lines, el, name, eid, indent, in_cmd_bar=False):
+    lines.append(f'{indent}<Button name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+    # (общие свойства — через emit_layout ниже; отдельный вызов был бы двойной эмиссией)
+
+    # Type — context-aware. Inside command bars (cmdBar/autoCmdBar/popup) only
+    # CommandBarButton/CommandBarHyperlink are valid; UsualButton/Hyperlink would be ignored.
+    # Forgiving resolver: any "ordinary button" hint resolves to UsualButton/CommandBarButton,
+    # any "hyperlink" hint resolves to Hyperlink/CommandBarHyperlink — depending on context.
+    btn_type = None
+    if el.get('type'):
+        raw = str(el['type'])
+        if in_cmd_bar:
+            cmd_bar_map = {
+                'usual': 'CommandBarButton',
+                'UsualButton': 'CommandBarButton',
+                'commandBar': 'CommandBarButton',
+                'CommandBarButton': 'CommandBarButton',
+                'hyperlink': 'CommandBarHyperlink',
+                'Hyperlink': 'CommandBarHyperlink',
+                'CommandBarHyperlink': 'CommandBarHyperlink',
+            }
+            btn_type = cmd_bar_map.get(raw, raw)
+        else:
+            normal_map = {
+                'usual': 'UsualButton',
+                'UsualButton': 'UsualButton',
+                'commandBar': 'UsualButton',
+                'CommandBarButton': 'UsualButton',
+                'hyperlink': 'Hyperlink',
+                'Hyperlink': 'Hyperlink',
+                'CommandBarHyperlink': 'Hyperlink',
+            }
+            btn_type = normal_map.get(raw, raw)
+    elif in_cmd_bar:
+        btn_type = 'CommandBarButton'
+    if btn_type:
+        lines.append(f'{inner}<Type>{btn_type}</Type>')
+
+    # CommandName
+    if el.get('command'):
+        lines.append(f'{inner}<CommandName>Form.Command.{el["command"]}</CommandName>')
+    # commandName — глобальная команда «как есть» (CommonCommand.X, Catalog.X.Command.Y …), без обёртки Form.
+    if el.get('commandName') and not el.get('command'):
+        lines.append(f'{inner}<CommandName>{el["commandName"]}</CommandName>')
+    if el.get('stdCommand'):
+        sc = str(el['stdCommand'])
+        m = re.match(r'^(.+)\.(.+)$', sc)
+        if m:
+            lines.append(f'{inner}<CommandName>Form.Item.{m.group(1)}.StandardCommand.{m.group(2)}</CommandName>')
+        else:
+            lines.append(f'{inner}<CommandName>Form.StandardCommand.{sc}</CommandName>')
+    # Parameter команды (после CommandName): строка → xr:MDObjectRef (объект метаданных);
+    # объект {type} → v8:TypeDescription (грамматика типа). Forgiving-синоним 'параметр'.
+    btn_param = el.get('parameter')
+    if btn_param is None:
+        btn_param = el.get('параметр')
+    if btn_param is not None:
+        if isinstance(btn_param, dict) and btn_param.get('type'):
+            emit_type(lines, str(btn_param['type']), inner, tag='Parameter', tag_attrs=' xsi:type="v8:TypeDescription"')
+        else:
+            lines.append(f'{inner}<Parameter xsi:type="xr:MDObjectRef">{esc_xml_text(str(btn_param))}</Parameter>')
+    # DataPath — привязка команды кнопки к контексту (Объект.Ref, Items.X.CurrentData.Поле)
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not (el.get('command') or el.get('commandName') or el.get('stdCommand')))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('defaultButton') is True:
+        lines.append(f'{inner}<DefaultButton>true</DefaultButton>')
+    # Check (пометка toggle-кнопки командной панели) — платформа эмитит только true.
+    # Ключ 'checked' (не 'check': 'check' — тип-ключ CheckBoxField, был бы конфликт диспетчера типов)
+    if el.get('checked') is True:
+        lines.append(f'{inner}<Check>true</Check>')
+
+    # Picture
+    emit_command_picture(lines, el.get('picture'), el.get('loadTransparent'), inner)
+
+    if el.get('representation'):
+        lines.append(f'{inner}<Representation>{el["representation"]}</Representation>')
+
+    if el.get('locationInCommandBar'):
+        lines.append(f'{inner}<LocationInCommandBar>{el["locationInCommandBar"]}</LocationInCommandBar>')
+    emit_layout(lines, el, inner)
+
+    # Оформление (цвета/шрифт/граница) — перед компаньоном (профиль кнопки)
+    emit_appearance(lines, el, inner, 'button')
+
+    # Companion
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'button')
+
+    lines.append(f'{indent}</Button>')
+
+
+def emit_picture_decoration(lines, el, name, eid, indent):
+    lines.append(f'{indent}<PictureDecoration name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_decoration_title(lines, el, name, inner)
+    # Текст при невыбранной картинке (NonselectedPictureText) — после Title (порядок корпуса)
+    if el.get('nonselectedPictureText') is not None:
+        emit_mltext(lines, inner, 'NonselectedPictureText', el['nonselectedPictureText'])
+    emit_common_flags(lines, el, inner)
+
+    # Источник картинки — ТОЛЬКО src (ключ 'picture' = тип/имя элемента, не источник).
+    # Префикс "abs:" → встроенная картинка <xr:Abs>; иначе именованная/стилевая <xr:Ref>.
+    if el.get('src'):
+        src_str = str(el['src'])
+        lt = 'true' if el.get('loadTransparent') is True else 'false'
+        lines.append(f'{inner}<Picture>')
+        if src_str.startswith('abs:'):
+            lines.append(f'{inner}\t<xr:Abs>{esc_xml_text(src_str[4:])}</xr:Abs>')
+        else:
+            lines.append(f'{inner}\t<xr:Ref>{esc_xml_text(src_str)}</xr:Ref>')
+        lines.append(f'{inner}\t<xr:LoadTransparent>{lt}</xr:LoadTransparent>')
+        tpx = el.get('transparentPixel')
+        if tpx:
+            lines.append(f'{inner}\t<xr:TransparentPixel x="{tpx.get("x")}" y="{tpx.get("y")}"/>')
+        lines.append(f'{inner}</Picture>')
+
+    if el.get('hyperlink') is True:
+        lines.append(f'{inner}<Hyperlink>true</Hyperlink>')
+    emit_layout(lines, el, inner)
+    # EnableDrag — фактическое значение (декорация-картинка перетаскиваема; декомпилятор ловит generic-ом)
+    if el.get('enableDrag') is not None:
+        lines.append(f'{inner}<EnableDrag>{"true" if el["enableDrag"] else "false"}</EnableDrag>')
+
+    # Оформление (цвета/шрифт/граница) — профиль декорации (1С толерантна к порядку appearance)
+    emit_appearance(lines, el, inner, 'decoration')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'picture')
+
+    lines.append(f'{indent}</PictureDecoration>')
+
+
+def emit_picture_field(lines, el, name, eid, indent):
+    lines.append(f'{indent}<PictureField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner)
+    emit_common_flags(lines, el, inner)
+
+    if el.get('editMode'):
+        lines.append(f'{inner}<EditMode>{el["editMode"]}</EditMode>')
+    emit_column_pics(lines, el, inner)
+    if el.get('titleLocation'):
+        lines.append(f'{inner}<TitleLocation>{map_title_loc(el["titleLocation"])}</TitleLocation>')
+    if el.get('hyperlink') is True:
+        lines.append(f'{inner}<Hyperlink>true</Hyperlink>')
+
+    emit_layout(lines, el, inner)
+    # EnableDrag — фактическое значение (поле картинки перетаскиваемо; декомпилятор ловит generic-ом)
+    if el.get('enableDrag') is not None:
+        lines.append(f'{inner}<EnableDrag>{"true" if el["enableDrag"] else "false"}</EnableDrag>')
+
+    # FooterDataPath / FooterText — общие cell-свойства колонки (как у input/labelField)
+    if el.get('footerDataPath'):
+        lines.append(f'{inner}<FooterDataPath>{esc_xml_text(str(el["footerDataPath"]))}</FooterDataPath>')
+    if el.get('footerText') is not None:
+        emit_mltext(lines, inner, 'FooterText', el['footerText'])
+
+    # ValuesPicture — picture (collection) used to render the field's value.
+    # Required for a Boolean-bound PictureField to actually show an icon.
+    # Скаляр (Ref) или объект {src, loadTransparent}; LoadTransparent эмитится всегда.
+    emit_picture_ref(lines, el.get('valuesPicture'), 'ValuesPicture', inner)
+    if el.get('nonselectedPictureText') is not None:
+        emit_mltext(lines, inner, 'NonselectedPictureText', el['nonselectedPictureText'])
+
+    # Оформление (цвета/шрифты/граница) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'picField')
+
+    lines.append(f'{indent}</PictureField>')
+
+
+def emit_simple_field(lines, el, name, eid, indent, xml_tag, type_key):
+    # Спец-поля "документ/датчик" (SpreadSheet/HTML/Text/Formatted/ProgressBar/TrackBar):
+    # единый скелет поля. Типоспец. enum/bool скаляры — через generic (emit_layout);
+    # числовые скаляры датчиков (min/max/шаги) — без xsi:type; enableDrag — фактическое значение.
+    lines.append(f'{indent}<{xml_tag} name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+    if el.get('titleLocation'):
+        lines.append(f'{inner}<TitleLocation>{map_title_loc(el["titleLocation"])}</TitleLocation>')
+    if el.get('editMode'):
+        lines.append(f'{inner}<EditMode>{el["editMode"]}</EditMode>')
+
+    emit_layout(lines, el, inner)
+
+    # EnableDrag — фактическое значение (SpreadSheet; платформа эмитит явный false). enableStartDrag — через emit_layout.
+    if el.get('enableDrag') is not None:
+        lines.append(f'{inner}<EnableDrag>{"true" if el["enableDrag"] else "false"}</EnableDrag>')
+
+    # Датчики (ProgressBar/TrackBar) — числовые скаляры (без xsi:type)
+    for key, tag in (('minValue', 'MinValue'), ('maxValue', 'MaxValue'), ('largeStep', 'LargeStep'), ('markingStep', 'MarkingStep'), ('step', 'Step')):
+        if el.get(key) is not None:
+            lines.append(f'{inner}<{tag}>{el[key]}</{tag}>')
+
+    # Оформление (цвета/шрифты/граница) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}КонтекстноеМеню', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, type_key)
+
+    lines.append(f'{indent}</{xml_tag}>')
+
+
+def emit_gantt_chart(lines, el, name, eid, indent):
+    # GanttChartField — скелет поля + вложенная <Table> (полноценная таблица, через emit_element).
+    lines.append(f'{indent}<GanttChartField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+    if el.get('titleLocation'):
+        lines.append(f'{inner}<TitleLocation>{map_title_loc(el["titleLocation"])}</TitleLocation>')
+    emit_layout(lines, el, inner)
+    emit_appearance(lines, el, inner, 'field')
+    emit_companion_panel(lines, 'ContextMenu', f'{name}КонтекстноеМеню', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+    # Вложенная таблица диаграммы Ганта (стандартный Table — переиспользуем emit_element)
+    if el.get('ganttTable'):
+        emit_element(lines, el['ganttTable'], inner)
+    emit_events(lines, el, name, inner, 'ganttChart')
+    lines.append(f'{indent}</GanttChartField>')
+
+
+def emit_calendar(lines, el, name, eid, indent):
+    lines.append(f'{indent}<CalendarField name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    if el.get('path'):
+        lines.append(f'{inner}<DataPath>{el["path"]}</DataPath>')
+
+    emit_title(lines, el, name, inner, auto=not el.get('path'))
+    emit_common_flags(lines, el, inner)
+
+    if el.get('titleLocation'):
+        loc_map = {'none': 'None', 'left': 'Left', 'right': 'Right', 'top': 'Top', 'bottom': 'Bottom', 'auto': 'Auto'}
+        loc = loc_map.get(str(el['titleLocation']), str(el['titleLocation']))
+        lines.append(f'{inner}<TitleLocation>{loc}</TitleLocation>')
+
+    emit_layout(lines, el, inner)
+
+    # Календарно-специфичные свойства (порядок схемы: после layout, до companions)
+    if el.get('selectionMode'):
+        lines.append(f'{inner}<SelectionMode>{el["selectionMode"]}</SelectionMode>')
+    if el.get('showCurrentDate') is not None:
+        lines.append(f'{inner}<ShowCurrentDate>{"true" if el["showCurrentDate"] else "false"}</ShowCurrentDate>')
+    if el.get('widthInMonths') is not None:
+        lines.append(f'{inner}<WidthInMonths>{el["widthInMonths"]}</WidthInMonths>')
+    if el.get('heightInMonths') is not None:
+        lines.append(f'{inner}<HeightInMonths>{el["heightInMonths"]}</HeightInMonths>')
+    if el.get('showMonthsPanel') is not None:
+        lines.append(f'{inner}<ShowMonthsPanel>{"true" if el["showMonthsPanel"] else "false"}</ShowMonthsPanel>')
+
+    # Оформление (цвета/шрифты/граница) — перед компаньонами
+    emit_appearance(lines, el, inner, 'field')
+
+    # Companions
+    emit_companion_panel(lines, 'ContextMenu', f'{name}\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u043d\u043e\u0435\u041c\u0435\u043d\u044e', inner, el.get('contextMenu'))
+    emit_companion(lines, 'ExtendedTooltip', f'{name}\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u043d\u0430\u044f\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430', inner, el.get('extendedTooltip'))
+
+    emit_events(lines, el, name, inner, 'calendar')
+
+    lines.append(f'{indent}</CalendarField>')
+
+
+def emit_command_bar(lines, el, name, eid, indent):
+    lines.append(f'{indent}<CommandBar name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner)
+
+    if el.get('commandSource'):
+        lines.append(f'{inner}<CommandSource>{el["commandSource"]}</CommandSource>')
+
+    if el.get('autofill') is True:
+        lines.append(f'{inner}<Autofill>true</Autofill>')
+
+    # CommandBar хранит HorizontalLocation фактически (включая Auto); ≠ дополнениям (Auto=скип)
+    if el.get('horizontalLocation'):
+        _hlv = {'auto': 'Auto', 'left': 'Left', 'right': 'Right', 'center': 'Center'}.get(str(el['horizontalLocation']).lower(), str(el['horizontalLocation']))
+        lines.append(f'{inner}<HorizontalLocation>{_hlv}</HorizontalLocation>')
+
+    emit_common_flags(lines, el, inner)
+    emit_layout(lines, el, inner)
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+
+    # Children
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t', in_cmd_bar=True)
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</CommandBar>')
+
+
+def emit_popup(lines, el, name, eid, indent):
+    lines.append(f'{indent}<Popup name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner, auto=True)
+    emit_common_flags(lines, el, inner)
+
+    # Источник команд попапа (после Title/ToolTip, перед компаньоном) — как у ButtonGroup/CommandBar
+    if el.get('commandSource'):
+        lines.append(f'{inner}<CommandSource>{el["commandSource"]}</CommandSource>')
+
+    emit_command_picture(lines, el.get('picture'), el.get('loadTransparent'), inner)
+
+    if el.get('representation'):
+        lines.append(f'{inner}<Representation>{el["representation"]}</Representation>')
+    emit_layout(lines, el, inner)
+
+    # Оформление попапа (TitleTextColor / TitleFont) — перед компаньоном
+    emit_appearance(lines, el, inner, 'field')
+
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+
+    # Children
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t', in_cmd_bar=True)
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</Popup>')
+
+
+def emit_button_group(lines, el, name, eid, indent):
+    lines.append(f'{indent}<ButtonGroup name="{name}" id="{eid}"{di_attr(el)}>')
+    inner = f'{indent}\t'
+
+    emit_title(lines, el, name, inner)
+
+    if el.get('commandSource'):
+        lines.append(f'{inner}<CommandSource>{el["commandSource"]}</CommandSource>')
+
+    if el.get('representation'):
+        lines.append(f'{inner}<Representation>{el["representation"]}</Representation>')
+
+    emit_common_flags(lines, el, inner)
+    emit_layout(lines, el, inner)
+
+    # Companion: ExtendedTooltip
+    emit_companion(lines, 'ExtendedTooltip', f'{name}РасширеннаяПодсказка', inner, el.get('extendedTooltip'))
+
+    # Children (кнопки в контексте командной панели)
+    if el.get('children') and len(el['children']) > 0:
+        lines.append(f'{inner}<ChildItems>')
+        for child in el['children']:
+            emit_element(lines, child, f'{inner}\t', in_cmd_bar=True)
+        lines.append(f'{inner}</ChildItems>')
+
+    lines.append(f'{indent}</ButtonGroup>')
+
+
+# --- Attribute emitter ---
+
+
+def _normalize_synonyms(el):
+    if not isinstance(el, dict):
+        return
+    # Companion-панели (объект/массив-значение) → commandBar/contextMenu
+    normalize_panel_synonyms(el)
+    # Тип-синонимы: commandBar/autoCommandBar → элемент-тип ТОЛЬКО при строковом значении
+    synonyms = {'commandBar': 'cmdBar', 'autoCommandBar': 'autoCmdBar', 'extTooltip': 'extendedTooltip'}
+    for src, dst in synonyms.items():
+        if src in el and dst not in el:
+            if src in STR_ONLY_TYPE_SYNONYMS and not isinstance(el[src], str):
+                continue
+            el[dst] = el.pop(src)
+    # Рекурсия в детей панелей (commandBar/contextMenu)
+    for pk in ('commandBar', 'contextMenu'):
+        pv = el.get(pk)
+        kids = pv if isinstance(pv, list) else (pv.get('children') if isinstance(pv, dict) else None)
+        if isinstance(kids, list):
+            for child in kids:
+                _normalize_synonyms(child)
+    if isinstance(el.get('children'), list):
+        for child in el['children']:
+            _normalize_synonyms(child)
+    if isinstance(el.get('columns'), list):
+        for child in el['columns']:
+            _normalize_synonyms(child)
+
+
+def _apply_dlist_table_heuristic(el, list_name, has_main_table):
+    if not isinstance(el, dict):
+        return
+    if el.get('table') is not None and str(el.get('path', '')).lower() == list_name.lower():
+        # Маркер дин-список-таблицы → emit_table эмитит блок свойств
+        el['_dynList'] = True
+        if 'tableAutofill' not in el:
+            el['tableAutofill'] = False
+        if 'commandBarLocation' not in el:
+            el['commandBarLocation'] = 'None'
+        # RowPictureDataPath: умный дефолт <Список>.DefaultPicture, если ключ ОТСУТСТВУЕТ.
+        # Декомпилятор опускает при rpdp == smart-default; реальное отсутствие → ""-маркер (не
+        # перезатирается). Гейт has_main_table снят: дин-список без mainTable тоже несёт RowPictureDataPath.
+        if 'rowPictureDataPath' not in el:
+            el['rowPictureDataPath'] = f'{list_name}.DefaultPicture'
+    if isinstance(el.get('children'), list):
+        for child in el['children']:
+            _apply_dlist_table_heuristic(child, list_name, has_main_table)
+
+
+# Ключи типов — в порядке form-compile (ключ-свойство проверяется после типа, у которого он свойство)
+ELEMENT_KEYS = list(TYPE_KEYS)
 
 
 # ── 6. Find element by name recursively ─────────────────────
@@ -1341,10 +3451,6 @@ def fail(msg):
 
 def _is_el(n):
     return isinstance(n.tag, str)
-
-
-def _el_children(n):
-    return [c for c in n if _is_el(c)]
 
 
 def get_next_element_sibling(n):
@@ -1598,9 +3704,16 @@ def resolve_position(op, ctx, required):
 CONTAINER_TAGS = ['UsualGroup', 'Page', 'Pages', 'Table', 'ColumnGroup', 'CommandBar', 'AutoCommandBar', 'ButtonGroup', 'Popup', 'ContextMenu']
 BAR_TAGS = ['CommandBar', 'AutoCommandBar', 'ButtonGroup', 'Popup', 'ContextMenu']
 BAR_ITEM_TAGS = ['Button', 'ButtonGroup', 'Popup']
+ADDITION_TAGS = ['SearchStringAddition', 'ViewStatusAddition', 'SearchControlAddition']
 TABLE_ITEM_TAGS = ['InputField', 'CheckBoxField', 'LabelField', 'PictureField', 'ColumnGroup']
 COMPANION_TAGS = ['ContextMenu', 'ExtendedTooltip', 'AutoCommandBar', 'SearchStringAddition', 'ViewStatusAddition', 'SearchControlAddition']
 DSL_TAG_MAP = {
+    "radio": "RadioButtonField", "columnGroup": "ColumnGroup", "buttonGroup": "ButtonGroup",
+    "searchString": "SearchStringAddition", "viewStatus": "ViewStatusAddition", "searchControl": "SearchControlAddition",
+    "spreadsheet": "SpreadSheetDocumentField", "html": "HTMLDocumentField", "textDoc": "TextDocumentField",
+    "formattedDoc": "FormattedDocumentField", "progressBar": "ProgressBarField", "trackBar": "TrackBarField",
+    "chart": "ChartField", "ganttChart": "GanttChartField", "graphicalSchema": "GraphicalSchemaField",
+    "planner": "PlannerField", "periodField": "PeriodField", "dendrogram": "DendrogramField",
     "group": "UsualGroup", "input": "InputField", "check": "CheckBoxField", "label": "LabelDecoration",
     "labelField": "LabelField", "table": "Table", "pages": "Pages", "page": "Page", "button": "Button",
     "picture": "PictureDecoration", "picField": "PictureField", "calendar": "CalendarField", "cmdBar": "CommandBar", "popup": "Popup",
@@ -1621,8 +3734,8 @@ def assert_placement(nt, name, node, container, ctx):
         fail(f"{ctx}: страница '{name}' может лежать только в группе страниц (Pages), а '{cl}' — {ct}")
     if ct == 'Pages' and nt != 'Page':
         fail(f"{ctx}: в группе страниц '{cl}' лежат только страницы (Page), а '{name}' — {nt}")
-    if ct in BAR_TAGS and nt not in BAR_ITEM_TAGS:
-        fail(f"{ctx}: в командной панели '{cl}' лежат только кнопки, группы кнопок и подменю, а '{name}' — {nt}")
+    if ct in BAR_TAGS and nt not in BAR_ITEM_TAGS and nt not in ADDITION_TAGS:
+        fail(f"{ctx}: в командной панели '{cl}' лежат только кнопки, группы кнопок, подменю и дополнения таблицы, а '{name}' — {nt}")
     # Группа кнопок и подменю — только внутри командной панели, меню, подменю или группы кнопок (по корпусу)
     if nt in ('ButtonGroup', 'Popup') and ct not in BAR_TAGS:
         fail(f"{ctx}: '{name}' ({nt}) лежит только в командной панели, контекстном меню, подменю или группе кнопок, а '{cl}' — {ct}")
@@ -1693,11 +3806,48 @@ def invoke_add(op, type_key, idx):
         chained = False
     assert_placement(DSL_TAG_MAP[type_key], name, None, pos["Container"], ctx)
 
+    # Эмиттеру — копия элемента без ключей позиции (это не свойства элемента)
+    el = ci_json({k: v for k, v in op.items() if k.lower() not in ('into', 'after', 'before', 'first')})
+    _normalize_synonyms(el)
+    # Таблица динамического списка получает поведение списка, как в form-compile
+    for a in root.findall("f:Attributes/f:Attribute", NS):
+        t = a.find("f:Type/v8:Type", NS)
+        if t is not None and (t.text or "").strip() == 'cfg:DynamicList':
+            _apply_dlist_table_heuristic(el, a.get('name'), True)
+    # Пул имён эмиттера — имена элементов формы на момент операции (без узлов событий)
+    _seen_element_names.clear()
+    for sc in get_element_scopes():
+        for n in sc.iterdescendants():
+            if _is_el(n) and n.get("name") is not None and etree.QName(n.tag).namespace == FORM_NS and \
+                    (local_name(n.getparent()) == 'ChildItems' or local_name(n) in COMPANION_TAGS):
+                _seen_element_names.add(n.get("name").lower())
+    _current_table_name['name'] = None
+    # Дополнение таблицы: источник — source или таблица, внутри которой оно лежит
+    if DSL_TAG_MAP[type_key] in ADDITION_TAGS:
+        if el.get('source'):
+            src = find_form_element(str(el['source']))
+            if src is None or local_name(src) != 'Table':
+                fail(f"{ctx}: source '{el['source']}' — нет такой таблицы в форме")
+            el['source'] = src.get('name')
+        else:
+            tbl = None if pos["Container"] is root else get_nearest_table(pos["Container"], True)
+            if tbl is None:
+                fail(f"{ctx}: укажите source — таблицу, к которой относится дополнение")
+            _current_table_name['name'] = tbl.get('name')
+
     ci = get_or_create_child_items(pos["Container"])
     indent = get_child_indent(ci)
+    # Внутри командной панели, меню, подменю или группы кнопок кнопка — кнопка панели
+    in_bar = False
+    cur = pos["Container"]
+    while cur is not None:
+        if _is_el(cur) and local_name(cur) in BAR_TAGS:
+            in_bar = True
+            break
+        cur = cur.getparent()
     xml_lines.clear()
     X(f"<_F {ALL_NS_DECL}>")
-    emit_element(op, indent)
+    emit_element(xml_lines, el, indent, in_bar)
     X("</_F>")
     node = import_element_nodes(parse_fragment("\n".join(xml_lines)))[0]
     insert_node_at(ci, node, pos["Ref"], indent)
@@ -1705,14 +3855,45 @@ def invoke_add(op, type_key, idx):
         chain_node = node
 
     path_str = f" -> {op['path']}" if op.get("path") else ""
-    on_list = op.get("on")
-    if on_list:
-        evts = [e if isinstance(e, str) else str(e.get("event")) for e in (on_list if isinstance(on_list, list) else [on_list])]
-        evt_str = " {" + ", ".join(evts) + "}"
-    else:
-        evt_str = ""
+    evt_names = [e.get('name') for e in node.findall("f:Events/f:Event", NS)]
+    evt_str = " {" + ", ".join(evt_names) + "}" if evt_names else ""
     op_log.append(f"  + [{local_name(node)}] {name}{path_str}{evt_str} → {pos['Desc']}")
     added_count += 1
+
+
+# --- Командная панель формы (autoCmdBar, как в form-compile) ---
+
+# Кнопки из children — в командную панель формы (в конец, по порядку); autofill и horizontalAlign — её свойства.
+def invoke_auto_cmd_bar(op, idx):
+    ctx = f"elements[{idx}] autoCmdBar"
+    acb_node = root.find("f:AutoCommandBar", NS)
+    if acb_node is None:
+        fail(f"{ctx}: у формы нет командной панели")
+    assert_op_keys(op, ['autoCmdBar', 'children', 'autofill', 'horizontalAlign'], ctx)
+    if 'autofill' in op:
+        if not isinstance(op.get('autofill'), bool):
+            fail(f"{ctx}: autofill — true или false")
+        set_value_tag(acb_node, 'Autofill', 'true' if op['autofill'] else 'false')
+        op_log.append(f"  * {acb_node.get('name')}: Autofill={'true' if op['autofill'] else 'false'}")
+    if op.get('horizontalAlign'):
+        set_simple_tag(acb_node, 'HorizontalAlign', str(op['horizontalAlign']))
+        op_log.append(f"  * {acb_node.get('name')}: HorizontalAlign={op['horizontalAlign']}")
+    children = op.get('children')
+    for child in (children if isinstance(children, list) else [children]):
+        if child is None:
+            continue
+        if not isinstance(child, dict):
+            fail(f"{ctx}: в children — не элемент (нужна кнопка, группа кнопок или подменю)")
+        for pk in ('into', 'after', 'before', 'first'):
+            if any(k.lower() == pk for k in child):
+                fail(f"{ctx}: у кнопок в children нет позиции — они встают в конец панели по порядку; для места укажите кнопку отдельным элементом с into и after/before")
+        normalize_element_type_synonyms(child)
+        tk = next((k for k in ELEMENT_KEYS if k in child), None)
+        if tk is None:
+            fail(f"{ctx}: в children — не элемент (нужна кнопка, группа кнопок или подменю)")
+        c = ci_json(dict(child))
+        c['into'] = acb_node.get('name')
+        invoke_add(c, tk, idx)
 
 
 # --- Перенос ---
@@ -1787,6 +3968,7 @@ TAG_DEFAULTS = {
 ENUM_DEFAULTS = {
     'UsualGroup/Group': 'HorizontalIfPossible', 'Page/Group': 'Vertical', 'ColumnGroup/Group': 'Vertical',
     'UsualGroup/Representation': 'WeakSeparation', 'Button/Representation': 'Auto', 'Popup/Representation': 'Auto',
+    'AutoCommandBar/Autofill': 'true',
 }
 
 
@@ -1938,7 +4120,7 @@ def add_element_events(node, on, handlers, ctx):
     if get_child_rank(nt, 'Events') < 0:
         fail(f"{ctx}: у {nt} '{name}' событий нет")
     dsl = XML_TAG_TO_DSL.get(nt)
-    allowed = known_events.get(dsl, []) if dsl else []
+    allowed = KNOWN_EVENTS.get(dsl, []) if dsl else []
     events = node.find("f:Events", NS)
     for evt in (on if isinstance(on, list) else [on]):
         if isinstance(evt, str) or not (isinstance(evt, dict) and evt.get("event")):
@@ -2569,12 +4751,18 @@ if elements_list:
             for k in ('move', 'set', 'remove'):
                 if k in op:
                     kinds.append(k)
+            # Тип элемента XML-именем или по-русски (InputField, ПолеВвода) → канонический ключ
+            if not kinds:
+                normalize_element_type_synonyms(op)
             # У set ключ типа — свойство (group — ориентация); остальные ключи типа set отвергнет сам.
             if 'set' not in kinds:
-                for k in ELEMENT_KEYS:
-                    if k in op:
-                        kinds.append(k)
-                        break
+                if 'autoCmdBar' in op:
+                    kinds.append('autoCmdBar')
+                else:
+                    for k in ELEMENT_KEYS:
+                        if k in op:
+                            kinds.append(k)
+                            break
         if not kinds:
             fail(f"elements[{i}]: не понять действие — нужен тип элемента (input, group, …), move, set или remove")
         if len(kinds) > 1:
@@ -2598,7 +4786,7 @@ if elements_list:
 
     dsl_elem_names = set()
     for i, op in enumerate(ops):
-        if op_kinds[i] in ('move', 'set', 'remove'):
+        if op_kinds[i] in ('move', 'set', 'remove', 'autoCmdBar'):
             continue
         _walk_elem_names(op, dsl_elem_names)
 
@@ -2610,6 +4798,8 @@ if elements_list:
             invoke_set(op, i)
         elif op_kinds[i] == 'remove':
             invoke_remove(op, i)
+        elif op_kinds[i] == 'autoCmdBar':
+            invoke_auto_cmd_bar(op, i)
         else:
             invoke_add(op, op_kinds[i], i)
     companion_count = (next_elem_id - start_elem_id) - added_count
@@ -2669,9 +4859,9 @@ if attrs_list:
         inner = attr_child_indent + "\t"
 
         if attr.get("title"):
-            emit_mltext("Title", str(attr["title"]), inner)
+            emit_mltext(xml_lines, inner, "Title", str(attr["title"]))
         if attr.get("type"):
-            emit_type(str(attr["type"]), inner)
+            emit_type(xml_lines, str(attr["type"]), inner)
         else:
             X(f"{inner}<Type/>")
         if attr.get("main") is True:
@@ -2688,8 +4878,8 @@ if attrs_list:
             for col in columns:
                 X(f'{inner}\t<Column name="{col["name"]}" id="{col_id}">')
                 if col.get("title"):
-                    emit_mltext("Title", str(col["title"]), inner + "\t\t")
-                emit_type(str(col["type"]), inner + "\t\t")
+                    emit_mltext(xml_lines, inner + "\t\t", "Title", str(col["title"]))
+                emit_type(xml_lines, str(col["type"]), inner + "\t\t")
                 X(f'{inner}\t</Column>')
                 col_id += 1
             X(f"{inner}</Columns>")
@@ -2757,7 +4947,7 @@ if cmds_list:
         inner = cmd_child_indent + "\t"
 
         if cmd.get("title"):
-            emit_mltext("Title", str(cmd["title"]), inner)
+            emit_mltext(xml_lines, inner, "Title", str(cmd["title"]))
 
         if cmd.get("actions"):
             for act in cmd["actions"]:

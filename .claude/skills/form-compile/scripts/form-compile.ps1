@@ -1,4 +1,4 @@
-﻿# form-compile v1.200 — Compile 1C managed form from JSON or object metadata
+﻿# form-compile v1.201 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2785,18 +2785,36 @@ function Get-EventPairs {
 	$pairs = New-Object System.Collections.ArrayList
 	if ($el.events) {
 		foreach ($p in $el.events.PSObject.Properties) {
-			$h = "$($p.Value)"
-			if ([string]::IsNullOrEmpty($h)) { $h = Get-HandlerName -elementName $elementName -eventName $p.Name }
-			[void]$pairs.Add([pscustomobject]@{ name = $p.Name; handler = $h })
+			# Значение — имя обработчика; null — имя по шаблону; объект { handler, callType } или массив
+			# таких объектов (в расширении на одно событие вешают и Before, и After)
+			$vals = @($p.Value)   # массив — как есть, одно значение (в т.ч. null) — один элемент
+			foreach ($v in $vals) {
+				$h = ""; $ct = ""
+				if ($v -is [System.Management.Automation.PSCustomObject]) { $h = "$($v.handler)"; $ct = Normalize-CallType "$($v.callType)" $elementName $p.Name } else { $h = "$v" }
+				if ([string]::IsNullOrEmpty($h)) { $h = Get-HandlerName -elementName $elementName -eventName $p.Name }
+				[void]$pairs.Add([pscustomobject]@{ name = $p.Name; handler = $h; callType = $ct })
+			}
 		}
 	} elseif ($el.on) {
 		foreach ($evt in $el.on) {
-			$evtName = "$evt"
-			$h = if ($el.handlers -and $el.handlers.$evtName) { "$($el.handlers.$evtName)" } else { Get-HandlerName -elementName $elementName -eventName $evtName }
-			[void]$pairs.Add([pscustomobject]@{ name = $evtName; handler = $h })
+			if ($evt -is [System.Management.Automation.PSCustomObject]) {
+				$evtName = "$($evt.event)"; $h = "$($evt.handler)"; $ct = Normalize-CallType "$($evt.callType)" $elementName $evtName
+			} else {
+				$evtName = "$evt"; $h = ""; $ct = ""
+			}
+			if (-not $h) { $h = if ($el.handlers -and $el.handlers.$evtName) { "$($el.handlers.$evtName)" } else { Get-HandlerName -elementName $elementName -eventName $evtName } }
+			[void]$pairs.Add([pscustomobject]@{ name = $evtName; handler = $h; callType = $ct })
 		}
 	}
 	return $pairs
+}
+
+# Вид вызова обработчика в расширении: Before / After / Override (регистр не важен); пусто — не указан.
+function Normalize-CallType([string]$raw, [string]$elementName, [string]$eventName) {
+	if ([string]::IsNullOrEmpty($raw)) { return '' }
+	foreach ($v in @('Before','After','Override')) { if ($raw -eq $v) { return $v } }
+	Write-Error "Element '$elementName', event '$eventName': callType '$raw' — expected Before, After or Override"
+	exit 1
 }
 
 # Проверить, подключено ли событие к элементу (в любом из форматов).
@@ -2805,7 +2823,10 @@ function Test-ElementEvent {
 	if ($el.events) {
 		foreach ($p in $el.events.PSObject.Properties) { if ($p.Name -eq $eventName) { return $true } }
 	}
-	if ($el.on -contains $eventName) { return $true }
+	foreach ($evt in @($el.on)) {
+		$n = if ($evt -is [System.Management.Automation.PSCustomObject]) { "$($evt.event)" } else { "$evt" }
+		if ($n -eq $eventName) { return $true }
+	}
 	return $false
 }
 
@@ -2827,7 +2848,8 @@ function Emit-Events {
 
 	X "$indent<Events>"
 	foreach ($pr in $pairs) {
-		X "$indent`t<Event name=`"$($pr.name)`">$($pr.handler)</Event>"
+		$ctAttr = if ($pr.callType) { " callType=`"$($pr.callType)`"" } else { "" }
+		X "$indent`t<Event name=`"$($pr.name)`"$ctAttr>$($pr.handler)</Event>"
 	}
 	X "$indent</Events>"
 }
@@ -3015,101 +3037,108 @@ function Get-AdditionOverride {
 	return $null
 }
 
+# Silent synonyms: model often writes XML name or Russian (ПолеПереключателя/RadioButtonField → radio).
+# Maps any synonym to canonical short DSL key.
+# commandBar/autoCommandBar/КоманднаяПанель → тип-элемент ТОЛЬКО при строковом значении (имя);
+# объект/массив уже отнесён к панель-свойству выше.
+$script:elementTypeStrOnlyKeys = @('commandBar','autoCommandBar','КоманднаяПанель')
+$script:elementTypeSynonyms = @{
+	"commandBar"        = "cmdBar"
+	"autoCommandBar"    = "autoCmdBar"
+	"КоманднаяПанель"   = "cmdBar"
+	"InputField"        = "input"
+	"ПолеВвода"         = "input"
+	"CheckBoxField"     = "check"
+	"ПолеФлажка"        = "check"
+	"RadioButtonField"  = "radio"
+	"ПолеПереключателя" = "radio"
+	"radioButton"       = "radio"
+	"PictureField"      = "picField"
+	"ПолеКартинки"      = "picField"
+	"LabelField"        = "labelField"
+	"ПолеНадписи"       = "labelField"
+	"CalendarField"     = "calendar"
+	"ПолеКалендаря"     = "calendar"
+	"LabelDecoration"   = "label"
+	"Надпись"           = "label"
+	"PictureDecoration" = "picture"
+	"Картинка"          = "picture"
+	"UsualGroup"        = "group"
+	"Группа"            = "group"
+	"ОбычнаяГруппа"     = "group"
+	"ColumnGroup"       = "columnGroup"
+	"ГруппаКолонок"     = "columnGroup"
+	"Pages"             = "pages"
+	"ГруппаСтраниц"     = "pages"
+	"Page"              = "page"
+	"Страница"          = "page"
+	"Table"             = "table"
+	"Таблица"           = "table"
+	"Button"            = "button"
+	"Кнопка"            = "button"
+	"Popup"             = "popup"
+	"ВсплывающееМеню"   = "popup"
+	# Дополнения командной панели таблицы (тип-как-ключ) — forgiving: XML-тег/Type/рус.имя → канон
+	"SearchStringAddition"       = "searchString"
+	"SearchStringRepresentation" = "searchString"
+	"строкаПоиска"               = "searchString"
+	"отображениеСтрокиПоиска"    = "searchString"
+	"Отображение строки поиска"  = "searchString"
+	"ViewStatusAddition"         = "viewStatus"
+	"ViewStatusRepresentation"   = "viewStatus"
+	"состояниеПросмотра"         = "viewStatus"
+	"Состояние просмотра"        = "viewStatus"
+	"SearchControlAddition"      = "searchControl"
+	"SearchControl"              = "searchControl"
+	"управлениеПоиском"          = "searchControl"
+	"Управление поиском"         = "searchControl"
+	# Спец-поля (документ/датчик) — XML-имя/рус. → канон
+	"SpreadSheetDocumentField"   = "spreadsheet"
+	"ПолеТабличногоДокумента"    = "spreadsheet"
+	"HTMLDocumentField"          = "html"
+	"ПолеHTMLДокумента"          = "html"
+	"TextDocumentField"          = "textDoc"
+	"ПолеТекстовогоДокумента"    = "textDoc"
+	"FormattedDocumentField"     = "formattedDoc"
+	"ПолеФорматированногоДокумента" = "formattedDoc"
+	"ProgressBarField"           = "progressBar"
+	"ПолеИндикатора"             = "progressBar"
+	"TrackBarField"              = "trackBar"
+	"ПолеПолосыРегулирования"    = "trackBar"
+	"ChartField"                 = "chart"
+	"ПолеДиаграммы"              = "chart"
+	"GanttChartField"            = "ganttChart"
+	"ПолеДиаграммыГанта"         = "ganttChart"
+	"GraphicalSchemaField"       = "graphicalSchema"
+	"ПолеГрафическойСхемы"       = "graphicalSchema"
+	"PlannerField"               = "planner"
+	"ПолеПланировщика"           = "planner"
+	"PeriodField"                = "periodField"
+	"ПолеПериода"                = "periodField"
+	"DendrogramField"            = "dendrogram"
+	"ПолеДендрограммы"           = "dendrogram"
+}
+
+function Normalize-ElementTypeSynonyms {
+	param($el)
+	foreach ($pair in $script:elementTypeSynonyms.GetEnumerator()) {
+		if ($null -ne $el.PSObject.Properties[$pair.Key] -and $null -eq $el.PSObject.Properties[$pair.Value]) {
+			if ($script:elementTypeStrOnlyKeys -contains $pair.Key -and -not ($el.($pair.Key) -is [string])) { continue }
+			$val = $el.($pair.Key)
+			$el.PSObject.Properties.Remove($pair.Key) | Out-Null
+			$el | Add-Member -NotePropertyName $pair.Value -NotePropertyValue $val -Force
+		}
+	}
+}
+
 function Emit-Element {
 	param($el, [string]$indent, [bool]$inCmdBar = $false)
 
 	# Companion-панели (объект/массив-значение) → commandBar/contextMenu, до тип-синонимов.
 	Normalize-PanelSynonyms $el
 
-	# Silent synonyms: model often writes XML name or Russian (ПолеПереключателя/RadioButtonField → radio).
-	# Maps any synonym to canonical short DSL key.
-	# commandBar/autoCommandBar/КоманднаяПанель → тип-элемент ТОЛЬКО при строковом значении (имя);
-	# объект/массив уже отнесён к панель-свойству выше.
-	$strOnlyKeys = @('commandBar','autoCommandBar','КоманднаяПанель')
-	$synonyms = @{
-		"commandBar"        = "cmdBar"
-		"autoCommandBar"    = "autoCmdBar"
-		"КоманднаяПанель"   = "cmdBar"
-		"InputField"        = "input"
-		"ПолеВвода"         = "input"
-		"CheckBoxField"     = "check"
-		"ПолеФлажка"        = "check"
-		"RadioButtonField"  = "radio"
-		"ПолеПереключателя" = "radio"
-		"radioButton"       = "radio"
-		"PictureField"      = "picField"
-		"ПолеКартинки"      = "picField"
-		"LabelField"        = "labelField"
-		"ПолеНадписи"       = "labelField"
-		"CalendarField"     = "calendar"
-		"ПолеКалендаря"     = "calendar"
-		"LabelDecoration"   = "label"
-		"Надпись"           = "label"
-		"PictureDecoration" = "picture"
-		"Картинка"          = "picture"
-		"UsualGroup"        = "group"
-		"Группа"            = "group"
-		"ОбычнаяГруппа"     = "group"
-		"ColumnGroup"       = "columnGroup"
-		"ГруппаКолонок"     = "columnGroup"
-		"Pages"             = "pages"
-		"ГруппаСтраниц"     = "pages"
-		"Page"              = "page"
-		"Страница"          = "page"
-		"Table"             = "table"
-		"Таблица"           = "table"
-		"Button"            = "button"
-		"Кнопка"            = "button"
-		"Popup"             = "popup"
-		"ВсплывающееМеню"   = "popup"
-		# Дополнения командной панели таблицы (тип-как-ключ) — forgiving: XML-тег/Type/рус.имя → канон
-		"SearchStringAddition"       = "searchString"
-		"SearchStringRepresentation" = "searchString"
-		"строкаПоиска"               = "searchString"
-		"отображениеСтрокиПоиска"    = "searchString"
-		"Отображение строки поиска"  = "searchString"
-		"ViewStatusAddition"         = "viewStatus"
-		"ViewStatusRepresentation"   = "viewStatus"
-		"состояниеПросмотра"         = "viewStatus"
-		"Состояние просмотра"        = "viewStatus"
-		"SearchControlAddition"      = "searchControl"
-		"SearchControl"              = "searchControl"
-		"управлениеПоиском"          = "searchControl"
-		"Управление поиском"         = "searchControl"
-		# Спец-поля (документ/датчик) — XML-имя/рус. → канон
-		"SpreadSheetDocumentField"   = "spreadsheet"
-		"ПолеТабличногоДокумента"    = "spreadsheet"
-		"HTMLDocumentField"          = "html"
-		"ПолеHTMLДокумента"          = "html"
-		"TextDocumentField"          = "textDoc"
-		"ПолеТекстовогоДокумента"    = "textDoc"
-		"FormattedDocumentField"     = "formattedDoc"
-		"ПолеФорматированногоДокумента" = "formattedDoc"
-		"ProgressBarField"           = "progressBar"
-		"ПолеИндикатора"             = "progressBar"
-		"TrackBarField"              = "trackBar"
-		"ПолеПолосыРегулирования"    = "trackBar"
-		"ChartField"                 = "chart"
-		"ПолеДиаграммы"              = "chart"
-		"GanttChartField"            = "ganttChart"
-		"ПолеДиаграммыГанта"         = "ganttChart"
-		"GraphicalSchemaField"       = "graphicalSchema"
-		"ПолеГрафическойСхемы"       = "graphicalSchema"
-		"PlannerField"               = "planner"
-		"ПолеПланировщика"           = "planner"
-		"PeriodField"                = "periodField"
-		"ПолеПериода"                = "periodField"
-		"DendrogramField"            = "dendrogram"
-		"ПолеДендрограммы"           = "dendrogram"
-	}
-	foreach ($pair in $synonyms.GetEnumerator()) {
-		if ($null -ne $el.PSObject.Properties[$pair.Key] -and $null -eq $el.PSObject.Properties[$pair.Value]) {
-			if ($strOnlyKeys -contains $pair.Key -and -not ($el.($pair.Key) -is [string])) { continue }
-			$val = $el.($pair.Key)
-			$el.PSObject.Properties.Remove($pair.Key) | Out-Null
-			$el | Add-Member -NotePropertyName $pair.Value -NotePropertyValue $val -Force
-		}
-	}
+	# Синонимы типа (XML-имя, русское имя) → канонический ключ DSL
+	Normalize-ElementTypeSynonyms $el
 
 	# Синонимы ключей-свойств (русские имена 1С → канон. англ.). Case/space-insensitive.
 	# Канон побеждает: если задан и русский, и англ. ключ — англ. остаётся, русский отбрасываем.
