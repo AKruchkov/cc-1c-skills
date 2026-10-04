@@ -58,8 +58,8 @@
 							<ContextMenu name="НовоеПолеКонтекстноеМеню" id="1000001"/>
 							<ExtendedTooltip name="НовоеПолеРасширеннаяПодсказка" id="1000002"/>
 							<Events>
-								<Event name="OnChange">Расш_НовоеПолеПриИзменении</Event>
-								<Event name="StartChoice">НовоеПолеНачалоВыбора</Event>
+								<Event name="OnChange" callType="Before">Расш_НовоеПолеПриИзменении</Event>
+								<Event name="StartChoice" callType="Before">НовоеПолеНачалоВыбора</Event>
 							</Events>
 						</InputField>
 					</ChildItems>

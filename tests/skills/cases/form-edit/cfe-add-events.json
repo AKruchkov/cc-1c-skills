@@ -1,5 +1,5 @@
 {
-  "name": "Расширение: свой элемент с events — имя обработчика явно и автоимя",
+  "name": "Расширение: свой элемент с events — без callType пишется Before (так пишет платформа), имя явно и автоимя",
   "setup": "fixture:move-cfe",
   "params": {
     "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"

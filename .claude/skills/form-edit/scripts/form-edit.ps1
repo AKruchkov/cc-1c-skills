@@ -1,4 +1,4 @@
-﻿# form-edit v1.24 — Edit 1C managed form elements
+﻿# form-edit v1.25 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -5724,8 +5724,8 @@ function Add-ElementEvents($node, $on, $handlers, [string]$ctx) {
 			$evtName = "$($evt.event)"; $callType = Normalize-CallType "$($evt.callType)" $name $evtName
 			$handler = if ($evt.handler) { "$($evt.handler)" } elseif ($handlers -and $handlers.$evtName) { "$($handlers.$evtName)" } else { Get-HandlerName -elementName $name -eventName $evtName }
 		}
-		# Заимствованный элемент в расширении: событие без callType платформа читает как Before и так и пишет
-		if (-not $callType -and $script:isExtension -and (Test-Borrowed $name 'element')) { $callType = 'Before' }
+		# В форме расширения обработчик без callType платформа читает как Before и так и пишет
+		if (-not $callType -and $script:isExtension) { $callType = 'Before' }
 		if ($allowed.Count -gt 0 -and $allowed -notcontains $evtName) {
 			Write-Host "[WARN] Unknown event '$evtName' for $dsl '$name'. Known: $($allowed -join ', ')"
 		}
@@ -6579,6 +6579,7 @@ function Add-FormEventsDsl($events) {
 		foreach ($v in @($p.Value)) {
 			$h = ""; $ct = ""
 			if ($v -is [System.Management.Automation.PSCustomObject]) { $h = "$($v.handler)"; $ct = Normalize-CallType "$($v.callType)" 'Form' $p.Name } else { $h = "$v" }
+			if (-not $ct -and $script:isExtension) { $ct = 'Before' }
 			if (-not $h) { Fail "events: у события формы $($p.Name) укажите имя обработчика" }
 			$ctStr = if ($ct) { "[$ct]" } else { "" }
 			if ($null -eq $sec) { $sec = $root.SelectSingleNode("f:Events", $nsMgr) }
@@ -6731,6 +6732,10 @@ function Add-FormCommandInterface($ci) {
 		$script:formChanged++
 	}
 }
+
+# Обработчики, которые были в форме до правки: callType по умолчанию ставится только новым
+$script:preexistingHandlers = New-Object 'System.Collections.Generic.HashSet[System.Xml.XmlNode]'
+foreach ($n in $root.SelectNodes("//f:Event | //f:Action", $nsMgr)) { [void]$script:preexistingHandlers.Add($n) }
 
 # === 10. Elements: добавление, перенос, изменение, удаление — по порядку ===
 
@@ -7078,6 +7083,16 @@ if ($null -ne $def.PSObject.Properties['parameters']) { Update-FormParameters $d
 if ($null -ne $def.PSObject.Properties['conditionalAppearance']) { Add-FormConditionalAppearance $def.conditionalAppearance }
 
 if ($null -ne $def.PSObject.Properties['commandInterface']) { Add-FormCommandInterface $def.commandInterface }
+
+# В форме расширения обработчик без callType платформа читает как Before и так и пишет (замер на стенде) —
+# новым обработчикам вне BaseForm ставим его сразу, чтобы выгрузка не переписывала файл
+if ($script:isExtension) {
+	foreach ($n in $root.SelectNodes("//f:Event | //f:Action", $nsMgr)) {
+		if ($script:preexistingHandlers.Contains($n) -or $n.HasAttribute('callType')) { continue }
+		if ($null -ne $n.SelectSingleNode("ancestor::f:BaseForm", $nsMgr)) { continue }
+		$n.SetAttribute('callType', 'Before')
+	}
+}
 
 # Вид вызова обработчика (callType) бывает только в форме расширения
 if (-not $script:isExtension) {

@@ -1,4 +1,4 @@
-# form-edit v1.24 — Edit 1C managed form elements (Python port)
+# form-edit v1.25 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import contextlib
@@ -6180,8 +6180,8 @@ def add_element_events(node, on, handlers, ctx):
                 handler = str(handlers.get(evt_name))
             else:
                 handler = get_handler_name(name, evt_name)
-        # Заимствованный элемент в расширении: событие без callType платформа читает как Before и так и пишет
-        if not call_type and is_extension and test_borrowed(name, 'element'):
+        # В форме расширения обработчик без callType платформа читает как Before и так и пишет
+        if not call_type and is_extension:
             call_type = 'Before'
         if allowed and evt_name not in allowed:
             print(f"[WARN] Unknown event '{evt_name}' for {dsl} '{name}'. Known: {', '.join(allowed)}")
@@ -7145,6 +7145,8 @@ def add_form_events_dsl(events):
             else:
                 h = '' if v is None else str(v)
                 ct = ''
+            if not ct and is_extension:
+                ct = 'Before'
             if not h:
                 fail(f"events: у события формы {ev_name} укажите имя обработчика")
             ct_str = f"[{ct}]" if ct else ""
@@ -7311,6 +7313,9 @@ def add_form_command_interface(ci):
         form_log.append(f"  + командный интерфейс, {local_name(pn)}: пунктов {cnt}")
         form_changed += 1
 
+
+# Обработчики, которые были в форме до правки: callType по умолчанию ставится только новым
+_preexisting_handlers = set(n for n in root.iter(f"{{{FORM_NS}}}Event", f"{{{FORM_NS}}}Action"))
 
 # ── 10. Elements: добавление, перенос, изменение, удаление — по порядку ──
 
@@ -7633,6 +7638,16 @@ if 'conditionalAppearance' in defn:
 
 if 'commandInterface' in defn:
     add_form_command_interface(defn.get('commandInterface'))
+
+# В форме расширения обработчик без callType платформа читает как Before и так и пишет (замер на стенде) —
+# новым обработчикам вне BaseForm ставим его сразу, чтобы выгрузка не переписывала файл
+if is_extension:
+    for _n in list(root.iter(f"{{{FORM_NS}}}Event", f"{{{FORM_NS}}}Action")):
+        if _n in _preexisting_handlers or _n.get('callType') is not None:
+            continue
+        if any(local_name(a) == 'BaseForm' for a in _n.iterancestors()):
+            continue
+        _n.set('callType', 'Before')
 
 # Вид вызова обработчика (callType) бывает только в форме расширения
 if not is_extension:
