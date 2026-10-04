@@ -1,6 +1,28 @@
 # Реквизиты и параметры: сохранение, проверка заполнения, опции
 
-Основное о реквизитах (`name`, `type`, `main`, `title`, `columns`, `savedData`) — на главной странице. Свойства команд — `references/buttons-commands.md`, доступ по ролям — `references/roles-access.md`. Все ключи необязательны.
+Свойства команд — `references/buttons-commands.md`, доступ по ролям — `references/roles-access.md`.
+
+## Основное
+
+```json
+{ "name": "Итого", "type": "decimal(15,2)", "title": "Итого" }
+{ "name": "Таблица", "type": "ValueTable", "columns": [
+    { "name": "Номенклатура", "type": "CatalogRef.Номенклатура" },
+    { "name": "Количество", "type": "decimal(10,3)" } ] }
+{ "name": "Список", "type": "DynamicList", "main": true, "settings": { "mainTable": "Catalog.Номенклатура" } }
+```
+
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `name` | строка | Имя реквизита (обязательно) |
+| `type` | тип | Тип (`references/type-system-advanced.md`) |
+| `title` | строка или `{ru, en}` | Заголовок; без него — из имени |
+| `main` | `true` | Основной реквизит формы (объект, набор записей, динамический список) |
+| `savedData` | `true` | Сохраняемые данные (у основного реквизита-объекта ставится само) |
+| `columns` | `[{ name, type, title }]` | Колонки `ValueTable` / `ValueTree` |
+| `settings` | объект | Настройки динамического списка (`references/dynamic-list.md`) |
+
+Остальные ключи необязательны.
 
 ## Реквизит
 

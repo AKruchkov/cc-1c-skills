@@ -1,6 +1,21 @@
 # Тонкая компоновка
 
-Сверх основной геометрии (`width`, `height`, `horizontalStretch`, `verticalStretch`, `autoMaxWidth` — на главной странице). Интервалы и ширина колонок внутри группы — `references/groups-pages.md`. Все ключи необязательны.
+Интервалы и ширина колонок внутри группы — `references/groups-pages.md`. Все ключи необязательны.
+
+## Размеры
+
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `width` / `height` | число | Размер |
+| `autoMaxWidth` / `autoMaxHeight` | `false` | Снять автоматический предел: поле на всю доступную ширину / высоту |
+| `horizontalStretch` / `verticalStretch` | bool | Растягивать по ширине / высоте вместе с окном |
+| `maxWidth` / `maxHeight` | число | Жёсткий предел размера |
+| `titleHeight` | число | Высота заголовка |
+
+```json
+{ "input": "Комментарий", "path": "Объект.Комментарий", "multiLine": true, "autoMaxWidth": false }
+{ "input": "Поиск", "path": "СтрокаПоиска", "horizontalStretch": true, "maxWidth": 60 }
+```
 
 ## Выравнивание
 
@@ -14,18 +29,6 @@
 ```json
 { "button": "ОК", "command": "ОК", "groupHorizontalAlign": "Right" }
 { "input": "Сумма", "path": "Объект.Сумма", "horizontalAlign": "Right" }
-```
-
-## Предел размера
-
-| Ключ | Значения | Назначение |
-|------|----------|-----------|
-| `maxWidth` / `maxHeight` | число | Жёсткий предел |
-| `autoMaxWidth` / `autoMaxHeight` | `false` | Снять автоматический предел (поле тянется без ограничения) |
-| `titleHeight` | число | Высота заголовка |
-
-```json
-{ "input": "Поиск", "path": "СтрокаПоиска", "horizontalStretch": true, "maxWidth": 60 }
 ```
 
 ## Ввод и фокус

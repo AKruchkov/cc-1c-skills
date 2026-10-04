@@ -1,8 +1,27 @@
-# Продвинутые конструкции типов
+# Типы
 
-Примитивы (`string(n)`, `decimal(p,s)`, `boolean`, `date`/`dateTime`, …) и одиночные ссылки (`CatalogRef.Контрагенты`, `DocumentRef.Заказ`, `EnumRef.X`, …) описаны в основной инструкции. Здесь — типы, которые нельзя выразить одним именем: составные типы, наборы типов и платформенные наборы ссылок.
+Тип пишется в поле `type` реквизита, колонки, параметра или поля.
 
-Любая из этих конструкций пишется в поле `type` реквизита, реквизита-параметра или поля.
+## Основные типы
+
+| DSL | Тип |
+|-----|-----|
+| `string` / `string(100)` | Строка (неограниченная / длины 100) |
+| `decimal(15,2)` / `decimal(10,0,nonneg)` | Число / неотрицательное |
+| `boolean` | Булево |
+| `date` / `dateTime` / `time` | Дата / дата и время / время |
+| `CatalogRef.X` / `DocumentRef.X` / `EnumRef.X` / … | Ссылки |
+| `CatalogObject.X` / `DocumentObject.X` / `DataProcessorObject.X` / `ReportObject.X` | Объекты (основной реквизит) |
+| `InformationRegisterRecordSet.X` / `AccumulationRegisterRecordSet.X` | Наборы записей |
+| `ValueTable` / `ValueTree` / `ValueList` | Таблица / дерево / список значений |
+| `DynamicList` | Динамический список |
+| `TypeDescription`, `UUID`, `FormattedString`, `Picture`, `Color`, `Font`, `DataCompositionSettings`, `StandardPeriod`, `mxl:SpreadsheetDocument` | Платформенные |
+
+Также `ChartOfAccountsRef/Object`, `ChartOfCharacteristicTypesRef/Object`, `ChartOfCalculationTypesRef/Object`, `ExchangePlanRef/Object`, `BusinessProcessRef/Object`, `TaskRef/Object`, `AccountingRegisterRecordSet`, `InformationRegisterRecordManager`, `ConstantsSet`.
+
+> `FormDataStructure`, `FormDataCollection`, `FormDataTree` — не типы реквизита (ошибка при загрузке). Вместо них — объектный тип (`DocumentObject.X`…), `ValueTable`, `ValueTree`.
+
+Ниже — типы, которые нельзя выразить одним именем: составные типы, наборы типов и платформенные наборы ссылок.
 
 ## Составные типы
 
@@ -20,7 +39,7 @@
   "type": "CatalogRef.Контрагенты | DocumentRef.Заказ | string(150)" }
 ```
 
-Каждая часть — самостоятельный токен из этого файла или из основной инструкции. Порядок частей произвольный.
+Каждая часть — самостоятельный тип из этого файла. Порядок частей произвольный.
 
 ## Наборы типов (TypeSet)
 

@@ -7,7 +7,7 @@
   "settings": { "mainTable": "Catalog.Контрагенты" } }
 ```
 
-К списку привязывается таблица-элемент (`table`), ссылающаяся на реквизит через `path` — см. основную инструкцию.
+К списку привязывается таблица-элемент (`table`), ссылающаяся на реквизит через `path` (`references/table-advanced.md`).
 
 ## Источник данных
 
@@ -55,7 +55,7 @@
 }
 ```
 
-Ключи объекта: `name`, `title`, `type` (грамматика типов — см. основную инструкцию), `value`, `valueListAllowed` (разрешить список значений), `availableValues` (`[{ value, presentation }]`), `expression`, `use`.
+Ключи объекта: `name`, `title`, `type` (грамматика — `references/type-system-advanced.md`), `value`, `valueListAllowed` (разрешить список значений), `availableValues` (`[{ value, presentation }]`), `expression`, `use`.
 
 ## Значения параметров в настройках (`dataParameters`)
 

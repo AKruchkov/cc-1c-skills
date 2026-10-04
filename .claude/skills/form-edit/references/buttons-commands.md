@@ -1,6 +1,30 @@
 # Кнопки и команды, подменю, группы кнопок, меню и панели элементов
 
-Основное — `button`, `buttonGroup`, `popup`, `cmdBar`, `autoCmdBar` — на главной странице. Здесь — детали кнопок, источник команд групп и собственные командная панель и контекстное меню у элемента.
+## Основное
+
+| Ключ (`button`) | Значения | Назначение |
+|-----------------|----------|-----------|
+| `command` | имя команды формы | Команда формы → `Form.Command.Имя` |
+| `stdCommand` | `"Close"`; с точкой — команда элемента: `"Товары.Add"` | Стандартная команда |
+| `defaultButton` | bool | Кнопка по умолчанию |
+| `type` | `usual` / `hyperlink` | Обычная кнопка или ссылка (в командной панели — кнопка панели) |
+| `representation` | `Auto` / `Text` / `Picture` / `PictureAndText` | Что показывать |
+| `locationInCommandBar` | `InCommandBar` / `InAdditionalSubmenu` / `InCommandBarAndInAdditionalSubmenu` | В панели, в меню «Ещё» или и там, и там |
+
+Контейнеры кнопок:
+- `popup` — подменю: `title`, `children`;
+- `buttonGroup` — кнопки, объединённые в группу: `title`, `children`;
+- `cmdBar` — отдельная командная панель в раскладке формы: `autofill`, `children`;
+- `autoCmdBar` — командная панель самой формы (`ФормаКоманднаяПанель`): `children`, `autofill: false` — без стандартных команд, `horizontalAlign`.
+
+Подменю и группы кнопок лежат только в командной панели, подменю или группе кнопок.
+
+```json
+{ "autoCmdBar": "ФормаКоманднаяПанель", "children": [
+    { "button": "Загрузить", "command": "Загрузить", "defaultButton": true },
+    { "popup": "Печать", "title": "Печать", "children": [
+        { "button": "ПечатьСчета", "command": "ПечатьСчета" } ] } ] }
+```
 
 ## Кнопка
 
@@ -10,12 +34,10 @@
 | `parameter` | строка или `{ type }` | Параметр команды: объект метаданных (`"DocumentJournal.Взаимодействия"`) или тип (`{ "type": "DocumentRef.Заказ" }`) |
 | `path` | путь данных | Контекст общей команды, напр. `"Объект.Ref"` или `"Items.Список.CurrentData.Ref"` |
 | `picture` | `"StdPicture.X"` / `"CommonPicture.X"` / `{ src, loadTransparent }` | Картинка кнопки |
-| `representation` | `Auto` / `Text` / `Picture` / `PictureAndText` | Что показывать |
 | `pictureLocation` | `Left` / `Right` | Где картинка относительно текста |
 | `shape` | `Usual` / `Oval` | Форма обычной кнопки |
 | `shapeRepresentation` | `None` / `WhenActive` / `Always` | Когда рисовать рамку кнопки |
 | `checked` | bool | Нажатое состояние кнопки-переключателя в командной панели |
-| `locationInCommandBar` | плюс к значениям с главной: `InCommandBarAndInAdditionalSubmenu` | И в панели, и в меню «Ещё» |
 | `representationInContextMenu` | `None` / `OnlyInContextMenu` / `AdditionalInContextMenu` | Показ кнопки в контекстном меню |
 
 ```json
@@ -25,7 +47,11 @@
 
 ## Команда формы
 
-Сверх `name`, `action`, `title`, `shortcut`, `picture` (на главной странице):
+```json
+{ "name": "Загрузить", "action": "ЗагрузитьОбработка", "title": "Загрузить", "shortcut": "Ctrl+Enter", "picture": "StdPicture.Refresh" }
+```
+
+`name`, `action` — процедура-обработчик, `title` (без него — из имени), `shortcut`, `picture`, а также:
 
 | Ключ | Значения | Назначение |
 |------|----------|-----------|

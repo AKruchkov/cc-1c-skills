@@ -1,6 +1,27 @@
 # Группы и страницы: сворачивание, выравнивание, заголовки из данных
 
-Основное о группах и страницах (`group` с ориентацией, `behavior`, `showTitle`, `representation`, `united`, `pages`/`page`) — на главной странице. Здесь — детали. Все ключи необязательны.
+Все ключи необязательны.
+
+## Основное
+
+Значение ключа `group` — ориентация: `vertical` / `horizontalIfPossible` / `alwaysHorizontal`; имя — в `name`.
+
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `children` | массив элементов | Содержимое группы |
+| `title` | строка или `{ru, en}` | Заголовок группы |
+| `showTitle` | bool | Показывать заголовок |
+| `behavior` | `collapsible` / `popup` | Сворачиваемая / всплывающая; не указан — обычная |
+| `representation` | `none` / `normal` / `weak` / `strong` | Рамка группы |
+| `united` | `false` | Выравнивать поля только внутри группы, а не вместе с соседними |
+
+Страницы: `pages` — имя, `pagesRepresentation` (`TabsOnTop` / `TabsOnBottom` / `TabsOnLeft` / `TabsOnRight` / `None` — без закладок), `children` — массив `page`. `page` — имя, `title`, `group` (ориентация содержимого), `children`.
+
+```json
+{ "pages": "Страницы", "children": [
+    { "page": "СтраницаОсновное", "title": "Основное", "children": [ ... ] },
+    { "page": "СтраницаТовары", "title": "Товары", "children": [ ... ] } ] }
+```
 
 ## Сворачиваемая и всплывающая группа
 
@@ -48,7 +69,6 @@
 
 | Ключ | Где | Значения |
 |------|-----|----------|
-| `pagesRepresentation` | `pages` | плюс к значениям с главной: `TabsOnLeft` / `TabsOnRight` |
 | `group` | `page` | Ориентация содержимого страницы: `vertical` / `horizontalIfPossible` / `alwaysHorizontal` |
 | `picture` | `page` | Значок закладки: `"StdPicture.X"` / `"CommonPicture.X"` (формат картинок — `references/pictures.md`) |
 

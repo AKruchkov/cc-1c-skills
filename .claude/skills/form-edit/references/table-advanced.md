@@ -1,6 +1,33 @@
 # Таблица: вид, выделение, подвал и колонки, поиск, перетаскивание
 
-Основное о таблице (`path`, `columns`, `changeRowSet`, `changeRowOrder`, `header`, `commandBarLocation`, `searchStringLocation`, `choiceMode`, `heightInTableRows`) — на главной странице. Таблица динамического списка — `references/dynamic-list.md`. Все ключи ниже необязательны.
+Таблица привязывается к реквизиту-таблице: `ValueTable`, табличной части объекта, динамическому списку (`references/dynamic-list.md`). Все ключи, кроме `path`, необязательны.
+
+## Основное
+
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `path` | путь данных | Реквизит-таблица: `"Объект.Товары"`, `"Данные"` |
+| `columns` | массив элементов | Колонки: `input`, `check`, `labelField`, `picField`, `columnGroup`; путь колонки — путь таблицы плюс имя колонки: `"Объект.Товары.Сумма"` |
+| `changeRowSet` / `changeRowOrder` | bool | Разрешить добавлять и удалять / перемещать строки |
+| `header` | `false` | Без шапки |
+| `heightInTableRows` | число | Высота в строках |
+| `commandBarLocation` | `None` / `Top` / `Bottom` / `Auto` | Где командная панель таблицы |
+| `searchStringLocation` | `None` / `Top` / `Bottom` / `CommandBar` / `Auto` | Где строка поиска |
+| `choiceMode` | bool | Таблица выбора (форма выбора) |
+
+```json
+{ "table": "Товары", "path": "Объект.Товары", "changeRowSet": true, "columns": [
+    { "input": "ТоварыНоменклатура", "path": "Объект.Товары.Номенклатура" },
+    { "input": "ТоварыКоличество", "path": "Объект.Товары.Количество" } ] }
+```
+
+`columnGroup` группирует колонки: значение ключа — `horizontal` / `vertical` / `inCell` (несколько колонок в одной ячейке); `title`, `showInHeader`, `children`:
+
+```json
+{ "columnGroup": "horizontal", "name": "ГруппаСрок", "title": "Срок", "children": [
+    { "input": "ДатаНачала", "path": "Список.ДатаНачала" },
+    { "input": "ДатаОкончания", "path": "Список.ДатаОкончания" } ] }
+```
 
 ## Вид
 
@@ -38,12 +65,12 @@
 
 ## Подвал и колонки
 
-Подвал таблицы включается `footer: true`; итоги задаются на колонках.
+Подвал включается у таблицы — `footer: true`; что показать в подвале, задаётся у колонки — `footerDataPath` или `footerText`.
 
 | Ключ (на колонке) | Значения | Назначение |
 |------|----------|-----------|
-| `showInFooter` | bool | Показать колонку в подвале |
-| `footerDataPath` | путь данных | Значение подвала, напр. `"Объект.Товары.TotalСумма"` |
+| `showInFooter` | `false` | Не показывать колонку в подвале |
+| `footerDataPath` | путь данных | Значение подвала; итог колонки табличной части — `Total` + имя реквизита: `"Объект.Товары.TotalСумма"` |
 | `footerText` | строка или `{ru, en}` | Постоянный текст подвала, напр. «Итого:» |
 | `footerHorizontalAlign` | `Left` / `Center` / `Right` | Выравнивание в подвале |
 | `showInHeader` | bool | Показать колонку в шапке |
@@ -59,14 +86,14 @@
     { "input": "Номенклатура", "path": "Объект.Товары.Номенклатура", "fixingInTable": "Left",
       "footerText": "Итого:" },
     { "input": "Сумма", "path": "Объект.Товары.Сумма", "headerHorizontalAlign": "Right",
-      "showInFooter": true, "footerDataPath": "Объект.Товары.TotalСумма", "footerHorizontalAlign": "Right" } ] }
+      "footerDataPath": "Объект.Товары.TotalСумма", "footerHorizontalAlign": "Right" } ] }
 ```
 
 ## Поиск
 
 | Ключ | Значения | Назначение |
 |------|----------|-----------|
-| `searchOnInput` | `Auto` / `Use` / `DontUse` | Поиск при наборе текста в таблице (где строка поиска — `searchStringLocation` на главной) |
+| `searchOnInput` | `Auto` / `Use` / `DontUse` | Поиск при наборе текста в таблице |
 | `viewStatusLocation` / `searchControlLocation` | `None` / `Top` / `Bottom` / `Auto` | Где состояние просмотра и управление поиском |
 
 Своя строка поиска, размещённая в командной панели таблицы — элемент `searchString` (также `viewStatus`, `searchControl`):
