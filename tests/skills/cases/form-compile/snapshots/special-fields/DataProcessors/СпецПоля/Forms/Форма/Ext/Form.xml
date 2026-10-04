@@ -13,15 +13,15 @@
 			<DataPath>ТаблицаОтчета</DataPath>
 			<ReadOnly>true</ReadOnly>
 			<TitleLocation>None</TitleLocation>
-			<EnableStartDrag>false</EnableStartDrag>
-			<VerticalScrollBar>true</VerticalScrollBar>
-			<HorizontalScrollBar>true</HorizontalScrollBar>
-			<ViewScalingMode>Normal</ViewScalingMode>
-			<Output>Disable</Output>
-			<Protection>true</Protection>
 			<ShowGrid>false</ShowGrid>
 			<ShowHeaders>false</ShowHeaders>
+			<VerticalScrollBar>true</VerticalScrollBar>
+			<HorizontalScrollBar>true</HorizontalScrollBar>
+			<Protection>true</Protection>
+			<Output>Disable</Output>
+			<EnableStartDrag>false</EnableStartDrag>
 			<EnableDrag>false</EnableDrag>
+			<ViewScalingMode>Normal</ViewScalingMode>
 			<ContextMenu name="ТаблицаОтчетаКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="ТаблицаОтчетаРасширеннаяПодсказка" id="3"/>
 		</SpreadSheetDocumentField>
@@ -36,10 +36,10 @@
 		<HTMLDocumentField name="Содержимое" id="7">
 			<DataPath>Содержимое</DataPath>
 			<TitleLocation>None</TitleLocation>
+			<WarningOnEditRepresentation>DontShow</WarningOnEditRepresentation>
 			<Width>37</Width>
 			<HorizontalStretch>false</HorizontalStretch>
 			<Output>Enable</Output>
-			<WarningOnEditRepresentation>DontShow</WarningOnEditRepresentation>
 			<ContextMenu name="СодержимоеКонтекстноеМеню" id="8"/>
 			<ExtendedTooltip name="СодержимоеРасширеннаяПодсказка" id="9"/>
 		</HTMLDocumentField>
@@ -55,8 +55,8 @@
 			<DataPath>ПроцентВыполнения</DataPath>
 			<TitleLocation>None</TitleLocation>
 			<Width>30</Width>
-			<ShowPercent>true</ShowPercent>
 			<MaxValue>10000</MaxValue>
+			<ShowPercent>true</ShowPercent>
 			<ContextMenu name="ПрогрессКонтекстноеМеню" id="14"/>
 			<ExtendedTooltip name="ПрогрессРасширеннаяПодсказка" id="15"/>
 		</ProgressBarField>
@@ -64,8 +64,8 @@
 			<DataPath>Масштаб</DataPath>
 			<TitleLocation>None</TitleLocation>
 			<Width>50</Width>
-			<MarkingAppearance>TopLeft</MarkingAppearance>
 			<MinValue>20</MinValue>
+			<MarkingAppearance>TopLeft</MarkingAppearance>
 			<MaxValue>400</MaxValue>
 			<LargeStep>5</LargeStep>
 			<MarkingStep>20</MarkingStep>

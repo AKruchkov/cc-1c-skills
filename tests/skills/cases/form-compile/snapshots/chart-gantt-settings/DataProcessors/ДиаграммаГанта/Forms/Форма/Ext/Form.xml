@@ -15,8 +15,8 @@
 			<ContextMenu name="ГантаКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="ГантаРасширеннаяПодсказка" id="3"/>
 			<Table name="ТаблицаГанта" id="4">
-				<DataPath>Ганта</DataPath>
 				<Height>3</Height>
+				<DataPath>Ганта</DataPath>
 				<ContextMenu name="ТаблицаГантаКонтекстноеМеню" id="5"/>
 				<AutoCommandBar name="ТаблицаГантаКоманднаяПанель" id="6"/>
 				<ExtendedTooltip name="ТаблицаГантаРасширеннаяПодсказка" id="7"/>

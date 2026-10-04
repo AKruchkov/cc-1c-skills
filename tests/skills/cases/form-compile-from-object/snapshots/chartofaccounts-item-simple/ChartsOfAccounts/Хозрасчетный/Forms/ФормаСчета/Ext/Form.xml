@@ -54,8 +54,8 @@
 		</InputField>
 		<CheckBoxField name="Забалансовый" id="16">
 			<DataPath>Объект.OffBalance</DataPath>
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="ЗабалансовыйКонтекстноеМеню" id="17"/>
 			<ExtendedTooltip name="ЗабалансовыйРасширеннаяПодсказка" id="18"/>
 		</CheckBoxField>
@@ -71,15 +71,15 @@
 			<ChildItems>
 				<CheckBoxField name="Валютный" id="21">
 					<DataPath>Объект.Валютный</DataPath>
-					<CheckBoxType>Auto</CheckBoxType>
 					<TitleLocation>Right</TitleLocation>
+					<CheckBoxType>Auto</CheckBoxType>
 					<ContextMenu name="ВалютныйКонтекстноеМеню" id="22"/>
 					<ExtendedTooltip name="ВалютныйРасширеннаяПодсказка" id="23"/>
 				</CheckBoxField>
 				<CheckBoxField name="Количественный" id="24">
 					<DataPath>Объект.Количественный</DataPath>
-					<CheckBoxType>Auto</CheckBoxType>
 					<TitleLocation>Right</TitleLocation>
+					<CheckBoxType>Auto</CheckBoxType>
 					<ContextMenu name="КоличественныйКонтекстноеМеню" id="25"/>
 					<ExtendedTooltip name="КоличественныйРасширеннаяПодсказка" id="26"/>
 				</CheckBoxField>
@@ -122,22 +122,22 @@
 				</InputField>
 				<CheckBoxField name="ВидыСубконтоТолькоОбороты" id="43">
 					<DataPath>Объект.ExtDimensionTypes.TurnoversOnly</DataPath>
-					<CheckBoxType>Auto</CheckBoxType>
 					<TitleLocation>Right</TitleLocation>
+					<CheckBoxType>Auto</CheckBoxType>
 					<ContextMenu name="ВидыСубконтоТолькоОборотыКонтекстноеМеню" id="44"/>
 					<ExtendedTooltip name="ВидыСубконтоТолькоОборотыРасширеннаяПодсказка" id="45"/>
 				</CheckBoxField>
 				<CheckBoxField name="ВидыСубконтоВалютный" id="46">
 					<DataPath>Объект.ExtDimensionTypes.Валютный</DataPath>
-					<CheckBoxType>Auto</CheckBoxType>
 					<TitleLocation>Right</TitleLocation>
+					<CheckBoxType>Auto</CheckBoxType>
 					<ContextMenu name="ВидыСубконтоВалютныйКонтекстноеМеню" id="47"/>
 					<ExtendedTooltip name="ВидыСубконтоВалютныйРасширеннаяПодсказка" id="48"/>
 				</CheckBoxField>
 				<CheckBoxField name="ВидыСубконтоКоличественный" id="49">
 					<DataPath>Объект.ExtDimensionTypes.Количественный</DataPath>
-					<CheckBoxType>Auto</CheckBoxType>
 					<TitleLocation>Right</TitleLocation>
+					<CheckBoxType>Auto</CheckBoxType>
 					<ContextMenu name="ВидыСубконтоКоличественныйКонтекстноеМеню" id="50"/>
 					<ExtendedTooltip name="ВидыСубконтоКоличественныйРасширеннаяПодсказка" id="51"/>
 				</CheckBoxField>

@@ -31,7 +31,6 @@
 			</Events>
 		</InputField>
 		<LabelDecoration name="Подсказка" id="7">
-			<Hyperlink>true</Hyperlink>
 			<Title formatted="false">
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -39,6 +38,7 @@
 				</v8:item>
 			</Title>
 			<ToolTipRepresentation>Button</ToolTipRepresentation>
+			<Hyperlink>true</Hyperlink>
 			<ContextMenu name="ПодсказкаКонтекстноеМеню" id="8"/>
 			<ExtendedTooltip name="ПодсказкаРасширеннаяПодсказка" id="9"/>
 			<Events>

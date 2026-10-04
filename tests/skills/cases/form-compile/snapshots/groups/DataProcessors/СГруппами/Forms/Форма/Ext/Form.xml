@@ -28,27 +28,27 @@
 					<v8:content>Шапка</v8:content>
 				</v8:item>
 			</Title>
-			<Group>Horizontal</Group>
-			<Behavior>Usual</Behavior>
+			<Shortcut>Ctrl+G</Shortcut>
 			<HorizontalStretch>true</HorizontalStretch>
 			<GroupHorizontalAlign>Right</GroupHorizontalAlign>
-			<VerticalAlign>Top</VerticalAlign>
-			<ThroughAlign>Use</ThroughAlign>
-			<ChildItemsWidth>Equal</ChildItemsWidth>
-			<HorizontalSpacing>None</HorizontalSpacing>
-			<Shortcut>Ctrl+G</Shortcut>
+			<Group>Horizontal</Group>
 			<ChildrenAlign>ItemsRightTitlesLeft</ChildrenAlign>
+			<HorizontalSpacing>None</HorizontalSpacing>
+			<VerticalAlign>Top</VerticalAlign>
+			<Behavior>Usual</Behavior>
+			<ChildItemsWidth>Equal</ChildItemsWidth>
+			<ThroughAlign>Use</ThroughAlign>
 			<ExtendedTooltip name="ГруппаШапкаРасширеннаяПодсказка" id="4"/>
 			<ChildItems>
 				<InputField name="Поле1" id="5">
 					<DataPath>Поле1</DataPath>
+					<SkipOnInput>true</SkipOnInput>
 					<Title>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
 							<v8:content>Поле 1</v8:content>
 						</v8:item>
 					</Title>
-					<SkipOnInput>true</SkipOnInput>
 					<Width>20</Width>
 					<Mask>999-999</Mask>
 					<ContextMenu name="Поле1КонтекстноеМеню" id="6"/>
@@ -74,6 +74,7 @@
 			</ChildItems>
 		</UsualGroup>
 		<UsualGroup name="ГруппаПодвал" id="14" DisplayImportance="Low">
+			<EnableContentChange>false</EnableContentChange>
 			<Title>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -85,14 +86,15 @@
 				</v8:item>
 			</Title>
 			<Group>Vertical</Group>
+			<VerticalSpacing>None</VerticalSpacing>
 			<Behavior>Collapsible</Behavior>
-			<Collapsed>true</Collapsed>
 			<CollapsedRepresentationTitle>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
 					<v8:content>Развернуть подвал</v8:content>
 				</v8:item>
 			</CollapsedRepresentationTitle>
+			<Collapsed>true</Collapsed>
 			<Format>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -103,9 +105,7 @@
 					<v8:content>BF=; BT=*</v8:content>
 				</v8:item>
 			</Format>
-			<EnableContentChange>false</EnableContentChange>
 			<ShowLeftMargin>false</ShowLeftMargin>
-			<VerticalSpacing>None</VerticalSpacing>
 			<TitleDataPath>Изменено</TitleDataPath>
 			<ExtendedTooltip name="ГруппаПодвалРасширеннаяПодсказка" id="15"/>
 			<ChildItems>

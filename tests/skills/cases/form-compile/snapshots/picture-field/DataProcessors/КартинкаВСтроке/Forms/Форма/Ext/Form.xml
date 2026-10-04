@@ -38,6 +38,9 @@
 				<ContextMenu name="ТаблицаДанныхУправлениеПоискомКонтекстноеМеню" id="12"/>
 				<ExtendedTooltip name="ТаблицаДанныхУправлениеПоискомРасширеннаяПодсказка" id="13"/>
 			</SearchControlAddition>
+			<Events>
+				<Event name="Selection">ТаблицаДанныхВыбор</Event>
+			</Events>
 			<ChildItems>
 				<InputField name="ТаблицаДанныхНоменклатура" id="14">
 					<DataPath>ТаблицаДанных.Номенклатура</DataPath>
@@ -46,14 +49,14 @@
 				</InputField>
 				<PictureField name="ТаблицаДанныхКартинка" id="17">
 					<DataPath>ТаблицаДанных.Картинка</DataPath>
+					<TitleLocation>None</TitleLocation>
+					<Shortcut>Ctrl+S</Shortcut>
 					<EditMode>EnterOnInput</EditMode>
 					<HeaderPicture>
 						<xr:Ref>StdPicture.ExecuteTask</xr:Ref>
 						<xr:LoadTransparent>false</xr:LoadTransparent>
 					</HeaderPicture>
-					<TitleLocation>None</TitleLocation>
 					<Hyperlink>true</Hyperlink>
-					<Shortcut>Ctrl+S</Shortcut>
 					<ValuesPicture>
 						<xr:Ref>StdPicture.FilterCriterion</xr:Ref>
 						<xr:LoadTransparent>true</xr:LoadTransparent>
@@ -70,32 +73,29 @@
 							<v8:content>Флаг</v8:content>
 						</v8:item>
 					</Title>
+					<TitleLocation>Right</TitleLocation>
 					<HeaderPicture>
 						<xr:Ref>StdPicture.ClearFilter</xr:Ref>
 						<xr:LoadTransparent>true</xr:LoadTransparent>
 					</HeaderPicture>
 					<CheckBoxType>Auto</CheckBoxType>
-					<TitleLocation>Right</TitleLocation>
 					<ContextMenu name="ТаблицаДанныхКартинкаФлагКонтекстноеМеню" id="21"/>
 					<ExtendedTooltip name="ТаблицаДанныхКартинкаФлагРасширеннаяПодсказка" id="22"/>
 				</CheckBoxField>
 				<LabelField name="ТаблицаДанныхИтог" id="23">
 					<DataPath>ТаблицаДанных.Номенклатура</DataPath>
 					<EditMode>EnterOnInput</EditMode>
-					<FooterDataPath>ТаблицаДанных.Номенклатура</FooterDataPath>
 					<FooterText>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
 							<v8:content>Итого</v8:content>
 						</v8:item>
 					</FooterText>
+					<FooterDataPath>ТаблицаДанных.Номенклатура</FooterDataPath>
 					<ContextMenu name="ТаблицаДанныхИтогКонтекстноеМеню" id="24"/>
 					<ExtendedTooltip name="ТаблицаДанныхИтогРасширеннаяПодсказка" id="25"/>
 				</LabelField>
 			</ChildItems>
-			<Events>
-				<Event name="Selection">ТаблицаДанныхВыбор</Event>
-			</Events>
 		</Table>
 	</ChildItems>
 	<Attributes>

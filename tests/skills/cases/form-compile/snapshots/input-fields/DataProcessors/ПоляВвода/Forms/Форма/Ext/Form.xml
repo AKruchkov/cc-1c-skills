@@ -24,11 +24,11 @@
 				</v8:item>
 			</ToolTip>
 			<ToolTipRepresentation>ShowBottom</ToolTipRepresentation>
-			<MultiLine>false</MultiLine>
+			<Shortcut>Ctrl+Shift+O</Shortcut>
 			<EditMode>EnterOnInput</EditMode>
 			<HorizontalStretch>false</HorizontalStretch>
 			<VerticalStretch>false</VerticalStretch>
-			<Shortcut>Ctrl+Shift+O</Shortcut>
+			<MultiLine>false</MultiLine>
 			<Format>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -70,7 +70,6 @@
 		<LabelField name="Ссылка" id="4">
 			<DataPath>ОбычноеПоле</DataPath>
 			<TitleLocation>Left</TitleLocation>
-			<Hiperlink>true</Hiperlink>
 			<WarningOnEdit>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -87,6 +86,7 @@
 					<v8:content>DLF=D</v8:content>
 				</v8:item>
 			</Format>
+			<Hiperlink>true</Hiperlink>
 			<ContextMenu name="СсылкаКонтекстноеМеню" id="5"/>
 			<ExtendedTooltip name="СсылкаРасширеннаяПодсказка" id="6"/>
 		</LabelField>
@@ -98,16 +98,16 @@
 					<v8:content>Комментарий</v8:content>
 				</v8:item>
 			</Title>
-			<MultiLine>true</MultiLine>
-			<Wrap>false</Wrap>
-			<OpenButton>false</OpenButton>
-			<ChooseType>false</ChooseType>
+			<AutoCellHeight>true</AutoCellHeight>
 			<ShowInHeader>false</ShowInHeader>
 			<ShowInFooter>false</ShowInFooter>
-			<AutoCellHeight>true</AutoCellHeight>
 			<FooterHorizontalAlign>Right</FooterHorizontalAlign>
 			<AutoMaxWidth>false</AutoMaxWidth>
 			<Height>5</Height>
+			<Wrap>false</Wrap>
+			<MultiLine>true</MultiLine>
+			<OpenButton>false</OpenButton>
+			<ChooseType>false</ChooseType>
 			<ContextMenu name="МногострочноеПолеКонтекстноеМеню" id="8"/>
 			<ExtendedTooltip name="МногострочноеПолеРасширеннаяПодсказка" id="9"/>
 		</InputField>
@@ -144,16 +144,16 @@
 					<v8:content>Выбор</v8:content>
 				</v8:item>
 			</Title>
+			<DropListButton>false</DropListButton>
 			<ChoiceButton>true</ChoiceButton>
 			<ClearButton>true</ClearButton>
 			<SpinButton>true</SpinButton>
-			<DropListButton>false</DropListButton>
-			<ChoiceListButton>true</ChoiceListButton>
-			<QuickChoice>false</QuickChoice>
 			<AutoChoiceIncomplete>true</AutoChoiceIncomplete>
-			<ChoiceForm>DataProcessor.ПоляВвода.Form.Форма</ChoiceForm>
-			<ChoiceHistoryOnInput>DontUse</ChoiceHistoryOnInput>
+			<QuickChoice>false</QuickChoice>
 			<IncompleteChoiceMode>OnActivate</IncompleteChoiceMode>
+			<ChoiceForm>DataProcessor.ПоляВвода.Form.Форма</ChoiceForm>
+			<ChoiceListButton>true</ChoiceListButton>
+			<ChoiceHistoryOnInput>DontUse</ChoiceHistoryOnInput>
 			<ContextMenu name="ПолеСКнопкамиКонтекстноеМеню" id="17"/>
 			<ExtendedTooltip name="ПолеСКнопкамиРасширеннаяПодсказка" id="18"/>
 		</InputField>
@@ -217,15 +217,6 @@
 					<v8:content>Подсказка</v8:content>
 				</v8:item>
 			</Title>
-			<AutoMarkIncomplete>false</AutoMarkIncomplete>
-			<ExtendedEdit>true</ExtendedEdit>
-			<EditTextUpdate>OnValueChange</EditTextUpdate>
-			<InputHint>
-				<v8:item>
-					<v8:lang>ru</v8:lang>
-					<v8:content>Введите значение...</v8:content>
-				</v8:item>
-			</InputHint>
 			<WarningOnEdit>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
@@ -238,6 +229,15 @@
 					<v8:content>итого</v8:content>
 				</v8:item>
 			</FooterText>
+			<ExtendedEdit>true</ExtendedEdit>
+			<AutoMarkIncomplete>false</AutoMarkIncomplete>
+			<EditTextUpdate>OnValueChange</EditTextUpdate>
+			<InputHint>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Введите значение...</v8:content>
+				</v8:item>
+			</InputHint>
 			<ContextMenu name="ПолеПодсказкаКонтекстноеМеню" id="23"/>
 			<ExtendedTooltip name="ПолеПодсказкаРасширеннаяПодсказка" id="24"/>
 		</InputField>
@@ -249,10 +249,6 @@
 					<v8:content>Поле со связями</v8:content>
 				</v8:item>
 			</Title>
-			<TypeLink>
-				<xr:DataPath>ПолеПодсказка</xr:DataPath>
-				<xr:LinkItem>0</xr:LinkItem>
-			</TypeLink>
 			<ChoiceParameterLinks>
 				<xr:Link>
 					<xr:Name>Отбор.Организация</xr:Name>
@@ -314,6 +310,10 @@
 					<app:value xsi:nil="true"/>
 				</app:item>
 			</ChoiceParameters>
+			<TypeLink>
+				<xr:DataPath>ПолеПодсказка</xr:DataPath>
+				<xr:LinkItem>0</xr:LinkItem>
+			</TypeLink>
 			<ContextMenu name="ПолеСвязиКонтекстноеМеню" id="26"/>
 			<ExtendedTooltip name="ПолеСвязиРасширеннаяПодсказка" id="27"/>
 		</InputField>
@@ -325,10 +325,6 @@
 					<v8:content>Связи (короткая форма)</v8:content>
 				</v8:item>
 			</Title>
-			<TypeLink>
-				<xr:DataPath>ПолеПодсказка</xr:DataPath>
-				<xr:LinkItem>0</xr:LinkItem>
-			</TypeLink>
 			<ChoiceParameterLinks>
 				<xr:Link>
 					<xr:Name>Отбор.Организация</xr:Name>
@@ -376,6 +372,10 @@
 					</app:value>
 				</app:item>
 			</ChoiceParameters>
+			<TypeLink>
+				<xr:DataPath>ПолеПодсказка</xr:DataPath>
+				<xr:LinkItem>0</xr:LinkItem>
+			</TypeLink>
 			<ContextMenu name="ПолеСвязиКраткоКонтекстноеМеню" id="29"/>
 			<ExtendedTooltip name="ПолеСвязиКраткоРасширеннаяПодсказка" id="30"/>
 		</InputField>
@@ -387,7 +387,6 @@
 					<v8:content>Включено</v8:content>
 				</v8:item>
 			</Title>
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
 			<WarningOnEdit>
 				<v8:item>
@@ -399,6 +398,7 @@
 					<v8:content>Confirm flag change</v8:content>
 				</v8:item>
 			</WarningOnEdit>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="ФлагКонтекстноеМеню" id="32"/>
 			<ExtendedTooltip name="ФлагРасширеннаяПодсказка" id="33">
 				<Width>45</Width>
@@ -424,8 +424,8 @@
 					<v8:content>Сверху</v8:content>
 				</v8:item>
 			</Title>
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Top</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="ФлагЯвныйКонтекстноеМеню" id="38"/>
 			<ExtendedTooltip name="ФлагЯвныйРасширеннаяПодсказка" id="39"/>
 		</CheckBoxField>
@@ -437,7 +437,6 @@
 					<v8:content>Тумблер</v8:content>
 				</v8:item>
 			</Title>
-			<CheckBoxType>Switcher</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
 			<Format>
 				<v8:item>
@@ -445,6 +444,7 @@
 					<v8:content>БЛ=Нет; БИ=Да</v8:content>
 				</v8:item>
 			</Format>
+			<CheckBoxType>Switcher</CheckBoxType>
 			<ContextMenu name="ФлагТумблерКонтекстноеМеню" id="41"/>
 			<ExtendedTooltip name="ФлагТумблерРасширеннаяПодсказка" id="42"/>
 		</CheckBoxField>

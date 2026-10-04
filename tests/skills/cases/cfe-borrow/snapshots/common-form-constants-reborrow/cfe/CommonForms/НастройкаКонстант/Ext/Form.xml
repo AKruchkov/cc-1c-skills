@@ -4,8 +4,8 @@
 	<ChildItems>
 		<CheckBoxField name="Использовать" id="1">
 			<DataPath>НаборКонстант.Использовать</DataPath>
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="ИспользоватьКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="ИспользоватьРасширеннаяПодсказка" id="3"/>
 		</CheckBoxField>
@@ -28,8 +28,8 @@
 		<ChildItems>
 			<CheckBoxField name="Использовать" id="1">
 				<DataPath>НаборКонстант.Использовать</DataPath>
-				<CheckBoxType>Auto</CheckBoxType>
 				<TitleLocation>Right</TitleLocation>
+				<CheckBoxType>Auto</CheckBoxType>
 				<ContextMenu name="ИспользоватьКонтекстноеМеню" id="2"/>
 				<ExtendedTooltip name="ИспользоватьРасширеннаяПодсказка" id="3"/>
 			</CheckBoxField>

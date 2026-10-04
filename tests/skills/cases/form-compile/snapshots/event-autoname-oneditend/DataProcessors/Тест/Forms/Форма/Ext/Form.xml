@@ -31,6 +31,10 @@
 				<ContextMenu name="ТоварыУправлениеПоискомКонтекстноеМеню" id="12"/>
 				<ExtendedTooltip name="ТоварыУправлениеПоискомРасширеннаяПодсказка" id="13"/>
 			</SearchControlAddition>
+			<Events>
+				<Event name="OnEditEnd">ТоварыПриОкончанииРедактирования</Event>
+				<Event name="OnStartEdit">ТоварыПриНачалеРедактирования</Event>
+			</Events>
 			<ChildItems>
 				<InputField name="ТоварыКоличество" id="14">
 					<DataPath>Товары.Количество</DataPath>
@@ -38,10 +42,6 @@
 					<ExtendedTooltip name="ТоварыКоличествоРасширеннаяПодсказка" id="16"/>
 				</InputField>
 			</ChildItems>
-			<Events>
-				<Event name="OnEditEnd">ТоварыПриОкончанииРедактирования</Event>
-				<Event name="OnStartEdit">ТоварыПриНачалеРедактирования</Event>
-			</Events>
 		</Table>
 	</ChildItems>
 	<Attributes>

@@ -11,8 +11,8 @@
 	<ChildItems>
 		<CheckBoxField name="Режим" id="1">
 			<DataPath>Режим</DataPath>
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="РежимКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="РежимРасширеннаяПодсказка" id="3"/>
 		</CheckBoxField>

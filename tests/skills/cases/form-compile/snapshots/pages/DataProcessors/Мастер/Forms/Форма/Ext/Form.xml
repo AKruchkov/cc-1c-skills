@@ -41,6 +41,8 @@
 							<v8:content>Результат</v8:content>
 						</v8:item>
 					</Title>
+					<TitleTextColor>style:FormTextColor</TitleTextColor>
+					<TitleFont ref="style:TextFont" kind="StyleItem"/>
 					<ToolTip>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
@@ -53,10 +55,8 @@
 						<xr:TransparentPixel x="2" y="4"/>
 					</Picture>
 					<Group>HorizontalIfPossible</Group>
-					<TitleDataPath>Итог</TitleDataPath>
-					<TitleTextColor>style:FormTextColor</TitleTextColor>
-					<TitleFont ref="style:TextFont" kind="StyleItem"/>
 					<BackColor>style:FormBackColor</BackColor>
+					<TitleDataPath>Итог</TitleDataPath>
 					<ExtendedTooltip name="Шаг2РасширеннаяПодсказка" id="9"/>
 					<ChildItems>
 						<InputField name="Итог" id="10">

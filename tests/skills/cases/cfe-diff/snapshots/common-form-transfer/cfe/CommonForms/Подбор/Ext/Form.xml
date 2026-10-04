@@ -10,8 +10,8 @@
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
 	<ChildItems>
 		<CheckBoxField name="Режим" id="1">
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="РежимКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="РежимРасширеннаяПодсказка" id="3"/>
 		</CheckBoxField>
@@ -28,8 +28,8 @@
 		<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
 		<ChildItems>
 			<CheckBoxField name="Режим" id="1">
-				<CheckBoxType>Auto</CheckBoxType>
 				<TitleLocation>Right</TitleLocation>
+				<CheckBoxType>Auto</CheckBoxType>
 				<ContextMenu name="РежимКонтекстноеМеню" id="2"/>
 				<ExtendedTooltip name="РежимРасширеннаяПодсказка" id="3"/>
 			</CheckBoxField>

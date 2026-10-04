@@ -10,30 +10,30 @@
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
 	<ChildItems>
 		<Table name="Данные" id="1">
-			<DataPath>Данные</DataPath>
 			<TitleLocation>Top</TitleLocation>
-			<ChangeRowSet>true</ChangeRowSet>
-			<HeightInTableRows>5</HeightInTableRows>
 			<Autofill>true</Autofill>
+			<ChangeRowSet>true</ChangeRowSet>
+			<Height>80</Height>
+			<HeightInTableRows>5</HeightInTableRows>
+			<HeightControlVariant>UseHeightInTableRows</HeightControlVariant>
+			<AutoMaxRowsCount>false</AutoMaxRowsCount>
+			<MaxRowsCount>5</MaxRowsCount>
 			<MultipleChoice>true</MultipleChoice>
-			<SearchOnInput>Use</SearchOnInput>
-			<AutoMarkIncomplete>true</AutoMarkIncomplete>
-			<HeaderHeight>2</HeaderHeight>
 			<FooterHeight>1</FooterHeight>
-			<CurrentRowUse>SelectionPresentationAndChoice</CurrentRowUse>
-			<ViewStatusLocation>None</ViewStatusLocation>
-			<SearchControlLocation>None</SearchControlLocation>
+			<HeaderHeight>2</HeaderHeight>
+			<AutoMarkIncomplete>true</AutoMarkIncomplete>
+			<SearchOnInput>Use</SearchOnInput>
+			<DataPath>Данные</DataPath>
 			<CommandSet>
 				<ExcludedCommand>Add</ExcludedCommand>
 				<ExcludedCommand>Delete</ExcludedCommand>
 				<ExcludedCommand>MoveUp</ExcludedCommand>
 				<ExcludedCommand>MoveDown</ExcludedCommand>
 			</CommandSet>
-			<Height>80</Height>
+			<ViewStatusLocation>None</ViewStatusLocation>
+			<SearchControlLocation>None</SearchControlLocation>
+			<CurrentRowUse>SelectionPresentationAndChoice</CurrentRowUse>
 			<SettingsNamedItemDetailedRepresentation>false</SettingsNamedItemDetailedRepresentation>
-			<MaxRowsCount>5</MaxRowsCount>
-			<AutoMaxRowsCount>false</AutoMaxRowsCount>
-			<HeightControlVariant>UseHeightInTableRows</HeightControlVariant>
 			<ContextMenu name="ДанныеКонтекстноеМеню" id="2">
 				<ChildItems>
 					<ButtonGroup name="МенюГруппа" id="3">
@@ -53,8 +53,8 @@
 				<ChildItems>
 					<Button name="ПанельОбновить" id="8">
 						<Type>CommandBarButton</Type>
-						<CommandName>Form.Command.Обновить</CommandName>
 						<Check>true</Check>
+						<CommandName>Form.Command.Обновить</CommandName>
 						<ExtendedTooltip name="ПанельОбновитьРасширеннаяПодсказка" id="9"/>
 					</Button>
 				</ChildItems>

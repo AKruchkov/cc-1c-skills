@@ -29,8 +29,8 @@
 			<ChildItems>
 				<Button name="Выполнить" id="3">
 					<Type>CommandBarButton</Type>
-					<CommandName>Form.Command.Выполнить</CommandName>
 					<DefaultButton>true</DefaultButton>
+					<CommandName>Form.Command.Выполнить</CommandName>
 					<ExtendedTooltip name="ВыполнитьРасширеннаяПодсказка" id="4"/>
 				</Button>
 				<Button name="Закрыть" id="5">
@@ -52,9 +52,9 @@
 		<InputField name="Результат" id="9">
 			<DataPath>Результат</DataPath>
 			<ReadOnly>true</ReadOnly>
-			<MultiLine>true</MultiLine>
 			<AutoMaxWidth>false</AutoMaxWidth>
 			<Height>8</Height>
+			<MultiLine>true</MultiLine>
 			<ContextMenu name="РезультатКонтекстноеМеню" id="10"/>
 			<ExtendedTooltip name="РезультатРасширеннаяПодсказка" id="11"/>
 		</InputField>

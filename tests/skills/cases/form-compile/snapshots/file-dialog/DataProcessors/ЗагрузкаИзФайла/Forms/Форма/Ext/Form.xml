@@ -11,8 +11,8 @@
 		<ChildItems>
 			<Button name="Загрузить" id="1">
 				<Type>CommandBarButton</Type>
-				<CommandName>Form.Command.Загрузить</CommandName>
 				<DefaultButton>true</DefaultButton>
+				<CommandName>Form.Command.Загрузить</CommandName>
 				<ExtendedTooltip name="ЗагрузитьРасширеннаяПодсказка" id="2"/>
 			</Button>
 			<Button name="Закрыть" id="3">
@@ -53,8 +53,8 @@
 				</InputField>
 				<CheckBoxField name="ПерваяСтрокаЗаголовок" id="10">
 					<DataPath>ПерваяСтрокаЗаголовок</DataPath>
-					<CheckBoxType>Auto</CheckBoxType>
 					<TitleLocation>Right</TitleLocation>
+					<CheckBoxType>Auto</CheckBoxType>
 					<ContextMenu name="ПерваяСтрокаЗаголовокКонтекстноеМеню" id="11"/>
 					<ExtendedTooltip name="ПерваяСтрокаЗаголовокРасширеннаяПодсказка" id="12"/>
 				</CheckBoxField>
@@ -62,16 +62,16 @@
 		</UsualGroup>
 		<InputField name="Результат" id="13">
 			<DataPath>Результат</DataPath>
+			<ReadOnly>true</ReadOnly>
 			<Title>
 				<v8:item>
 					<v8:lang>ru</v8:lang>
 					<v8:content>Лог</v8:content>
 				</v8:item>
 			</Title>
-			<ReadOnly>true</ReadOnly>
-			<MultiLine>true</MultiLine>
 			<AutoMaxWidth>false</AutoMaxWidth>
 			<Height>8</Height>
+			<MultiLine>true</MultiLine>
 			<ContextMenu name="РезультатКонтекстноеМеню" id="14"/>
 			<ExtendedTooltip name="РезультатРасширеннаяПодсказка" id="15"/>
 		</InputField>

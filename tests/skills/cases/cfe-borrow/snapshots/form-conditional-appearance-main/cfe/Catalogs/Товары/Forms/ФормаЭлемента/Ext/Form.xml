@@ -15,8 +15,8 @@
 			<ExtendedTooltip name="ОстатокРасширеннаяПодсказка" id="3"/>
 		</InputField>
 		<CheckBoxField name="Режим" id="4">
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ContextMenu name="РежимКонтекстноеМеню" id="5"/>
 			<ExtendedTooltip name="РежимРасширеннаяПодсказка" id="6"/>
 		</CheckBoxField>
@@ -88,8 +88,8 @@
 				<ExtendedTooltip name="ОстатокРасширеннаяПодсказка" id="3"/>
 			</InputField>
 			<CheckBoxField name="Режим" id="4">
-				<CheckBoxType>Auto</CheckBoxType>
 				<TitleLocation>Right</TitleLocation>
+				<CheckBoxType>Auto</CheckBoxType>
 				<ContextMenu name="РежимКонтекстноеМеню" id="5"/>
 				<ExtendedTooltip name="РежимРасширеннаяПодсказка" id="6"/>
 			</CheckBoxField>

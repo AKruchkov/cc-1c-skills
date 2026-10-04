@@ -10,8 +10,8 @@
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
 	<ChildItems>
 		<Button name="Выполнить" id="1">
-			<CommandName>Form.Command.Выполнить</CommandName>
 			<DefaultButton>true</DefaultButton>
+			<CommandName>Form.Command.Выполнить</CommandName>
 			<ExtendedTooltip name="ВыполнитьРасширеннаяПодсказка" id="2"/>
 		</Button>
 	</ChildItems>

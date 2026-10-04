@@ -16,8 +16,8 @@
 			<ChildItems>
 				<Button name="Выполнить" id="3">
 					<Type>CommandBarButton</Type>
-					<CommandName>Form.Command.Выполнить</CommandName>
 					<DefaultButton>true</DefaultButton>
+					<CommandName>Form.Command.Выполнить</CommandName>
 					<ExtendedTooltip name="ВыполнитьРасширеннаяПодсказка" id="4"/>
 				</Button>
 				<ButtonGroup name="ГруппаПереместить" id="5">
@@ -52,13 +52,13 @@
 							<v8:content>Печать</v8:content>
 						</v8:item>
 					</Title>
+					<TitleTextColor>style:ButtonTextColor</TitleTextColor>
+					<TitleFont ref="style:ВажнаяНадписьШрифт" kind="StyleItem"/>
 					<Picture>
 						<xr:Ref>StdPicture.Print</xr:Ref>
 						<xr:LoadTransparent>false</xr:LoadTransparent>
 					</Picture>
 					<Representation>PictureAndText</Representation>
-					<TitleTextColor>style:ButtonTextColor</TitleTextColor>
-					<TitleFont ref="style:ВажнаяНадписьШрифт" kind="StyleItem"/>
 					<ExtendedTooltip name="ПодменюПечатьРасширеннаяПодсказка" id="14"/>
 					<ChildItems>
 						<Button name="ПечатьСчёта" id="15">

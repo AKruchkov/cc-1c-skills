@@ -11,8 +11,8 @@
 		</InputField>
 		<CheckBoxField name="Флаг" id="4">
 			<DataPath>Флаг</DataPath>
-			<CheckBoxType>Auto</CheckBoxType>
 			<TitleLocation>Right</TitleLocation>
+			<CheckBoxType>Auto</CheckBoxType>
 			<ThreeState>true</ThreeState>
 			<ContextMenu name="ФлагКонтекстноеМеню" id="5"/>
 			<ExtendedTooltip name="ФлагРасширеннаяПодсказка" id="6"/>

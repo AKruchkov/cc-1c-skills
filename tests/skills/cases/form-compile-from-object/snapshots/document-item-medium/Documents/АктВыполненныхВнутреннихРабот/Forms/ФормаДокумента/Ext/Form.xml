@@ -39,8 +39,8 @@
 											<ChildItems>
 												<InputField name="Номер" id="11">
 													<DataPath>Объект.Number</DataPath>
-													<AutoMaxWidth>false</AutoMaxWidth>
 													<Width>9</Width>
+													<AutoMaxWidth>false</AutoMaxWidth>
 													<ContextMenu name="НомерКонтекстноеМеню" id="12"/>
 													<ExtendedTooltip name="НомерРасширеннаяПодсказка" id="13"/>
 												</InputField>
@@ -111,8 +111,8 @@
 										</InputField>
 										<CheckBoxField name="Исправление" id="46">
 											<DataPath>Объект.Исправление</DataPath>
-											<CheckBoxType>Auto</CheckBoxType>
 											<TitleLocation>Right</TitleLocation>
+											<CheckBoxType>Auto</CheckBoxType>
 											<ContextMenu name="ИсправлениеКонтекстноеМеню" id="47"/>
 											<ExtendedTooltip name="ИсправлениеРасширеннаяПодсказка" id="48"/>
 										</CheckBoxField>

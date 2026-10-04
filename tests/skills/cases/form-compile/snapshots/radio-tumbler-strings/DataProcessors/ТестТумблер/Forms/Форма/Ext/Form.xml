@@ -11,8 +11,14 @@
 	<ChildItems>
 		<RadioButtonField name="ОтборСтрок" id="1">
 			<DataPath>ОтборСтрок</DataPath>
-			<EditMode>EnterOnInput</EditMode>
 			<TitleLocation>None</TitleLocation>
+			<EditMode>EnterOnInput</EditMode>
+			<WarningOnEdit>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Смена отбора перезагрузит список</v8:content>
+				</v8:item>
+			</WarningOnEdit>
 			<RadioButtonType>Tumbler</RadioButtonType>
 			<ChoiceList>
 				<xr:Item>
@@ -42,12 +48,6 @@
 					</xr:Value>
 				</xr:Item>
 			</ChoiceList>
-			<WarningOnEdit>
-				<v8:item>
-					<v8:lang>ru</v8:lang>
-					<v8:content>Смена отбора перезагрузит список</v8:content>
-				</v8:item>
-			</WarningOnEdit>
 			<ContextMenu name="ОтборСтрокКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="ОтборСтрокРасширеннаяПодсказка" id="3"/>
 		</RadioButtonField>
@@ -61,6 +61,7 @@
 			<TitleLocation>None</TitleLocation>
 			<RadioButtonType>Auto</RadioButtonType>
 			<ColumnsCount>1</ColumnsCount>
+			<EqualColumnsWidth>true</EqualColumnsWidth>
 			<ChoiceList>
 				<xr:Item>
 					<xr:Presentation/>
@@ -102,7 +103,6 @@
 					</xr:Value>
 				</xr:Item>
 			</ChoiceList>
-			<EqualColumnsWidth>true</EqualColumnsWidth>
 			<ContextMenu name="ВидСчетаКонтекстноеМеню" id="5"/>
 			<ExtendedTooltip name="ВидСчетаРасширеннаяПодсказка" id="6"/>
 		</RadioButtonField>

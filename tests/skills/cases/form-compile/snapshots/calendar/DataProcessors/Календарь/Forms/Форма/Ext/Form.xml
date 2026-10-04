@@ -23,8 +23,8 @@
 		</CalendarField>
 		<CalendarField name="КалендарьМесяцы" id="4">
 			<DataPath>ДатаМесяцы</DataPath>
-			<HeightInMonths>0</HeightInMonths>
 			<ShowMonthsPanel>true</ShowMonthsPanel>
+			<HeightInMonths>0</HeightInMonths>
 			<ContextMenu name="КалендарьМесяцыКонтекстноеМеню" id="5"/>
 			<ExtendedTooltip name="КалендарьМесяцыРасширеннаяПодсказка" id="6"/>
 		</CalendarField>

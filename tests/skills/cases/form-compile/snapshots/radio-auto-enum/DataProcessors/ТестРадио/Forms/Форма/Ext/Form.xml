@@ -19,6 +19,7 @@
 			</Title>
 			<TitleLocation>None</TitleLocation>
 			<RadioButtonType>Auto</RadioButtonType>
+			<ItemTitleHeight>1</ItemTitleHeight>
 			<ColumnsCount>1</ColumnsCount>
 			<ChoiceList>
 				<xr:Item>
@@ -66,7 +67,6 @@
 				</xr:Item>
 			</ChoiceList>
 			<EqualItemsWidth>false</EqualItemsWidth>
-			<ItemTitleHeight>1</ItemTitleHeight>
 			<ContextMenu name="СпособКурсаКонтекстноеМеню" id="2"/>
 			<ExtendedTooltip name="СпособКурсаРасширеннаяПодсказка" id="3"/>
 		</RadioButtonField>
