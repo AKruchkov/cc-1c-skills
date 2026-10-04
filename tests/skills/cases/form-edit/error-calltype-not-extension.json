@@ -1,0 +1,19 @@
+{
+  "name": "callType в обычной форме — отказ (вид вызова только в расширении)",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "events": {
+      "OnOpen": {
+        "handler": "ПриОткрытии",
+        "callType": "After"
+      }
+    }
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "только в форме расширения"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "name": "Форма: реквизиты, команды, условное оформление, командный интерфейс — эмиттерами form-compile",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "attributes": [
+      {
+        "name": "Итого",
+        "type": "decimal(15,2)"
+      },
+      {
+        "name": "Таблица",
+        "type": "ValueTable",
+        "columns": [
+          {
+            "name": "Код",
+            "type": "string(10)"
+          },
+          {
+            "name": "Сумма",
+            "type": "decimal(15,2)"
+          }
+        ]
+      },
+      {
+        "name": "Список",
+        "type": "DynamicList",
+        "settings": {
+          "mainTable": "Document.ЗаказТест"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "name": "Пересчитать",
+        "action": "ПересчитатьОбработка"
+      }
+    ],
+    "conditionalAppearance": [
+      {
+        "selection": [
+          "Номер"
+        ],
+        "filter": [
+          "Объект.Приоритет > 1"
+        ],
+        "appearance": {
+          "ЦветТекста": "style:SpecialTextColor"
+        }
+      }
+    ],
+    "commandInterface": {
+      "commandBar": [
+        {
+          "command": "Form.Command.Пересчитать",
+          "defaultVisible": false
+        }
+      ]
+    }
+  },
+  "expect": {
+    "stdoutContains": [
+      "условное оформление: правил 1",
+      "командный интерфейс, CommandBar: пунктов 1"
+    ]
+  }
+}

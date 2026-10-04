@@ -1,4 +1,4 @@
-# form-edit v1.23 — Edit 1C managed form elements (Python port)
+# form-edit v1.24 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import contextlib
@@ -522,13 +522,50 @@ TYPE_SYNONYMS = _FORM_TYPE_SYNONYMS
 
 def _assert_edit_unique(name, seen, ctx):
     # Уникальность имён внутри JSON-определения (1С: своя коллекция — свой неймспейс).
-    if name in seen:
+    # имена 1С регистронезависимы — как @{} в PS
+    if name.lower() in seen:
         print(f"[ERROR] Duplicate {ctx} '{name}' in JSON definition — names must be unique in 1C form")
         sys.exit(1)
-    seen.add(name)
+    seen.add(name.lower())
 
 
 # ── 5b. Эмиттер элементов — общий с form-compile (эталон там; копии держит check-inline-drift) ──
+
+QUERY_BASE_DIR = os.getcwd()
+
+CANON_FILTER_ID = 'dfcece9d-5077-440b-b6b3-45a5cb4538eb'
+
+CANON_ORDER_ID = '88619765-ccb3-46c6-ac52-38e9c992ebd4'
+
+CANON_CA_ID = 'b75fecce-942b-4aed-abc9-e6a02e460fb3'
+
+CANON_ITEMS_ID = '911b6018-f537-43e8-a417-da56b22f9aec'
+
+COMPARISON_TYPES = {
+    '=': 'Equal', '<>': 'NotEqual',
+    '>': 'Greater', '>=': 'GreaterOrEqual',
+    '<': 'Less', '<=': 'LessOrEqual',
+    'in': 'InList', 'notIn': 'NotInList',
+    'inHierarchy': 'InHierarchy', 'inListByHierarchy': 'InListByHierarchy',
+    'contains': 'Contains', 'notContains': 'NotContains',
+    'beginsWith': 'BeginsWith', 'notBeginsWith': 'NotBeginsWith',
+    'like': 'Like', 'notLike': 'NotLike',
+    'подобно': 'Like', 'неподобно': 'NotLike',  # рус. синоним
+    'filled': 'Filled', 'notFilled': 'NotFilled',
+}
+
+_COMPARISON_TYPES_CI = {k.lower(): v for k, v in COMPARISON_TYPES.items()}
+
+_REF_TYPE_RE = re.compile(
+    r'^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета|'
+    r'БизнесПроцесс|Задача|РегистрСведений|ПланОбмена|Catalog|Enum|Document|ChartOfAccounts|'
+    r'ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|'
+    r'InformationRegister|ExchangePlan)\.')
+
+_CALC_RESTRICT_MAP = {'noField': 'field', 'noFilter': 'condition', 'noCondition': 'condition',
+                      'noGroup': 'group', 'noOrder': 'order'}
+
+_DCS_COMMON_NS = 'http://v8.1c.ru/8.1/data-composition-system/common'
 
 _seen_element_names = set()  # пул имён элементов (глобально по всей форме)
 
@@ -574,6 +611,14 @@ KNOWN_EVENTS = {
     "popup": [],
     "group": [],
 }
+
+KNOWN_FORM_EVENTS = [
+    "OnCreateAtServer", "OnOpen", "BeforeClose", "OnClose", "NotificationProcessing",
+    "ChoiceProcessing", "OnReadAtServer", "AfterWriteAtServer", "BeforeWriteAtServer",
+    "AfterWrite", "BeforeWrite", "OnWriteAtServer", "FillCheckProcessingAtServer",
+    "OnLoadDataFromSettingsAtServer", "BeforeLoadDataFromSettingsAtServer",
+    "OnSaveDataInSettingsAtServer", "ExternalEvent", "OnReopen", "Opening",
+]
 
 KNOWN_KEYS = {
     "group", "columnGroup", "buttonGroup", "input", "check", "radio", "label", "labelField", "table", "pages", "page",
@@ -819,6 +864,21 @@ APP_ORDER_DECORATION = ['textColor', 'font', 'backColor', 'borderColor', 'border
 
 APP_ORDER_BUTTON = ['textColor', 'backColor', 'borderColor', 'font']
 
+PLANNER_NS = 'http://v8.1c.ru/8.3/data/planner'
+
+CHART_NS = 'http://v8.1c.ru/8.2/data/chart'
+
+_PLANNER_REF_RE = re.compile(
+    r'^(Enum|Catalog|Document|ChartOfAccounts|ChartOfCalculationTypes|ChartOfCharacteristicTypes|ExchangePlan|BusinessProcess|Task)\.'
+    r'|\.EnumValue\.|EmptyRef$'
+    r'|^(Перечисление|Справочник|Документ|ПланСчетов|ПланВидовХарактеристик|ПланВидовРасчета|ПланОбмена|БизнесПроцесс|Задача)\.')
+
+CHART_ML_FIELDS = {'title', 'lbFormat', 'lbpFormat', 'vsFormat', 'dtFormat', 'dataSourceDescription', 'labelFormat', 'text'}
+
+CHART_ATTR_FIELDS = {'gaugeQualityBands'}
+
+CHART_FONT_KEYS = ('ref', 'faceName', 'height', 'bold', 'italic', 'underline', 'strikeout', 'kind', 'scale')
+
 GENERIC_SCALARS = [
     ('VerticalAlign', 'verticalAlign', 'value'),
     ('ThroughAlign', 'throughAlign', 'value'),
@@ -992,6 +1052,35 @@ _FORM_TYPE_SYNONYMS = {
 
 TYPE_SYNONYMS = _FORM_TYPE_SYNONYMS
 
+_DP_PERIOD_VARIANTS = {"Custom","Today","ThisWeek","ThisTenDays","ThisMonth","ThisQuarter","ThisHalfYear","ThisYear","FromBeginningOfThisWeek","FromBeginningOfThisTenDays","FromBeginningOfThisMonth","FromBeginningOfThisQuarter","FromBeginningOfThisHalfYear","FromBeginningOfThisYear","LastWeek","LastTenDays","LastMonth","LastQuarter","LastHalfYear","LastYear","NextDay","NextWeek","NextTenDays","NextMonth","NextQuarter","NextHalfYear","NextYear","TillEndOfThisWeek","TillEndOfThisTenDays","TillEndOfThisMonth","TillEndOfThisQuarter","TillEndOfThisHalfYear","TillEndOfThisYear"}
+
+PROP_MAP = {
+    "autoTitle": "AutoTitle",
+    "windowOpeningMode": "WindowOpeningMode",
+    "commandBarLocation": "CommandBarLocation",
+    "saveDataInSettings": "SaveDataInSettings",
+    "autoSaveDataInSettings": "AutoSaveDataInSettings",
+    "autoTime": "AutoTime",
+    "usePostingMode": "UsePostingMode",
+    "repostOnWrite": "RepostOnWrite",
+    "autoURL": "AutoURL",
+    "autoFillCheck": "AutoFillCheck",
+    "customizable": "Customizable",
+    "enterKeyBehavior": "EnterKeyBehavior",
+    "verticalScroll": "VerticalScroll",
+    "scalingMode": "ScalingMode",
+    "useForFoldersAndItems": "UseForFoldersAndItems",
+    "reportResult": "ReportResult",
+    "detailsData": "DetailsData",
+    "reportFormType": "ReportFormType",
+    "autoShowState": "AutoShowState",
+    "width": "Width",
+    "height": "Height",
+    "group": "Group",
+}
+
+FORM_ROOT_TAG_ORDER = 'Title Width Height WindowOpeningMode EnterKeyBehavior AutoSaveDataInSettings SaveDataInSettings SaveWindowSettings SettingsStorage AutoTitle AutoURL Group HorizontalAlign ChildItemsWidth VerticalAlign HorizontalSpacing VerticalSpacing AutoFillCheck Customizable Enabled ChildrenAlign CommandBarLocation VerticalScroll ScalingMode ConversationsRepresentation MobileDeviceCommandBarContent CommandSet AutoTime UsePostingMode RepostOnWrite ReportResult DetailsData ReportFormType ShowTitle ShowCloseButton GroupList CollapseItemsByImportanceVariant UseForFoldersAndItems VariantAppearance AutoShowState CustomSettingsFolder ReportResultViewMode ViewModeApplicationOnSetReportResult Scale AutoCommandBar Events ChildItems Attributes Commands Parameters CommandInterface BaseForm'
+
 def esc_xml(s):
     # Эскейп ЗНАЧЕНИЯ АТРИБУТА: & < > и кавычка — внутри "..." литеральная " невалидна.
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
@@ -1013,6 +1102,25 @@ def di_attr(el):
 # Базовая директория для @file-ссылок в query динсписка (устанавливается в main)
 # Без -JsonPath (режим по метаданным объекта) запросов во входе нет, но база пути должна
 # оставаться валидной — как и в PS-порте, где в этой ветке берётся текущий каталог.
+
+
+def resolve_text_from_file(val, base_dir):
+    if not val.startswith("@"):
+        return val
+    file_path = val[1:]
+    if os.path.isabs(file_path):
+        candidates = [file_path]
+    else:
+        candidates = [
+            os.path.join(base_dir, file_path),
+            os.path.join(os.getcwd(), file_path),
+        ]
+    for c in candidates:
+        if os.path.exists(c):
+            with open(c, 'r', encoding='utf-8-sig') as f:
+                return f.read().rstrip()
+    print(f"Файл значения не найден: {file_path} (искали: {', '.join(candidates)})", file=sys.stderr)
+    sys.exit(1)
 
 
 def emit_ml_items(lines, indent, val):
@@ -1040,6 +1148,614 @@ def emit_mltext(lines, indent, tag, text, xsi_type=None):
     lines.append(f"{indent}</{tag}>")
 
 
+def emit_us_presentation(lines, indent, tag, val):
+    # <dcsset:userSettingPresentation>: плоская строка → xsi:type="xs:string"; мультиязычный → v8:LocalStringType
+    if val is None:
+        return
+    if isinstance(val, str):
+        lines.append(f'{indent}<{tag} xsi:type="xs:string">{esc_xml_text(val)}</{tag}>')
+    else:
+        emit_mltext(lines, indent, tag, val, xsi_type='v8:LocalStringType')
+
+
+# Каноничные GUID пустых контейнеров ListSettings (умолчание платформы, ~90% форм).
+
+
+def new_uuid():
+    return str(uuid.uuid4())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Настройки компоновщика ListSettings: filter/order/conditionalAppearance.
+# Грамматика DSL и эмиссия dcsset скопированы из skd-compile (навыки автономны).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def parse_filter_shorthand(s):
+    result = {'field': '', 'op': 'Equal', 'value': None, 'use': True,
+              'userSettingID': None, 'viewMode': None, 'presentation': None}
+    if re.search(r'@user', s):
+        result['userSettingID'] = 'auto'
+        s = re.sub(r'\s*@user', '', s)
+    if re.search(r'@off', s):
+        result['use'] = False
+        s = re.sub(r'\s*@off', '', s)
+    if re.search(r'@quickAccess', s):
+        result['viewMode'] = 'QuickAccess'
+        s = re.sub(r'\s*@quickAccess', '', s)
+    if re.search(r'@normal', s):
+        result['viewMode'] = 'Normal'
+        s = re.sub(r'\s*@normal', '', s)
+    if re.search(r'@inaccessible', s):
+        result['viewMode'] = 'Inaccessible'
+        s = re.sub(r'\s*@inaccessible', '', s)
+    s = s.strip()
+    op_patterns = ['<>', '>=', '<=', '=', '>', '<',
+                   r'notIn\b', r'in\b', r'inHierarchy\b', r'inListByHierarchy\b',
+                   r'notContains\b', r'contains\b', r'notBeginsWith\b', r'beginsWith\b',
+                   r'notLike\b', r'like\b', r'неподобно\b', r'подобно\b',
+                   r'notFilled\b', r'filled\b']
+    op_joined = '|'.join(op_patterns)
+    m = re.match(r'^(.+?)\s+(' + op_joined + r')\s*(.*)?$', s, re.IGNORECASE)
+    if m:
+        result['field'] = m.group(1).strip()
+        result['op'] = m.group(2).strip()
+        val_part = m.group(3).strip() if m.group(3) else ''
+        if val_part and val_part != '_':
+            if val_part == 'true' or val_part == 'false':
+                result['value'] = (val_part == 'true')
+                result['valueType'] = 'xs:boolean'
+            elif re.match(r'^\d{4}-\d{2}-\d{2}T', val_part):
+                # дата без valueType → emit_filter_item выведет StandardBeginningDate Custom (дефолт даты в фильтре)
+                result['value'] = val_part
+            elif re.match(r'^\d+(\.\d+)?$', val_part):
+                result['value'] = val_part
+                result['valueType'] = 'xs:decimal'
+            elif re.match(r'^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета)\.', val_part):
+                result['value'] = val_part
+                result['valueType'] = 'dcscor:DesignTimeValue'
+            else:
+                result['value'] = val_part
+                result['valueType'] = 'xs:string'
+    else:
+        result['field'] = s
+    return result
+
+
+def _value_type_for(v, explicit=None):
+    if explicit:
+        return explicit
+    if isinstance(v, bool):
+        return 'xs:boolean'
+    if isinstance(v, (int, float)):
+        return 'xs:decimal'
+    vs = str(v)
+    if re.match(r'^\d{4}-\d{2}-\d{2}T', vs):
+        return 'xs:dateTime'
+    if re.match(r'^-?\d+(\.\d+)?$', vs):
+        return 'xs:decimal'
+    if _REF_TYPE_RE.match(vs):
+        return 'dcscor:DesignTimeValue'
+    return 'xs:string'
+
+
+# Значение типа v8:Type (напр. тип «Неопределено» = <prefix>:Undefined) ссылается на тип
+# платформы из namespace http://v8.1c.ru/8.2/data/types — платформа объявляет его ЛОКАЛЬНО
+# на теге значения (префикс авто: d6p1/d8p1/dN…). Без объявления QName битый.
+
+
+def _value_type_ns_attr(value_type, value):
+    if value_type == 'v8:Type':
+        m = re.match(r'^([A-Za-z]\w*):', str(value))
+        if m and m.group(1) not in ('xs', 'cfg', 'v8', 'v8ui', 'ent', 'dcscor', 'dcsset', 'dcssch'):
+            return f' xmlns:{m.group(1)}="http://v8.1c.ru/8.2/data/types"'
+    return ''
+
+
+def emit_filter_item(lines, item, indent):
+    if item.get('group'):
+        g = str(item['group'])
+        group_type = {'And': 'AndGroup', 'Or': 'OrGroup', 'Not': 'NotGroup'}.get(g, g + 'Group')
+        lines.append(f'{indent}<dcsset:item xsi:type="dcsset:FilterItemGroup">')
+        if item.get('use') is False:
+            lines.append(f'{indent}\t<dcsset:use>false</dcsset:use>')   # группа отключена (перед groupType)
+        lines.append(f'{indent}\t<dcsset:groupType>{group_type}</dcsset:groupType>')
+        if item.get('items'):
+            for sub in item['items']:
+                if isinstance(sub, str):
+                    parsed = parse_filter_shorthand(sub)
+                    obj = {'field': parsed['field'], 'op': parsed['op']}
+                    if parsed['use'] is False:
+                        obj['use'] = False
+                    if parsed['value'] is not None:
+                        obj['value'] = parsed['value']
+                    if parsed.get('valueType'):
+                        obj['valueType'] = parsed['valueType']
+                    if parsed.get('userSettingID'):
+                        obj['userSettingID'] = parsed['userSettingID']
+                    if parsed.get('viewMode'):
+                        obj['viewMode'] = parsed['viewMode']
+                    sub = obj
+                emit_filter_item(lines, sub, f'{indent}\t')
+        if item.get('presentation'):
+            emit_us_presentation(lines, f'{indent}\t', 'dcsset:presentation', item['presentation'])
+        if item.get('viewMode'):
+            lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(item["viewMode"]))}</dcsset:viewMode>')
+        if item.get('userSettingID'):
+            guid = new_uuid() if str(item['userSettingID']) == 'auto' else str(item['userSettingID'])
+            lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(guid)}</dcsset:userSettingID>')
+        if item.get('userSettingPresentation'):
+            emit_us_presentation(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item['userSettingPresentation'])
+        lines.append(f'{indent}</dcsset:item>')
+        return
+
+    lines.append(f'{indent}<dcsset:item xsi:type="dcsset:FilterItemComparison">')
+    if item.get('use') is False:
+        lines.append(f'{indent}\t<dcsset:use>false</dcsset:use>')
+    lines.append(f'{indent}\t<dcsset:left xsi:type="dcscor:Field">{esc_xml_text(str(item.get("field", "")))}</dcsset:left>')
+    # Регистронезависимый лукап (зеркало PS): Like/LIKE/ПОДОБНО → канон; иначе — как есть
+    comp_type = _COMPARISON_TYPES_CI.get(str(item.get('op')).lower())
+    if not comp_type:
+        comp_type = str(item.get('op'))
+    lines.append(f'{indent}\t<dcsset:comparisonType>{esc_xml_text(comp_type)}</dcsset:comparisonType>')
+    val = item.get('value')
+    if isinstance(val, list):
+        if len(val) == 0:
+            lines.append(f'{indent}\t<dcsset:right xsi:type="v8:ValueListType">')
+            lines.append(f'{indent}\t\t<v8:valueType/>')
+            lines.append(f'{indent}\t\t<v8:lastId xsi:type="xs:decimal">-1</v8:lastId>')
+            lines.append(f'{indent}\t</dcsset:right>')
+        else:
+            for v in val:
+                vt = _value_type_for(v, item.get('valueType'))
+                v_str = str(v).lower() if isinstance(v, bool) else esc_xml_text(str(v))
+                ns_attr = _value_type_ns_attr(vt, v)
+                lines.append(f'{indent}\t<dcsset:right{ns_attr} xsi:type="{vt}">{v_str}</dcsset:right>')
+    elif val is not None and (
+            re.search(r'Standard(Beginning|End)Date$', str(item.get('valueType') or '')) or
+            (not item.get('valueType') and isinstance(val, str) and re.match(r'^\d{4}-\d{2}-\d{2}T', val))):
+        # Стандартная дата начала/окончания. Формы: объект {variant, date?} (Custom несёт <v8:date>);
+        # строка-вариант "BeginningOfThisDay" (именованный без даты); голая ISO-дата без valueType —
+        # шорткат для Custom+date (дата в фильтре почти всегда SBD Custom, корпус 268 vs 2 xs:dateTime).
+        sd_type = re.sub(r'^v8:', '', str(item['valueType'])) if item.get('valueType') else 'StandardBeginningDate'
+        if isinstance(val, dict):
+            variant = str(val.get('variant', '')); date_v = val.get('date')
+        elif isinstance(val, str) and re.match(r'^\d{4}-\d{2}-\d{2}T', val):
+            variant = 'Custom'; date_v = val
+        else:
+            variant = str(val); date_v = None
+        lines.append(f'{indent}\t<dcsset:right xsi:type="v8:{sd_type}">')
+        lines.append(f'{indent}\t\t<v8:variant xsi:type="v8:{sd_type}Variant">{esc_xml_text(variant)}</v8:variant>')
+        if date_v is not None:
+            lines.append(f'{indent}\t\t<v8:date>{esc_xml_text(str(date_v))}</v8:date>')
+        lines.append(f'{indent}\t</dcsset:right>')
+    elif str(val) == '_':
+        # "_" — маркер пустого значения: платформа эмитит пустой self-closing <dcsset:right>
+        # (напр. <dcsset:right xsi:type="dcscor:Field"/> — сравнение с незаданным полем).
+        vt = str(item['valueType']) if item.get('valueType') else 'xs:string'
+        lines.append(f'{indent}\t<dcsset:right xsi:type="{vt}"/>')
+    elif val is not None:
+        vt = _value_type_for(val, item.get('valueType'))
+        v_str = str(val).lower() if isinstance(val, bool) else esc_xml_text(str(val))
+        ns_attr = _value_type_ns_attr(vt, val)
+        lines.append(f'{indent}\t<dcsset:right{ns_attr} xsi:type="{vt}">{v_str}</dcsset:right>')
+    if item.get('presentation'):
+        emit_us_presentation(lines, f'{indent}\t', 'dcsset:presentation', item['presentation'])
+    if item.get('viewMode'):
+        lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(item["viewMode"]))}</dcsset:viewMode>')
+    if item.get('userSettingID'):
+        uid = new_uuid() if str(item['userSettingID']) == 'auto' else str(item['userSettingID'])
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(uid)}</dcsset:userSettingID>')
+    if item.get('userSettingPresentation'):
+        emit_us_presentation(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item['userSettingPresentation'])
+    lines.append(f'{indent}</dcsset:item>')
+
+
+def emit_filter(lines, items, indent, block_view_mode=None, block_user_setting_id=None, block_user_setting_presentation=None):
+    has_items = bool(items) and len(items) > 0
+    has_block_meta = (block_view_mode is not None) or (block_user_setting_id is not None) or (block_user_setting_presentation is not None)
+    if not has_items and not has_block_meta:
+        return
+    lines.append(f'{indent}<dcsset:filter>')
+    for item in (items or []):
+        if isinstance(item, str):
+            parsed = parse_filter_shorthand(item)
+            obj = {'field': parsed['field'], 'op': parsed['op']}
+            if parsed['use'] is False:
+                obj['use'] = False
+            if parsed['value'] is not None:
+                obj['value'] = parsed['value']
+            if parsed.get('valueType'):
+                obj['valueType'] = parsed['valueType']
+            if parsed.get('userSettingID'):
+                obj['userSettingID'] = parsed['userSettingID']
+            if parsed.get('viewMode'):
+                obj['viewMode'] = parsed['viewMode']
+            emit_filter_item(lines, obj, f'{indent}\t')
+        else:
+            emit_filter_item(lines, item, f'{indent}\t')
+    if block_view_mode is not None:
+        lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(block_view_mode))}</dcsset:viewMode>')
+    if block_user_setting_id is not None:
+        uid = new_uuid() if str(block_user_setting_id) == 'auto' else str(block_user_setting_id)
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(uid)}</dcsset:userSettingID>')
+    if block_user_setting_presentation is not None:
+        emit_us_presentation(lines, f'{indent}\t', 'dcsset:userSettingPresentation', block_user_setting_presentation)
+    lines.append(f'{indent}</dcsset:filter>')
+
+
+def emit_order(lines, items, indent, skip_auto=False, block_view_mode=None, block_user_setting_id=None, block_user_setting_presentation=None):
+    has_items = bool(items) and len(items) > 0
+    has_block_meta = (block_view_mode is not None) or (block_user_setting_id is not None) or (block_user_setting_presentation is not None)
+    if not has_items and not has_block_meta:
+        return
+    lines.append(f'{indent}<dcsset:order>')
+    for item in (items or []):
+        if isinstance(item, str):
+            if item == 'Auto':
+                if not skip_auto:
+                    lines.append(f'{indent}\t<dcsset:item xsi:type="dcsset:OrderItemAuto"/>')
+            else:
+                parts = re.split(r'\s+', item)
+                field = parts[0]
+                direction = 'Asc'
+                if len(parts) > 1 and re.match(r'(?i)^(desc|убыв)', parts[1]):
+                    direction = 'Desc'
+                elif len(parts) > 1 and re.match(r'(?i)^(asc|возр)', parts[1]):
+                    direction = 'Asc'
+                lines.append(f'{indent}\t<dcsset:item xsi:type="dcsset:OrderItemField">')
+                lines.append(f'{indent}\t\t<dcsset:field>{esc_xml_text(field)}</dcsset:field>')
+                lines.append(f'{indent}\t\t<dcsset:orderType>{direction}</dcsset:orderType>')
+                lines.append(f'{indent}\t</dcsset:item>')
+        else:
+            if item.get('field') == 'Auto' or item.get('type') == 'auto':
+                if not skip_auto:
+                    lines.append(f'{indent}\t<dcsset:item xsi:type="dcsset:OrderItemAuto"/>')
+                continue
+            direction = str(item['direction']) if item.get('direction') else 'Asc'
+            if re.match(r'(?i)^(desc|убыв)', direction):
+                direction = 'Desc'
+            elif re.match(r'(?i)^(asc|возр)', direction):
+                direction = 'Asc'
+            lines.append(f'{indent}\t<dcsset:item xsi:type="dcsset:OrderItemField">')
+            if item.get('use') is False:
+                lines.append(f'{indent}\t\t<dcsset:use>false</dcsset:use>')
+            lines.append(f'{indent}\t\t<dcsset:field>{esc_xml_text(str(item.get("field", "")))}</dcsset:field>')
+            lines.append(f'{indent}\t\t<dcsset:orderType>{direction}</dcsset:orderType>')
+            if item.get('viewMode'):
+                lines.append(f'{indent}\t\t<dcsset:viewMode>{esc_xml_text(str(item["viewMode"]))}</dcsset:viewMode>')
+            lines.append(f'{indent}\t</dcsset:item>')
+    if block_view_mode is not None:
+        lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(block_view_mode))}</dcsset:viewMode>')
+    if block_user_setting_id is not None:
+        uid = new_uuid() if str(block_user_setting_id) == 'auto' else str(block_user_setting_id)
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(uid)}</dcsset:userSettingID>')
+    if block_user_setting_presentation is not None:
+        emit_us_presentation(lines, f'{indent}\t', 'dcsset:userSettingPresentation', block_user_setting_presentation)
+    lines.append(f'{indent}</dcsset:order>')
+
+
+def emit_appearance_value(lines, key, val, indent):
+    lines.append(f'{indent}<dcscor:item xsi:type="dcsset:SettingsParameterValue">')
+
+    def _has_key(o, k):
+        return isinstance(o, dict) and (k in o)
+
+    def _get(o, k):
+        return o.get(k) if isinstance(o, dict) else None
+
+    is_top_level_line = _has_key(val, '@type') and (str(_get(val, '@type')) == 'Line')
+    use_wrapper = False
+    inner_val = val
+    nested_items = None
+    if is_top_level_line:
+        if _has_key(val, 'use') and (_get(val, 'use') is False):
+            use_wrapper = True
+        if _has_key(val, 'items'):
+            nested_items = _get(val, 'items')
+    elif _has_key(val, 'value') and isinstance(val, dict):
+        inner_val = _get(val, 'value')
+        if _has_key(val, 'use') and (_get(val, 'use') is False):
+            use_wrapper = True
+        if _has_key(val, 'items'):
+            nested_items = _get(val, 'items')
+    if use_wrapper:
+        lines.append(f'{indent}\t<dcscor:use>false</dcscor:use>')
+    lines.append(f'{indent}\t<dcscor:parameter>{esc_xml_text(key)}</dcscor:parameter>')
+
+    is_font_dict = isinstance(inner_val, dict) and inner_val.get('@type') is not None and str(inner_val.get('@type')) == 'Font'
+    is_line_dict = _has_key(inner_val, '@type') and (str(_get(inner_val, '@type')) == 'Line')
+    is_dict = isinstance(inner_val, dict)
+    if is_line_dict:
+        lw = _get(inner_val, 'width') if _has_key(inner_val, 'width') else 0
+        lg = ('true' if _get(inner_val, 'gap') else 'false') if _has_key(inner_val, 'gap') else 'false'
+        ls = str(_get(inner_val, 'style')) if _has_key(inner_val, 'style') else 'None'
+        lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Line" width="{lw}" gap="{lg}">')
+        lines.append(f'{indent}\t\t<v8ui:style xsi:type="v8ui:SpreadsheetDocumentCellLineType">{esc_xml_text(ls)}</v8ui:style>')
+        lines.append(f'{indent}\t</dcscor:value>')
+    elif is_font_dict:
+        attr_parts = []
+        for attr_name in ('ref', 'faceName', 'height', 'bold', 'italic', 'underline', 'strikeout', 'kind', 'scale'):
+            if attr_name in inner_val:
+                av = inner_val[attr_name]
+                if av is not None:
+                    attr_parts.append(f'{attr_name}="{esc_xml(str(av))}"')
+        lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Font" {" ".join(attr_parts)}/>')
+    elif is_dict and _has_key(inner_val, 'field'):
+        # Ссылка на поле (dcscor:Field) — значение параметра оформления = поле компоновки
+        lines.append(f'{indent}\t<dcscor:value xsi:type="dcscor:Field">{esc_xml_text(str(_get(inner_val, "field")))}</dcscor:value>')
+    elif is_dict:
+        # Локализуемый текст параметра оформления: платформа объявляет xsi:type на dcscor:value
+        emit_mltext(lines, f'{indent}\t', 'dcscor:value', inner_val, xsi_type='v8:LocalStringType')
+    else:
+        actual_val = str(inner_val)
+        key_type_map = {
+            'Размещение': 'dcscor:DataCompositionTextPlacementType',
+            'ГоризонтальноеПоложение': 'v8ui:HorizontalAlign',
+            'ВертикальноеПоложение': 'v8ui:VerticalAlign',
+            'ОриентацияТекста': 'xs:decimal',
+            'РасположениеИтогов': 'dcscor:DataCompositionTotalPlacement',
+            'ТипМакета': 'dcsset:DataCompositionGroupTemplateType',
+        }
+        key_type = key_type_map.get(key)
+        if key_type:
+            lines.append(f'{indent}\t<dcscor:value xsi:type="{key_type}">{esc_xml_text(actual_val)}</dcscor:value>')
+        elif re.match(r'^(style|web|win):', actual_val):
+            lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Color">{esc_xml_text(actual_val)}</dcscor:value>')
+        elif actual_val == 'true' or actual_val == 'false':
+            lines.append(f'{indent}\t<dcscor:value xsi:type="xs:boolean">{actual_val}</dcscor:value>')
+        elif key == 'Текст' or key == 'Заголовок' or key == 'Формат':
+            # Голая строка = плоский xs:string (нелокализованный литерал). Локализуемый → объект {ru,en}.
+            # Пустая строка → самозакрывающийся тег (как у платформы).
+            if actual_val == '':
+                lines.append(f'{indent}\t<dcscor:value xsi:type="xs:string"/>')
+            else:
+                lines.append(f'{indent}\t<dcscor:value xsi:type="xs:string">{esc_xml_text(actual_val)}</dcscor:value>')
+        elif re.match(r'^-?\d+(\.\d+)?$', actual_val):
+            lines.append(f'{indent}\t<dcscor:value xsi:type="xs:decimal">{actual_val}</dcscor:value>')
+        elif key == 'ЦветТекста' or key == 'ЦветФона' or key == 'ЦветГраницы':
+            lines.append(f'{indent}\t<dcscor:value xsi:type="v8ui:Color">{esc_xml_text(actual_val)}</dcscor:value>')
+        else:
+            lines.append(f'{indent}\t<dcscor:value xsi:type="xs:string">{esc_xml_text(actual_val)}</dcscor:value>')
+    if nested_items:
+        if isinstance(nested_items, dict):
+            for nk, nv in nested_items.items():
+                emit_appearance_value(lines, nk, nv, f'{indent}\t')
+    lines.append(f'{indent}</dcscor:item>')
+
+
+# === Группировка строк динамического списка (DCS-структура ListSettings) ===
+# Линейная цепочка <dcsset:item StructureItemGroup> (каждый уровень = одно поле в groupItems;
+# вложенность — через дочерний <dcsset:item>). Плоская модель уровней (список всегда линеен).
+
+
+def get_list_grouping_value(s):
+    for k in ('grouping', 'structure', 'группировка'):
+        if s.get(k):
+            return s[k]
+    return None
+
+
+def parse_list_grouping(grouping):
+    # Шорткат "A > B > C" → массив имён; массив строк/объектов → как есть.
+    if not grouping:
+        return []
+    if isinstance(grouping, str):
+        return [p.strip() for p in re.split(r'\s*>\s*', grouping) if p.strip()]
+    return list(grouping)
+
+
+def emit_group_item_field(lines, level, indent):
+    if isinstance(level, str):
+        field, gt, pat = level, 'Items', 'None'
+        pab = pae = '0001-01-01T00:00:00'
+    else:
+        field = str(level.get('field', ''))
+        gt = str(level.get('groupType') or 'Items')
+        pat = str(level.get('periodAdditionType') or 'None')
+        pab = str(level.get('periodAdditionBegin') or '0001-01-01T00:00:00')
+        pae = str(level.get('periodAdditionEnd') or '0001-01-01T00:00:00')
+    lines.append(f'{indent}<dcsset:item xsi:type="dcsset:GroupItemField">')
+    lines.append(f'{indent}\t<dcsset:field>{esc_xml_text(field)}</dcsset:field>')
+    lines.append(f'{indent}\t<dcsset:groupType>{esc_xml_text(gt)}</dcsset:groupType>')
+    lines.append(f'{indent}\t<dcsset:periodAdditionType>{esc_xml_text(pat)}</dcsset:periodAdditionType>')
+    # Авто-детект: ISO-дата → xs:dateTime, иначе путь → dcscor:Field.
+    pab_t = 'xs:dateTime' if re.match(r'^\d{4}-\d{2}-\d{2}T', pab) else 'dcscor:Field'
+    pae_t = 'xs:dateTime' if re.match(r'^\d{4}-\d{2}-\d{2}T', pae) else 'dcscor:Field'
+    lines.append(f'{indent}\t<dcsset:periodAdditionBegin xsi:type="{pab_t}">{esc_xml_text(pab)}</dcsset:periodAdditionBegin>')
+    lines.append(f'{indent}\t<dcsset:periodAdditionEnd xsi:type="{pae_t}">{esc_xml_text(pae)}</dcsset:periodAdditionEnd>')
+    lines.append(f'{indent}</dcsset:item>')
+
+
+def emit_list_grouping_levels(lines, levels, i, indent):
+    lines.append(f'{indent}<dcsset:item xsi:type="dcsset:StructureItemGroup">')
+    lines.append(f'{indent}\t<dcsset:groupItems>')
+    emit_group_item_field(lines, levels[i], f'{indent}\t\t')
+    lines.append(f'{indent}\t</dcsset:groupItems>')
+    if i < len(levels) - 1:
+        emit_list_grouping_levels(lines, levels, i + 1, f'{indent}\t')
+    lines.append(f'{indent}</dcsset:item>')
+
+
+def emit_list_grouping(lines, grouping, indent):
+    levels = parse_list_grouping(grouping)
+    if not levels:
+        return
+    emit_list_grouping_levels(lines, levels, 0, indent)
+
+
+# === Вычисляемые поля DataSet динамического списка (<CalculatedField>) ===
+# Зеркало skd calculatedFields: shorthand "Имя [Заголовок]: тип = Выражение #noField #noFilter
+# #noGroup #noOrder" или объект. Форм-специфика: dcssch:-теги + presentationExpression/orderExpression.
+
+
+def parse_calc_shorthand(s):
+    restrict = re.findall(r'#(noField|noFilter|noCondition|noGroup|noOrder)\b', s)
+    s = re.sub(r'\s*#(?:noField|noFilter|noCondition|noGroup|noOrder)\b', '', s)
+    eq = s.find('=')
+    lhs, rhs = (s[:eq], s[eq + 1:].strip()) if eq > 0 else (s, '')
+    title = ''
+    m = re.search(r'\[([^\]]+)\]', lhs)
+    if m:
+        title = m.group(1)
+        lhs = re.sub(r'\s*\[[^\]]+\]', '', lhs)
+    lhs = lhs.strip()
+    typ, data_path = '', lhs
+    if ':' in lhs:
+        data_path, t = lhs.split(':', 1)
+        data_path, typ = data_path.strip(), resolve_type_str(t.strip())
+    return {'dataPath': data_path, 'expression': rhs, 'type': typ, 'title': title, 'restrict': restrict}
+
+
+def emit_calc_fields(lines, calc_fields, indent):
+    if not calc_fields:
+        return
+    for cf in calc_fields:
+        if isinstance(cf, str):
+            p = parse_calc_shorthand(cf)
+            data_path, expression, title = p['dataPath'], p['expression'], p['title']
+            type_str = p['type']
+            restrict = [_CALC_RESTRICT_MAP[r] for r in p['restrict'] if r in _CALC_RESTRICT_MAP]
+            pres_expr = order_expr = None
+        else:
+            data_path = str(cf.get('dataPath') or cf.get('field') or cf.get('name', ''))
+            expression = str(cf.get('expression', ''))
+            title = cf.get('title')
+            type_str = cf.get('valueType') or cf.get('type')
+            type_str = str(type_str) if type_str else None
+            ur = cf.get('useRestriction') or cf.get('restrict')
+            if isinstance(ur, dict):
+                restrict = [k for k in ('field', 'condition', 'group', 'order') if ur.get(k)]
+            elif isinstance(ur, str):
+                restrict = [_CALC_RESTRICT_MAP.get(t.strip().lstrip('#'), t.strip().lstrip('#')) for t in ur.split() if t.strip()]
+            elif isinstance(ur, list):
+                restrict = [_CALC_RESTRICT_MAP.get(str(r), str(r)) for r in ur]
+            else:
+                restrict = []
+            pres_expr = cf.get('presentationExpression')
+            order_expr = cf.get('orderExpression')
+        ci = f'{indent}\t'
+        lines.append(f'{indent}<CalculatedField>')
+        lines.append(f'{ci}<dcssch:dataPath>{esc_xml_text(data_path)}</dcssch:dataPath>')
+        lines.append(f'{ci}<dcssch:expression>{esc_xml_text(expression)}</dcssch:expression>')
+        if title:
+            emit_mltext(lines, ci, 'dcssch:title', title, xsi_type='v8:LocalStringType')
+        if restrict:
+            lines.append(f'{ci}<dcssch:useRestriction>')
+            for r in ('field', 'condition', 'group', 'order'):
+                if r in restrict:
+                    lines.append(f'{ci}\t<dcssch:{r}>true</dcssch:{r}>')
+            lines.append(f'{ci}</dcssch:useRestriction>')
+        if pres_expr:
+            lines.append(f'{ci}<dcssch:presentationExpression>{esc_xml_text(str(pres_expr))}</dcssch:presentationExpression>')
+        if order_expr:
+            for oe in (order_expr if isinstance(order_expr, list) else [order_expr]):
+                if isinstance(oe, str):
+                    expr_v, otype, auto = oe, 'Asc', 'false'
+                else:
+                    expr_v = str(oe.get('expression', ''))
+                    otype = str(oe.get('orderType', 'Asc'))
+                    auto = 'true' if oe.get('autoOrder') else 'false'
+                lines.append(f'{ci}<dcssch:orderExpression>')
+                lines.append(f'{ci}\t<expression xmlns="{_DCS_COMMON_NS}">{esc_xml_text(expr_v)}</expression>')
+                lines.append(f'{ci}\t<orderType xmlns="{_DCS_COMMON_NS}">{otype}</orderType>')
+                lines.append(f'{ci}\t<autoOrder xmlns="{_DCS_COMMON_NS}">{auto}</autoOrder>')
+                lines.append(f'{ci}</dcssch:orderExpression>')
+        if type_str:
+            emit_dl_value_type(lines, type_str, ci)
+        lines.append(f'{indent}</CalculatedField>')
+
+
+# Ограничения использования поля/вычисляемого поля (useRestriction / attributeUseRestriction).
+# Значение: объект {field?,condition?,group?,order?} | флаг-строка "#noField …" | массив.
+
+
+def parse_restrict(ur):
+    if not ur:
+        return []
+    if isinstance(ur, dict):
+        return [k for k in ('field', 'condition', 'group', 'order') if ur.get(k)]
+    if isinstance(ur, str):
+        return [_CALC_RESTRICT_MAP.get(t.strip().lstrip('#'), t.strip().lstrip('#')) for t in ur.split() if t.strip()]
+    if isinstance(ur, list):
+        return [_CALC_RESTRICT_MAP.get(str(r), str(r)) for r in ur]
+    return []
+
+
+def emit_restrict_block(lines, tag, ur, indent):
+    r = parse_restrict(ur)
+    if not r:
+        return
+    lines.append(f'{indent}<dcssch:{tag}>')
+    for k in ('field', 'condition', 'group', 'order'):
+        if k in r:
+            lines.append(f'{indent}\t<dcssch:{k}>true</dcssch:{k}>')
+    lines.append(f'{indent}</dcssch:{tag}>')
+
+
+def emit_conditional_appearance(lines, items, indent, block_view_mode=None, block_user_setting_id=None, wrap_tag='dcsset:conditionalAppearance', block_user_setting_presentation=None):
+    has_items = bool(items) and len(items) > 0
+    has_block_meta = (block_view_mode is not None) or (block_user_setting_id is not None) or (block_user_setting_presentation is not None)
+    if not has_items and not has_block_meta:
+        return
+    lines.append(f'{indent}<{wrap_tag}>')
+    for ca in (items or []):
+        lines.append(f'{indent}\t<dcsset:item>')
+        if ca.get('use') is False:
+            lines.append(f'{indent}\t\t<dcsset:use>false</dcsset:use>')
+        if ca.get('selection') and len(ca['selection']) > 0:
+            lines.append(f'{indent}\t\t<dcsset:selection>')
+            for sel in ca['selection']:
+                lines.append(f'{indent}\t\t\t<dcsset:item>')
+                lines.append(f'{indent}\t\t\t\t<dcsset:field>{esc_xml_text(str(sel))}</dcsset:field>')
+                lines.append(f'{indent}\t\t\t</dcsset:item>')
+            lines.append(f'{indent}\t\t</dcsset:selection>')
+        else:
+            lines.append(f'{indent}\t\t<dcsset:selection/>')
+        if ca.get('filter') and len(ca['filter']) > 0:
+            emit_filter(lines, ca['filter'], f'{indent}\t\t')
+        else:
+            lines.append(f'{indent}\t\t<dcsset:filter/>')
+        if ca.get('appearance'):
+            lines.append(f'{indent}\t\t<dcsset:appearance>')
+            for k, v in ca['appearance'].items():
+                emit_appearance_value(lines, k, v, f'{indent}\t\t\t')
+            lines.append(f'{indent}\t\t</dcsset:appearance>')
+        if ca.get('presentation'):
+            if isinstance(ca['presentation'], dict):
+                # Мультиязык → LocalStringType (платформа объявляет тип у локализованного presentation)
+                lines.append(f'{indent}\t\t<dcsset:presentation xsi:type="v8:LocalStringType">')
+                emit_ml_items(lines, f'{indent}\t\t\t', ca['presentation'])
+                lines.append(f'{indent}\t\t</dcsset:presentation>')
+            else:
+                lines.append(f'{indent}\t\t<dcsset:presentation xsi:type="xs:string">{esc_xml_text(str(ca["presentation"]))}</dcsset:presentation>')
+        if ca.get('viewMode'):
+            lines.append(f'{indent}\t\t<dcsset:viewMode>{esc_xml_text(str(ca["viewMode"]))}</dcsset:viewMode>')
+        if ca.get('userSettingID'):
+            uid = new_uuid() if str(ca['userSettingID']) == 'auto' else str(ca['userSettingID'])
+            lines.append(f'{indent}\t\t<dcsset:userSettingID>{esc_xml_text(uid)}</dcsset:userSettingID>')
+        if ca.get('userSettingPresentation'):
+            emit_us_presentation(lines, f'{indent}\t\t', 'dcsset:userSettingPresentation', ca['userSettingPresentation'])
+        if ca.get('useInDontUse') and len(ca['useInDontUse']) > 0:
+            use_in_order = ['group', 'hierarchicalGroup', 'overall', 'fieldsHeader', 'header',
+                            'parameters', 'filter', 'resourceFieldsHeader', 'overallHeader',
+                            'overallResourceFieldsHeader']
+            sset = {str(n): True for n in ca['useInDontUse']}
+            for n in use_in_order:
+                if n in sset:
+                    tag = 'useIn' + n[0].upper() + n[1:]
+                    lines.append(f'{indent}\t\t<dcsset:{tag}>DontUse</dcsset:{tag}>')
+        lines.append(f'{indent}\t</dcsset:item>')
+    if block_view_mode is not None:
+        lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(block_view_mode))}</dcsset:viewMode>')
+    if block_user_setting_id is not None:
+        uid = new_uuid() if str(block_user_setting_id) == 'auto' else str(block_user_setting_id)
+        lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml_text(uid)}</dcsset:userSettingID>')
+    if block_user_setting_presentation is not None:
+        emit_us_presentation(lines, f'{indent}\t', 'dcsset:userSettingPresentation', block_user_setting_presentation)
+    lines.append(f'{indent}</{wrap_tag}>')
+
+
 def _ensure_unique(name, seen, kind):
     if name.lower() in seen:
         print(f"[ERROR] Duplicate {kind} name '{name}' — names must be unique within their collection in a 1C form (set a unique 'name')", file=sys.stderr)
@@ -1062,6 +1778,19 @@ def normalize_panel_synonyms(el):
 
 
 # Maps Russian/English root of typed reference path to canonical English root
+
+
+def normalize_meta_type_ref(ref):
+    # "Справочник.Контрагенты" → "Catalog.Контрагенты"; уже англ — без изменений
+    if not ref:
+        return ref
+    dot = ref.find('.')
+    if dot < 1:
+        return ref
+    root = ref[:dot]
+    if root in REF_ROOT_SYNONYMS:
+        return REF_ROOT_SYNONYMS[root] + ref[dot:]
+    return ref
 
 
 def normalize_choice_value(value):
@@ -1802,6 +2531,281 @@ def emit_border_tag(lines, val, indent):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Planner design-time <Settings xsi:type="pl:Planner"> — зеркало Emit-PlannerSettings (ps1).
+
+
+def _pl_get(o, k, default=None):
+    if isinstance(o, dict) and o.get(k) is not None:
+        return o[k]
+    return default
+
+
+def _pl_bool(v):
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    if str(v) == 'True':
+        return 'true'
+    if str(v) == 'False':
+        return 'false'
+    return str(v)
+
+
+def emit_planner_color(lines, tag, o, key, ind):
+    lines.append(f'{ind}<pl:{tag}>{esc_xml_text(str(_pl_get(o, key, "auto")))}</pl:{tag}>')
+
+
+def emit_planner_text(lines, tag, v, ind):
+    if v is None or str(v) == '':
+        lines.append(f'{ind}<pl:{tag}/>')
+    else:
+        lines.append(f'{ind}<pl:{tag}>{esc_xml_text(str(v))}</pl:{tag}>')
+
+
+def test_planner_ref(v):
+    return bool(_PLANNER_REF_RE.search(str(v)))
+
+
+def emit_planner_value(lines, v, ind):
+    if v is None or str(v) == '':
+        lines.append(f'{ind}<pl:value xsi:nil="true"/>')
+        return
+    t = 'xr:DesignTimeRef' if test_planner_ref(v) else 'xs:string'
+    lines.append(f'{ind}<pl:value xsi:type="{t}">{esc_xml_text(str(v))}</pl:value>')
+
+
+def emit_planner_font(lines, o, ind):
+    f = _pl_get(o, 'font')
+    if f is None:
+        lines.append(f'{ind}<pl:font kind="AutoFont"/>')
+        return
+    emit_font_tag(lines, 'pl:font', f, ind)
+
+
+def emit_planner_border(lines, o, ind, key='border'):
+    b = _pl_get(o, key)
+    bw = _pl_get(b, 'width', 1) if b else 1
+    bs = _pl_get(b, 'style', 'Single') if b else 'Single'
+    lines.append(f'{ind}<pl:border width="{bw}">')
+    lines.append(f'{ind}\t<v8ui:style xsi:type="v8ui:ControlBorderType">{esc_xml_text(str(bs))}</v8ui:style>')
+    lines.append(f'{ind}</pl:border>')
+
+
+def emit_planner_level(lines, lv, cns, ind):
+    li = f'{ind}\t'
+    lines.append(f'{ind}<level xmlns="{cns}">')
+    lines.append(f'{li}<measure>{esc_xml_text(str(_pl_get(lv, "measure", "Hour")))}</measure>')
+    lines.append(f'{li}<interval>{_pl_get(lv, "interval", 1)}</interval>')
+    lines.append(f'{li}<show>{_pl_bool(_pl_get(lv, "show", True))}</show>')
+    line = _pl_get(lv, 'line')
+    lw = _pl_get(line, 'width', 1) if line else 1
+    lg = _pl_get(line, 'gap', False) if line else False
+    lst = _pl_get(line, 'style', 'Solid') if line else 'Solid'
+    lines.append(f'{li}<line width="{lw}" gap="{_pl_bool(lg)}">')
+    lines.append(f'{li}\t<v8ui:style xsi:type="v8ui:ChartLineType">{esc_xml_text(str(lst))}</v8ui:style>')
+    lines.append(f'{li}</line>')
+    lines.append(f'{li}<scaleColor>{esc_xml_text(str(_pl_get(lv, "scaleColor", "auto")))}</scaleColor>')
+    lines.append(f'{li}<dayFormatRule>{esc_xml_text(str(_pl_get(lv, "dayFormatRule", "MonthDayWeekDay")))}</dayFormatRule>')
+    fmt = _pl_get(lv, 'format')
+    if fmt is None:
+        fmt = {'#': 'DF="HH:mm"', 'ru': 'DF="HH:mm"'}
+    lines.append(f'{li}<format>')
+    emit_ml_items(lines, f'{li}\t', fmt)
+    lines.append(f'{li}</format>')
+    labels = _pl_get(lv, 'labels')
+    ticks = _pl_get(labels, 'ticks', 0) if labels else 0
+    lines.append(f'{li}<labels>')
+    lines.append(f'{li}\t<ticks>{ticks}</ticks>')
+    lines.append(f'{li}</labels>')
+    lines.append(f'{li}<backColor>{esc_xml_text(str(_pl_get(lv, "backColor", "auto")))}</backColor>')
+    lines.append(f'{li}<textColor>{esc_xml_text(str(_pl_get(lv, "textColor", "auto")))}</textColor>')
+    lines.append(f'{li}<showPereodicalLabels>{_pl_bool(_pl_get(lv, "showPereodicalLabels", True))}</showPereodicalLabels>')
+    lines.append(f'{ind}</level>')
+
+
+def emit_planner_timescale(lines, ts, ind):
+    cns = CHART_NS
+    ci = f'{ind}\t'
+    lines.append(f'{ind}<pl:timeScale>')
+    placement = _pl_get(ts, 'placement', 'Left') if ts else 'Left'
+    lines.append(f'{ci}<placement xmlns="{cns}">{esc_xml_text(str(placement))}</placement>')
+    levels = _pl_get(ts, 'levels', []) if ts else []
+    if not levels:
+        levels = [None]
+    for lv in levels:
+        emit_planner_level(lines, lv, cns, ci)
+    transp = _pl_get(ts, 'transparent', False) if ts else False
+    lines.append(f'{ci}<transparent xmlns="{cns}">{_pl_bool(transp)}</transparent>')
+    tbc = _pl_get(ts, 'backColor', 'auto') if ts else 'auto'
+    ttc = _pl_get(ts, 'textColor', 'auto') if ts else 'auto'
+    tcl = _pl_get(ts, 'currentLevel', 0) if ts else 0
+    lines.append(f'{ci}<backColor xmlns="{cns}">{esc_xml_text(str(tbc))}</backColor>')
+    lines.append(f'{ci}<textColor xmlns="{cns}">{esc_xml_text(str(ttc))}</textColor>')
+    lines.append(f'{ci}<currentLevel xmlns="{cns}">{tcl}</currentLevel>')
+    lines.append(f'{ind}</pl:timeScale>')
+
+
+def emit_planner_item(lines, it, ind):
+    lines.append(f'{ind}<pl:item>')
+    ii = f'{ind}\t'
+    emit_planner_value(lines, _pl_get(it, 'value'), ii)
+    emit_planner_text(lines, 'text', _pl_get(it, 'text', ''), ii)
+    emit_planner_text(lines, 'tooltip', _pl_get(it, 'tooltip', ''), ii)
+    lines.append(f'{ii}<pl:begin>{_pl_get(it, "begin", "0001-01-01T00:00:00")}</pl:begin>')
+    lines.append(f'{ii}<pl:end>{_pl_get(it, "end", "0001-01-01T00:00:00")}</pl:end>')
+    emit_planner_color(lines, 'borderColor', it, 'borderColor', ii)
+    emit_planner_color(lines, 'backColor', it, 'backColor', ii)
+    emit_planner_color(lines, 'textColor', it, 'textColor', ii)
+    emit_planner_font(lines, it, ii)
+    lines.append(f'{ii}<pl:dimensionValues/>')
+    lines.append(f'{ii}<pl:replacementDate>{_pl_get(it, "replacementDate", "0001-01-01T00:00:00")}</pl:replacementDate>')
+    lines.append(f'{ii}<pl:deleted>{_pl_bool(_pl_get(it, "deleted", False))}</pl:deleted>')
+    iid = _pl_get(it, 'id')
+    if iid is None:
+        import uuid
+        iid = str(uuid.uuid4())
+    lines.append(f'{ii}<pl:id>{iid}</pl:id>')
+    lines.append(f'{ii}<pl:textFormatted>{_pl_bool(_pl_get(it, "textFormatted", False))}</pl:textFormatted>')
+    emit_planner_border(lines, it, ii, 'border')
+    lines.append(f'{ii}<pl:editMode>{esc_xml_text(str(_pl_get(it, "editMode", "EnableEdit")))}</pl:editMode>')
+    lines.append(f'{ind}</pl:item>')
+
+
+def emit_planner_dim_element(lines, el, ind):
+    lines.append(f'{ind}<pl:item>')
+    ii = f'{ind}\t'
+    emit_planner_value(lines, _pl_get(el, 'value'), ii)
+    emit_planner_text(lines, 'text', _pl_get(el, 'text', ''), ii)
+    emit_planner_color(lines, 'borderColor', el, 'borderColor', ii)
+    emit_planner_color(lines, 'backColor', el, 'backColor', ii)
+    emit_planner_color(lines, 'textColor', el, 'textColor', ii)
+    emit_planner_font(lines, el, ii)
+    for sub in _pl_get(el, 'elements', []):
+        emit_planner_dim_element(lines, sub, ii)
+    lines.append(f'{ii}<pl:showOnlySubordinatesAreas>{_pl_bool(_pl_get(el, "showOnlySubordinatesAreas", True))}</pl:showOnlySubordinatesAreas>')
+    lines.append(f'{ii}<pl:textFormatted>{_pl_bool(_pl_get(el, "textFormatted", False))}</pl:textFormatted>')
+    lines.append(f'{ind}</pl:item>')
+
+
+def emit_planner_dimension(lines, d, ind):
+    lines.append(f'{ind}<pl:dimension>')
+    di = f'{ind}\t'
+    emit_planner_value(lines, _pl_get(d, 'value'), di)
+    emit_planner_text(lines, 'text', _pl_get(d, 'text', ''), di)
+    emit_planner_color(lines, 'borderColor', d, 'borderColor', di)
+    emit_planner_color(lines, 'backColor', d, 'backColor', di)
+    emit_planner_color(lines, 'textColor', d, 'textColor', di)
+    emit_planner_font(lines, d, di)
+    for el in _pl_get(d, 'elements', []):
+        emit_planner_dim_element(lines, el, di)
+    lines.append(f'{di}<pl:textFormatted>{_pl_bool(_pl_get(d, "textFormatted", False))}</pl:textFormatted>')
+    lines.append(f'{ind}</pl:dimension>')
+
+
+def emit_planner_settings(lines, pl, ind):
+    lines.append(f'{ind}<Settings xmlns:pl="{PLANNER_NS}" xsi:type="pl:Planner">')
+    si = f'{ind}\t'
+    for it in _pl_get(pl, 'items', []):
+        emit_planner_item(lines, it, si)
+    for d in _pl_get(pl, 'dimensions', []):
+        emit_planner_dimension(lines, d, si)
+    emit_planner_color(lines, 'borderColor', pl, 'borderColor', si)
+    emit_planner_color(lines, 'backColor', pl, 'backColor', si)
+    emit_planner_color(lines, 'textColor', pl, 'textColor', si)
+    emit_planner_color(lines, 'lineColor', pl, 'lineColor', si)
+    emit_planner_font(lines, pl, si)
+    lines.append(f'{si}<pl:beginOfRepresentationPeriod>{_pl_get(pl, "beginOfRepresentationPeriod", "0001-01-01T00:00:00")}</pl:beginOfRepresentationPeriod>')
+    lines.append(f'{si}<pl:endOfRepresentationPeriod>{_pl_get(pl, "endOfRepresentationPeriod", "0001-01-01T00:00:00")}</pl:endOfRepresentationPeriod>')
+    lines.append(f'{si}<pl:alignElementsOfTimeScale>{_pl_bool(_pl_get(pl, "alignElementsOfTimeScale", True))}</pl:alignElementsOfTimeScale>')
+    lines.append(f'{si}<pl:displayTimeScaleWrapHeaders>{_pl_bool(_pl_get(pl, "displayTimeScaleWrapHeaders", True))}</pl:displayTimeScaleWrapHeaders>')
+    lines.append(f'{si}<pl:displayWrapHeaders>{_pl_bool(_pl_get(pl, "displayWrapHeaders", True))}</pl:displayWrapHeaders>')
+    wfmt = _pl_get(pl, 'timeScaleWrapHeadersFormat')
+    if wfmt is None:
+        wfmt = {'#': 'DLF="DD"', 'ru': 'DLF="DD"'}
+    emit_mltext(lines, si, 'pl:timeScaleWrapHeadersFormat', wfmt)
+    lines.append(f'{si}<pl:periodicVariantUnit>{esc_xml_text(str(_pl_get(pl, "periodicVariantUnit", "Day")))}</pl:periodicVariantUnit>')
+    lines.append(f'{si}<pl:periodicVariantRepetition>{_pl_get(pl, "periodicVariantRepetition", 1)}</pl:periodicVariantRepetition>')
+    lines.append(f'{si}<pl:timeScaleWrapBeginIndent>{_pl_get(pl, "timeScaleWrapBeginIndent", 0)}</pl:timeScaleWrapBeginIndent>')
+    lines.append(f'{si}<pl:timeScaleWrapEndIndent>{_pl_get(pl, "timeScaleWrapEndIndent", 0)}</pl:timeScaleWrapEndIndent>')
+    emit_planner_timescale(lines, _pl_get(pl, 'timeScale'), si)
+    period = _pl_get(pl, 'period')
+    if period:
+        lines.append(f'{si}<pl:period>')
+        lines.append(f'{si}\t<pl:begin>{_pl_get(period, "begin", "0001-01-01T00:00:00")}</pl:begin>')
+        lines.append(f'{si}\t<pl:end>{_pl_get(period, "end", "0001-01-01T00:00:00")}</pl:end>')
+        lines.append(f'{si}</pl:period>')
+    lines.append(f'{si}<pl:displayCurrentDate>{_pl_bool(_pl_get(pl, "displayCurrentDate", True))}</pl:displayCurrentDate>')
+    lines.append(f'{si}<pl:itemsTimeRepresentation>{esc_xml_text(str(_pl_get(pl, "itemsTimeRepresentation", "BeginTime")))}</pl:itemsTimeRepresentation>')
+    lines.append(f'{si}<pl:itemsBehaviorWhenSpaceInsufficient>{esc_xml_text(str(_pl_get(pl, "itemsBehaviorWhenSpaceInsufficient", "CollapseItems")))}</pl:itemsBehaviorWhenSpaceInsufficient>')
+    lines.append(f'{si}<pl:autoMinColumnWidth>{_pl_bool(_pl_get(pl, "autoMinColumnWidth", True))}</pl:autoMinColumnWidth>')
+    lines.append(f'{si}<pl:autoMinRowHeight>{_pl_bool(_pl_get(pl, "autoMinRowHeight", True))}</pl:autoMinRowHeight>')
+    lines.append(f'{si}<pl:minColumnWidth>{_pl_get(pl, "minColumnWidth", 0)}</pl:minColumnWidth>')
+    lines.append(f'{si}<pl:minRowHeight>{_pl_get(pl, "minRowHeight", 0)}</pl:minRowHeight>')
+    lines.append(f'{si}<pl:fixDimensionsHeader>{esc_xml_text(str(_pl_get(pl, "fixDimensionsHeader", "auto")))}</pl:fixDimensionsHeader>')
+    lines.append(f'{si}<pl:fixTimeScaleHeader>{esc_xml_text(str(_pl_get(pl, "fixTimeScaleHeader", "auto")))}</pl:fixTimeScaleHeader>')
+    emit_planner_border(lines, pl, si, 'border')
+    lines.append(f'{si}<pl:newItemsTextType>{esc_xml_text(str(_pl_get(pl, "newItemsTextType", "String")))}</pl:newItemsTextType>')
+    lines.append(f'{ind}</Settings>')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chart design-time <Settings xsi:type="d4p1:Chart"> — генерик-эмиттер (зеркало
+# Build-ChartNode декомпилятора + Emit-ChartNode ps1).
+
+
+def emit_chart_node(lines, name, val, ind):
+    if name in CHART_ML_FIELDS:
+        if val is None or str(val) == '':
+            lines.append(f'{ind}<d4p1:{name}/>')
+            return
+        lines.append(f'{ind}<d4p1:{name}>')
+        emit_ml_items(lines, f'{ind}\t', val)
+        lines.append(f'{ind}</d4p1:{name}>')
+        return
+    if isinstance(val, list):
+        for e in val:
+            emit_chart_node(lines, name, e, ind)
+        return
+    if isinstance(val, dict):
+        keys = list(val.keys())
+        if name in CHART_ATTR_FIELDS:
+            attrs = ' '.join(f'{k}="{esc_xml(_pl_bool(val[k]) if isinstance(val[k], bool) else str(val[k]))}"' for k in keys)
+            lines.append(f'{ind}<d4p1:{name} {attrs}/>')
+            return
+        if 'gap' in val:
+            lines.append(f'{ind}<d4p1:{name} width="{val.get("width")}" gap="{_pl_bool(val.get("gap"))}">')
+            lines.append(f'{ind}\t<v8ui:style xsi:type="v8ui:ChartLineType">{esc_xml_text(str(val.get("style")))}</v8ui:style>')
+            lines.append(f'{ind}</d4p1:{name}>')
+            return
+        if 'style' in val and 'width' in val:
+            lines.append(f'{ind}<d4p1:{name} width="{val.get("width")}">')
+            lines.append(f'{ind}\t<v8ui:style xsi:type="v8ui:ControlBorderType">{esc_xml_text(str(val.get("style")))}</v8ui:style>')
+            lines.append(f'{ind}</d4p1:{name}>')
+            return
+        if any(fk in val for fk in CHART_FONT_KEYS):
+            attrs = ' '.join(f'{fk}="{esc_xml(_pl_bool(val[fk]) if isinstance(val[fk], bool) else str(val[fk]))}"' for fk in CHART_FONT_KEYS if fk in val)
+            lines.append(f'{ind}<d4p1:{name} {attrs}/>')
+            return
+        if not keys:
+            lines.append(f'{ind}<d4p1:{name}/>')
+            return
+        lines.append(f'{ind}<d4p1:{name}>')
+        for k in keys:
+            emit_chart_node(lines, k, val[k], f'{ind}\t')
+        lines.append(f'{ind}</d4p1:{name}>')
+        return
+    if val is None or str(val) == '':
+        lines.append(f'{ind}<d4p1:{name}/>')
+        return
+    if isinstance(val, bool):
+        lines.append(f'{ind}<d4p1:{name}>{_pl_bool(val)}</d4p1:{name}>')
+        return
+    lines.append(f'{ind}<d4p1:{name}>{esc_xml_text(str(val))}</d4p1:{name}>')
+
+
+def emit_chart_settings(lines, chart, ind, ctype='d4p1:Chart'):
+    lines.append(f'{ind}<Settings xmlns:d4p1="{CHART_NS}" xsi:type="{ctype}">')
+    for k in list(chart.keys()):
+        emit_chart_node(lines, k, chart[k], f'{ind}\t')
+    lines.append(f'{ind}</Settings>')
 
 
 def emit_appearance(lines, el, indent, profile='field'):
@@ -3241,6 +4245,1042 @@ def emit_button_group(lines, el, name, eid, indent):
 # --- Attribute emitter ---
 
 
+def emit_functional_options(lines, fo, indent):
+    # <FunctionalOptions><Item>FunctionalOption.X</Item>…> — у Attribute/Command/Column.
+    # Forgiving: "X"/"FunctionalOption.X" → FunctionalOption.X; GUID (расширение) — как есть.
+    if not fo:
+        return
+    lines.append(f'{indent}<FunctionalOptions>')
+    for opt in fo:
+        v = str(opt)
+        if re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}$', v):
+            pass
+        elif v.startswith('FunctionalOption.'):
+            pass
+        else:
+            v = f'FunctionalOption.{v}'
+        lines.append(f'{indent}\t<Item>{v}</Item>')
+    lines.append(f'{indent}</FunctionalOptions>')
+
+
+def emit_attr_column(lines, col, indent):
+    # Колонка реквизита (ValueTable/Tree или AdditionalColumns): name/Title/Type/FunctionalOptions.
+    col_id = new_id()
+    lines.append(f'{indent}<Column name="{col["name"]}" id="{col_id}">')
+    if col.get('title'):
+        emit_mltext(lines, f'{indent}\t', 'Title', col['title'])
+    emit_type(lines, str(col.get('type', '')), f'{indent}\t')
+    # Проверка заполнения колонки → <FillCheck> (как у реквизита; bool true→ShowError / строка verbatim)
+    cfc = col.get('fillCheck') if col.get('fillCheck') is not None else col.get('fillChecking')
+    if cfc is not None:
+        cfcv = ('ShowError' if cfc else None) if isinstance(cfc, bool) else str(cfc)
+        if cfcv:
+            lines.append(f'{indent}\t<FillCheck>{cfcv}</FillCheck>')
+    emit_functional_options(lines, col.get('functionalOptions'), f'{indent}\t')
+    # Ролевой доступ колонки (View/Edit) — xr-флаг, как у самого реквизита
+    if col.get('view') is not None:
+        emit_xr_flag(lines, 'View', col['view'], f'{indent}\t')
+    if col.get('edit') is not None:
+        emit_xr_flag(lines, 'Edit', col['edit'], f'{indent}\t')
+    lines.append(f'{indent}</Column>')
+
+
+# --- Schema-параметры динамического списка (DataCompositionSchemaParameter) ---
+# Зеркало form-compile.ps1 (Emit-DLParameters). Та же сущность, что параметры СКД, но в
+# форме: обёртка <Parameter> + дети dcssch:. DSL переиспользует грамматику параметров СКД.
+# Контекстные дефолты: useRestriction эмитим ВСЕГДА, дефолт true (в СКД false); title — авто
+# из имени; пустое value — всегда xsi:nil (даже при известном типе). Канон. порядок детей
+# (по корпусу): name, title, valueType, value, useRestriction, expression, availableValue*,
+# valueListAllowed, availableAsField, inputParameters, denyIncompleteValues, use.
+
+
+def emit_dl_mltext(lines, indent, tag, text):
+    # ML-текст с xsi:type="v8:LocalStringType" (в dcssch:* обязателен; emit_mltext его не ставит).
+    lines.append(f'{indent}<{tag} xsi:type="v8:LocalStringType">')
+    emit_ml_items(lines, f'{indent}\t', text)
+    lines.append(f'{indent}</{tag}>')
+
+
+def split_dl_valuelist_csv(s):
+    result = []
+    if s is None:
+        return result
+    items = []
+    buf = []
+    in_quote = None
+    for ch in s:
+        if in_quote:
+            buf.append(ch)
+            if ch == in_quote:
+                in_quote = None
+        elif ch in ("'", '"'):
+            in_quote = ch
+            buf.append(ch)
+        elif ch == ',':
+            items.append(''.join(buf)); buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        items.append(''.join(buf))
+    for raw in items:
+        t = raw.strip()
+        if len(t) >= 2 and ((t[0] == "'" and t[-1] == "'") or (t[0] == '"' and t[-1] == '"')):
+            t = t[1:-1]
+        if t != '':
+            result.append(t)
+    return result
+
+
+def parse_dl_param_shorthand(s):
+    result = {'name': '', 'type': '', 'value': None, 'title': None}
+    if '@valueList' in s:
+        result['valueListAllowed'] = True
+        s = re.sub(r'\s*@valueList', '', s)
+    if '@hidden' in s:
+        result['hidden'] = True
+        s = re.sub(r'\s*@hidden', '', s)
+    m = re.search(r'\[([^\]]*)\]', s)
+    if m:
+        result['title'] = m.group(1).strip()
+        s = re.sub(r'\s*\[[^\]]*\]\s*', ' ', s).strip()
+    # Тип может быть СОСТАВНЫМ (A | B | C — с пробелами); значение — после '=' (тип '=' не содержит).
+    m = re.match(r'^([^:]+):\s*([^=]+?)(\s*=\s*(.*))?$', s)
+    if m:
+        result['name'] = m.group(1).strip()
+        type_raw = m.group(2).strip()
+        if re.search(r'[|+]', type_raw):
+            result['type'] = ' | '.join(resolve_type_str(p.strip()) for p in re.split(r'\s*[|+]\s*', type_raw))
+        else:
+            result['type'] = resolve_type_str(type_raw)
+        if m.group(4):
+            rhs = m.group(4).strip()
+            items = split_dl_valuelist_csv(rhs)
+            if len(items) >= 2:
+                result['value'] = items
+                result['valueListAllowed'] = True
+            elif len(items) == 1:
+                result['value'] = items[0]
+            else:
+                result['value'] = rhs
+    else:
+        result['name'] = s.strip()
+    return result
+
+
+def is_dl_empty_value(v):
+    if v is None:
+        return True
+    sv = str(v).strip()
+    return sv == '' or sv == '_' or sv.lower() == 'null'
+
+
+def emit_dl_value(lines, type_str, val, indent, value_list_allowed=False):
+    if is_dl_empty_value(val):
+        # Дин-список: пустое значение платформа ВСЕГДА пишет как xsi:nil (даже при известном типе).
+        if value_list_allowed:
+            return
+        lines.append(f'{indent}<dcssch:value xsi:nil="true"/>')
+        return
+    if isinstance(val, bool):
+        val_str = 'true' if val else 'false'
+    else:
+        val_str = str(val)
+    t = type_str or ''
+    if re.match(r'^(date|dateTime|time)', t):
+        lines.append(f'{indent}<dcssch:value xsi:type="xs:dateTime">{esc_xml_text(val_str)}</dcssch:value>')
+    elif t == 'boolean':
+        lines.append(f'{indent}<dcssch:value xsi:type="xs:boolean">{esc_xml_text(val_str)}</dcssch:value>')
+    elif t == 'v8:Type':
+        ns_attr = _value_type_ns_attr('v8:Type', val_str)
+        lines.append(f'{indent}<dcssch:value{ns_attr} xsi:type="v8:Type">{esc_xml_text(val_str)}</dcssch:value>')
+    elif re.match(r'^ent:', t):
+        # системное перечисление (ent:X) — value несёт тот же xsi:type
+        lines.append(f'{indent}<dcssch:value xsi:type="{t}">{esc_xml_text(val_str)}</dcssch:value>')
+    elif re.match(r'^decimal', t):
+        lines.append(f'{indent}<dcssch:value xsi:type="xs:decimal">{esc_xml_text(val_str)}</dcssch:value>')
+    elif re.match(r'^string', t):
+        lines.append(f'{indent}<dcssch:value xsi:type="xs:string">{esc_xml_text(val_str)}</dcssch:value>')
+    elif re.match(r'^(CatalogRef|DocumentRef|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef|BusinessProcessRef|TaskRef|ExchangePlanRef)\.', t):
+        lines.append(f'{indent}<dcssch:value xsi:type="dcscor:DesignTimeValue">{esc_xml_text(val_str)}</dcssch:value>')
+    else:
+        if re.match(r'^\d{4}-\d{2}-\d{2}T', val_str):
+            lines.append(f'{indent}<dcssch:value xsi:type="xs:dateTime">{esc_xml_text(val_str)}</dcssch:value>')
+        elif val_str in ('true', 'false'):
+            lines.append(f'{indent}<dcssch:value xsi:type="xs:boolean">{esc_xml_text(val_str)}</dcssch:value>')
+        elif re.match(r'^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена)\.', val_str) or re.match(r'^(ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.', val_str):
+            lines.append(f'{indent}<dcssch:value xsi:type="dcscor:DesignTimeValue">{esc_xml_text(val_str)}</dcssch:value>')
+        else:
+            lines.append(f'{indent}<dcssch:value xsi:type="xs:string">{esc_xml_text(val_str)}</dcssch:value>')
+
+
+def emit_dl_value_type(lines, type_str, indent):
+    if not type_str:
+        return
+    lines.append(f'{indent}<dcssch:valueType>')
+    for part in re.split(r'\s*[|+]\s*', str(type_str)):
+        emit_single_type(lines, part.strip(), f'{indent}\t')
+    lines.append(f'{indent}</dcssch:valueType>')
+
+
+def emit_dl_available_value(lines, av, type_str, indent):
+    lines.append(f'{indent}<dcssch:availableValue>')
+    av_val = av.get('value') if isinstance(av, dict) else None
+    emit_dl_value(lines, type_str, av_val, f'{indent}\t', False)
+    pres = (av.get('presentation') or av.get('title')) if isinstance(av, dict) else None
+    if pres:
+        emit_dl_mltext(lines, f'{indent}\t', 'dcssch:presentation', pres)
+    lines.append(f'{indent}</dcssch:availableValue>')
+
+
+def emit_dl_input_parameters(lines, ip, indent):
+    if ip is None:
+        return
+    items = ip if isinstance(ip, list) else [ip]
+    if len(items) == 0:
+        return
+    lines.append(f'{indent}<dcssch:inputParameters>')
+    for item in items:
+        lines.append(f'{indent}\t<dcscor:item>')
+        if 'use' in item and item.get('use') is not None and not item.get('use'):
+            lines.append(f'{indent}\t\t<dcscor:use>false</dcscor:use>')
+        lines.append(f'{indent}\t\t<dcscor:parameter>{esc_xml_text(str(item.get("parameter", "")))}</dcscor:parameter>')
+        if 'choiceParameters' in item:
+            cp_items = item.get('choiceParameters') or []
+            if len(cp_items) == 0:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameters"/>')
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameters">')
+                for cp in cp_items:
+                    lines.append(f'{indent}\t\t\t<dcscor:item>')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:choiceParameter>{esc_xml_text(str(cp.get("name", "")))}</dcscor:choiceParameter>')
+                    for v in (cp.get('values') or []):
+                        if isinstance(v, bool):
+                            lines.append(f'{indent}\t\t\t\t<dcscor:value xsi:type="xs:boolean">{"true" if v else "false"}</dcscor:value>')
+                        elif isinstance(v, (int, float)):
+                            lines.append(f'{indent}\t\t\t\t<dcscor:value xsi:type="xs:decimal">{v}</dcscor:value>')
+                        else:
+                            lines.append(f'{indent}\t\t\t\t<dcscor:value xsi:type="dcscor:DesignTimeValue">{esc_xml_text(str(v))}</dcscor:value>')
+                    lines.append(f'{indent}\t\t\t</dcscor:item>')
+                lines.append(f'{indent}\t\t</dcscor:value>')
+        elif 'choiceParameterLinks' in item:
+            cpl_items = item.get('choiceParameterLinks') or []
+            if len(cpl_items) == 0:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameterLinks"/>')
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:ChoiceParameterLinks">')
+                for cpl in cpl_items:
+                    lines.append(f'{indent}\t\t\t<dcscor:item>')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:choiceParameter>{esc_xml_text(str(cpl.get("name", "")))}</dcscor:choiceParameter>')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:value>{esc_xml_text(str(cpl.get("value", "")))}</dcscor:value>')
+                    mode = str(cpl.get('mode') or 'Auto')
+                    lines.append(f'{indent}\t\t\t\t<dcscor:mode xmlns:d8p1="http://v8.1c.ru/8.1/data/enterprise" xsi:type="d8p1:LinkedValueChangeMode">{mode}</dcscor:mode>')
+                    lines.append(f'{indent}\t\t\t</dcscor:item>')
+                lines.append(f'{indent}\t\t</dcscor:value>')
+        elif 'typeLink' in item:
+            # Связь по типу (dcscor:TypeLink) — field + linkItem (структурное значение параметра).
+            tl = item.get('typeLink') or {}
+            lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:TypeLink">')
+            if tl.get('field') is not None:
+                lines.append(f'{indent}\t\t\t<dcscor:field>{esc_xml_text(str(tl.get("field")))}</dcscor:field>')
+            if tl.get('linkItem') is not None:
+                lines.append(f'{indent}\t\t\t<dcscor:linkItem>{esc_xml_text(str(tl.get("linkItem")))}</dcscor:linkItem>')
+            lines.append(f'{indent}\t\t</dcscor:value>')
+        elif 'value' in item:
+            val = item.get('value')
+            if isinstance(val, bool):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:boolean">{"true" if val else "false"}</dcscor:value>')
+            elif isinstance(val, (int, float)):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:decimal">{val}</dcscor:value>')
+            elif isinstance(val, dict):
+                emit_dl_mltext(lines, f'{indent}\t\t', 'dcscor:value', val)
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:string">{esc_xml_text(str(val))}</dcscor:value>')
+        lines.append(f'{indent}\t</dcscor:item>')
+    lines.append(f'{indent}</dcssch:inputParameters>')
+
+
+# ── dataParameters (значения параметров запроса в настройках компоновки) — порт из skd ──
+
+
+def _test_empty_value(v):
+    if v is None:
+        return True
+    s = str(v).strip()
+    return s == '' or s == '_' or s.lower() == 'null'
+
+
+def emit_empty_value(lines, type_str, indent, tag_prefix='', value_list_allowed=False):
+    if value_list_allowed:
+        return
+    t = type_str or ''
+    t_bare = t[3:] if t.startswith('xs:') else t
+    pf = tag_prefix
+    if t == '':
+        lines.append(f'{indent}<{pf}value xsi:nil="true"/>')
+    elif t == 'StandardPeriod':
+        lines.append(f'{indent}<{pf}value xsi:type="v8:StandardPeriod">')
+        lines.append(f'{indent}\t<v8:variant xsi:type="v8:StandardPeriodVariant">Custom</v8:variant>')
+        lines.append(f'{indent}\t<v8:startDate>0001-01-01T00:00:00</v8:startDate>')
+        lines.append(f'{indent}\t<v8:endDate>0001-01-01T00:00:00</v8:endDate>')
+        lines.append(f'{indent}</{pf}value>')
+    elif re.match(r'^string', t_bare):
+        lines.append(f'{indent}<{pf}value xsi:type="xs:string"/>')
+    elif re.match(r'^(date|time)', t_bare):
+        lines.append(f'{indent}<{pf}value xsi:type="xs:dateTime">0001-01-01T00:00:00</{pf}value>')
+    elif re.match(r'^decimal', t_bare):
+        lines.append(f'{indent}<{pf}value xsi:type="xs:decimal">0</{pf}value>')
+    elif t_bare == 'boolean':
+        lines.append(f'{indent}<{pf}value xsi:type="xs:boolean">false</{pf}value>')
+    else:
+        lines.append(f'{indent}<{pf}value xsi:nil="true"/>')
+
+
+def parse_data_param_shorthand(s):
+    result = {'parameter': '', 'value': None, 'use': True, 'userSettingID': None, 'viewMode': None}
+    if '@user' in s:
+        result['userSettingID'] = 'auto'; s = re.sub(r'\s*@user', '', s)
+    if '@off' in s:
+        result['use'] = False; s = re.sub(r'\s*@off', '', s)
+    if '@quickAccess' in s:
+        result['viewMode'] = 'QuickAccess'; s = re.sub(r'\s*@quickAccess', '', s)
+    if '@normal' in s:
+        result['viewMode'] = 'Normal'; s = re.sub(r'\s*@normal', '', s)
+    s = s.strip()
+    m = re.match(r'^([^=]+)=\s*(.+)$', s)
+    if m:
+        result['parameter'] = m.group(1).strip()
+        val_str = m.group(2).strip()
+        if val_str in _DP_PERIOD_VARIANTS:
+            result['value'] = {'variant': val_str}
+        elif re.match(r'^\d{4}-\d{2}-\d{2}T', val_str):
+            result['value'] = val_str
+        elif val_str in ('true', 'false'):
+            result['value'] = (val_str == 'true')
+        else:
+            result['value'] = val_str
+    else:
+        result['parameter'] = s
+    return result
+
+
+def emit_data_parameters(lines, items, indent, block_view_mode=None):
+    if not items or len(items) == 0:
+        return
+    lines.append(f'{indent}<dcsset:dataParameters>')
+    for dp in items:
+        if isinstance(dp, str):
+            parsed = parse_data_param_shorthand(dp)
+            dp = {'parameter': parsed['parameter']}
+            if parsed['value'] is not None:
+                dp['value'] = parsed['value']
+            if parsed['use'] is False:
+                dp['use'] = False
+            if parsed['userSettingID']:
+                dp['userSettingID'] = parsed['userSettingID']
+            if parsed['viewMode']:
+                dp['viewMode'] = parsed['viewMode']
+        lines.append(f'{indent}\t<dcscor:item xsi:type="dcsset:SettingsParameterValue">')
+        if dp.get('use') is False:
+            lines.append(f'{indent}\t\t<dcscor:use>false</dcscor:use>')
+        lines.append(f'{indent}\t\t<dcscor:parameter>{esc_xml_text(str(dp.get("parameter", "")))}</dcscor:parameter>')
+        vtype = str(dp.get('valueType') or '')
+        val = dp.get('value')
+        if isinstance(val, list):
+            # Список значений параметра (valueListAllowed) — отдельный <dcscor:value> на каждое.
+            avtype = str(dp.get('valueType', ''))
+            for v in val:
+                v_str = ('true' if v else 'false') if isinstance(v, bool) else str(v)
+                if re.match(r'^[a-zA-Z]+:', avtype):
+                    lines.append(f'{indent}\t\t<dcscor:value xsi:type="{avtype}">{esc_xml_text(v_str)}</dcscor:value>')
+                elif re.match(r'^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена)\.', v_str) or re.match(r'^(ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.', v_str):
+                    lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:DesignTimeValue">{esc_xml_text(v_str)}</dcscor:value>')
+                else:
+                    lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:string">{esc_xml_text(v_str)}</dcscor:value>')
+        elif dp.get('nilValue') is True:
+            lines.append(f'{indent}\t\t<dcscor:value xsi:nil="true"/>')
+        elif _test_empty_value(val) and vtype:
+            emit_empty_value(lines, vtype, f'{indent}\t\t', tag_prefix='dcscor:', value_list_allowed=False)
+        elif _test_empty_value(val):
+            pass  # нет значения → не эмитим value-узел (form дин-список: use=false плейсхолдер)
+        elif val is not None:
+            if isinstance(val, dict) and val.get('variant'):
+                variant = str(val.get('variant'))
+                has_date = 'date' in val
+                has_sd = 'startDate' in val
+                is_sbd = has_date or (not has_sd and variant.startswith('BeginningOf'))
+                if is_sbd:
+                    lines.append(f'{indent}\t\t<dcscor:value xsi:type="v8:StandardBeginningDate">')
+                    lines.append(f'{indent}\t\t\t<v8:variant xsi:type="v8:StandardBeginningDateVariant">{esc_xml_text(variant)}</v8:variant>')
+                    if variant == 'Custom':
+                        d = str(val.get('date') or '0001-01-01T00:00:00')
+                        lines.append(f'{indent}\t\t\t<v8:date>{esc_xml_text(d)}</v8:date>')
+                    lines.append(f'{indent}\t\t</dcscor:value>')
+                else:
+                    lines.append(f'{indent}\t\t<dcscor:value xsi:type="v8:StandardPeriod">')
+                    lines.append(f'{indent}\t\t\t<v8:variant xsi:type="v8:StandardPeriodVariant">{esc_xml_text(variant)}</v8:variant>')
+                    if variant == 'Custom':
+                        sd = str(val.get('startDate') or '0001-01-01T00:00:00')
+                        ed = str(val.get('endDate') or '0001-01-01T00:00:00')
+                        lines.append(f'{indent}\t\t\t<v8:startDate>{esc_xml_text(sd)}</v8:startDate>')
+                        lines.append(f'{indent}\t\t\t<v8:endDate>{esc_xml_text(ed)}</v8:endDate>')
+                    lines.append(f'{indent}\t\t</dcscor:value>')
+            elif re.match(r'^[a-zA-Z]+:', vtype):
+                v_str = str(val).lower() if isinstance(val, bool) else str(val)
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="{vtype}">{esc_xml_text(v_str)}</dcscor:value>')
+            elif vtype == 'boolean' or isinstance(val, bool):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:boolean">{esc_xml_text(str(val).lower())}</dcscor:value>')
+            elif re.match(r'^date', vtype) or re.match(r'^\d{4}-\d{2}-\d{2}T', str(val)):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:dateTime">{esc_xml_text(str(val))}</dcscor:value>')
+            elif re.match(r'^decimal', vtype):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:decimal">{esc_xml_text(str(val))}</dcscor:value>')
+            elif re.match(r'^string', vtype):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:string">{esc_xml_text(str(val))}</dcscor:value>')
+            elif re.match(r'^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена)\.', str(val)) or re.match(r'^(ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.', str(val)):
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="dcscor:DesignTimeValue">{esc_xml_text(str(val))}</dcscor:value>')
+            else:
+                lines.append(f'{indent}\t\t<dcscor:value xsi:type="xs:string">{esc_xml_text(str(val))}</dcscor:value>')
+        if dp.get('viewMode'):
+            lines.append(f'{indent}\t\t<dcsset:viewMode>{esc_xml_text(str(dp["viewMode"]))}</dcsset:viewMode>')
+        if dp.get('userSettingID'):
+            uid = new_uuid() if str(dp['userSettingID']) == 'auto' else str(dp['userSettingID'])
+            lines.append(f'{indent}\t\t<dcsset:userSettingID>{esc_xml_text(uid)}</dcsset:userSettingID>')
+        if dp.get('userSettingPresentation'):
+            emit_us_presentation(lines, f'{indent}\t\t', 'dcsset:userSettingPresentation', dp['userSettingPresentation'])
+        lines.append(f'{indent}\t</dcscor:item>')
+    if block_view_mode is not None:
+        lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml_text(str(block_view_mode))}</dcsset:viewMode>')
+    lines.append(f'{indent}</dcsset:dataParameters>')
+
+
+def emit_dl_parameter(lines, p, parsed, indent):
+    is_obj = not isinstance(p, str)
+    lines.append(f'{indent}<Parameter>')
+    ci = f'{indent}\t'
+    lines.append(f'{ci}<dcssch:name>{esc_xml_text(parsed["name"])}</dcssch:name>')
+    # Title: явный override (shorthand [..] / объект title/presentation) или авто из имени.
+    title = None
+    if parsed.get('title'):
+        title = parsed['title']
+    elif is_obj and p.get('title'):
+        title = p['title']
+    elif is_obj and p.get('presentation'):
+        title = p['presentation']
+    if title is None or (isinstance(title, str) and title == ''):
+        title = title_from_name(parsed['name'])
+    emit_dl_mltext(lines, ci, 'dcssch:title', title)
+    # valueType
+    if parsed.get('type'):
+        emit_dl_value_type(lines, parsed['type'], ci)
+    # value (дефолт nil; при valueListAllowed пустое — опускаем)
+    vla = bool(parsed.get('valueListAllowed'))
+    pv = parsed.get('value')
+    if isinstance(pv, list):
+        for v in pv:
+            emit_dl_value(lines, parsed.get('type', ''), v, ci, False)
+    elif parsed.get('value_explicit') and pv is not None and str(pv) == '' and (str(parsed.get('type', '')) == '' or re.match(r'^string', str(parsed.get('type', '')))):
+        # Явный пустой СТРОКОВЫЙ параметр (value:"" от декомпилятора) → типизированный пустой
+        # <dcssch:value xsi:type="xs:string"/>, НЕ nil. Решается ФОРМОЙ value (""→typed-empty,
+        # null/отсутствие→nil), независимо от valueListAllowed; декомпилятор различает ""/null.
+        # Корпус: 26 xs:string typed-empty.
+        lines.append(f'{ci}<dcssch:value xsi:type="xs:string"/>')
+    elif vla and is_dl_empty_value(pv) and parsed.get('value_explicit'):
+        # valueListAllowed + явный пустой (value:null от декомпилятора) → платформа пишет nil
+        lines.append(f'{ci}<dcssch:value xsi:nil="true"/>')
+    else:
+        emit_dl_value(lines, parsed.get('type', ''), pv, ci, vla)
+    # useRestriction — ВСЕГДА; дефолт true; false только при явном useRestriction:false.
+    ur = True
+    if is_obj and 'useRestriction' in p:
+        ur = bool(p['useRestriction'])
+    lines.append(f'{ci}<dcssch:useRestriction>{"true" if ur else "false"}</dcssch:useRestriction>')
+    # expression
+    expr = str(p['expression']) if (is_obj and p.get('expression')) else None
+    if expr:
+        lines.append(f'{ci}<dcssch:expression>{esc_xml_text(expr)}</dcssch:expression>')
+    # availableValues
+    if is_obj and p.get('availableValues'):
+        for av in p['availableValues']:
+            emit_dl_available_value(lines, av, parsed.get('type', ''), ci)
+    # valueListAllowed
+    if vla:
+        lines.append(f'{ci}<dcssch:valueListAllowed>true</dcssch:valueListAllowed>')
+    # availableAsField=false (hidden или явный)
+    aaf = None
+    if parsed.get('hidden') is True:
+        aaf = False
+    if is_obj and 'availableAsField' in p:
+        aaf = bool(p['availableAsField'])
+    if aaf is False:
+        lines.append(f'{ci}<dcssch:availableAsField>false</dcssch:availableAsField>')
+    # inputParameters
+    if is_obj and p.get('inputParameters'):
+        emit_dl_input_parameters(lines, p['inputParameters'], ci)
+    # denyIncompleteValues
+    if is_obj and p.get('denyIncompleteValues') is True:
+        lines.append(f'{ci}<dcssch:denyIncompleteValues>true</dcssch:denyIncompleteValues>')
+    # use
+    if is_obj and p.get('use'):
+        lines.append(f'{ci}<dcssch:use>{esc_xml_text(str(p["use"]))}</dcssch:use>')
+    lines.append(f'{indent}</Parameter>')
+
+
+def emit_dl_parameters(lines, params, indent):
+    if not params:
+        return
+    for p in params:
+        if isinstance(p, str):
+            parsed = parse_dl_param_shorthand(p)
+        else:
+            resolved_type = ''
+            if p.get('type'):
+                if isinstance(p['type'], list):
+                    resolved_type = ' | '.join(resolve_type_str(str(x)) for x in p['type'])
+                else:
+                    resolved_type = resolve_type_str(str(p['type']))
+            elif p.get('valueType'):
+                resolved_type = resolve_type_str(str(p['valueType']))
+            parsed = {'name': str(p.get('name', '')), 'type': resolved_type,
+                      'value': p.get('value') if 'value' in p else None,
+                      'value_explicit': ('value' in p), 'title': None}
+            if p.get('valueListAllowed') is True:
+                parsed['valueListAllowed'] = True
+            if p.get('hidden') is True:
+                parsed['hidden'] = True
+        emit_dl_parameter(lines, p, parsed, indent)
+
+
+def emit_attributes(lines, attrs, indent, conditional_appearance=None):
+    has_ca = bool(conditional_appearance) and len(conditional_appearance) > 0
+    # Платформа ВСЕГДА эмитит <Attributes> (100% корпуса; 162 формы — пустой <Attributes/>).
+    if (not attrs or len(attrs) == 0) and not has_ca:
+        lines.append(f'{indent}<Attributes/>')
+        return
+    if not attrs or len(attrs) == 0:
+        # Нет реквизитов, но есть условное оформление (последний child <Attributes>)
+        lines.append(f'{indent}<Attributes>')
+        emit_conditional_appearance(lines, conditional_appearance, f'{indent}\t', wrap_tag='ConditionalAppearance')
+        lines.append(f'{indent}</Attributes>')
+        return
+
+    lines.append(f'{indent}<Attributes>')
+    seen_attrs = set()
+    for attr in attrs:
+        attr_id = new_id()
+        attr_name = str(attr['name'])
+        _ensure_unique(attr_name, seen_attrs, 'attribute')
+
+        lines.append(f'{indent}\t<Attribute name="{attr_name}" id="{attr_id}">')
+        inner = f'{indent}\t\t'
+
+        # Title атрибута (зеркало emit_title): нет ключа → авто-вывод из имени (кроме main);
+        # title "" → подавить; непустой → эмитить как есть.
+        if 'title' in attr:
+            if attr.get('title'):
+                emit_mltext(lines, inner, 'Title', attr['title'])
+        elif attr.get('main') is not True:
+            emit_mltext(lines, inner, 'Title', title_from_name(attr_name))
+
+        # Type
+        if attr.get('type'):
+            emit_type(lines, str(attr['type']), inner)
+        else:
+            lines.append(f'{inner}<Type/>')
+        # valueType: ОписаниеТипов значений ValueList → <Settings xsi:type="v8:TypeDescription">
+        # (та же грамматика типа, включая составной "A | B"). Forgiving-синонимы.
+        # Три состояния: нет ключа → нет Settings; "" → пустой <Settings…/>; тип → с типом.
+        vt_spec = None
+        has_vt = False
+        for k in ('valueType', 'typeDescription', 'описаниеТипов', 'типЗначений'):
+            if k in attr:
+                vt_spec = attr[k]
+                has_vt = True
+                break
+        if has_vt:
+            emit_type(lines, '' if vt_spec is None else str(vt_spec), inner, tag="Settings", tag_attrs=' xsi:type="v8:TypeDescription"')
+        # Planner design-time <Settings xsi:type="pl:Planner"> (встроенный конфиг планировщика).
+        if attr.get('planner') is not None:
+            emit_planner_settings(lines, attr['planner'], inner)
+        # Chart/GanttChart design-time <Settings> (тип выводится из типа реквизита).
+        if attr.get('chart') is not None:
+            ctype = 'd4p1:GanttChart' if 'GanttChart' in str(attr.get('type', '')) else 'd4p1:Chart'
+            emit_chart_settings(lines, attr['chart'], inner, ctype)
+
+        if attr.get('main') is True:
+            lines.append(f'{inner}<MainAttribute>true</MainAttribute>')
+        # Доступ по ролям: просмотр/редактирование (порядок схемы: View → Edit, после MainAttribute)
+        if attr.get('view') is not None:
+            emit_xr_flag(lines, 'View', attr.get('view'), inner)
+        if attr.get('edit') is not None:
+            emit_xr_flag(lines, 'Edit', attr.get('edit'), inner)
+        main_saved = False
+        if attr.get('main') is True and attr.get('type'):
+            t = str(attr['type'])
+            main_saved = bool(re.match(r'^(CatalogObject|DocumentObject|ChartOfAccountsObject|ChartOfCalculationTypesObject|ChartOfCharacteristicTypesObject|ExchangePlanObject|BusinessProcessObject|TaskObject)\.', t)) or ('RecordManager.' in t)
+        # Явный ключ savedData побеждает (в т.ч. False → суппресс авто-вывода main_saved); нет ключа → авто.
+        emit_saved = (attr['savedData'] is True) if 'savedData' in attr else main_saved
+        if emit_saved:
+            lines.append(f'{inner}<SavedData>true</SavedData>')
+        # Save: сохранение значения реквизита в пользовательских настройках. true → <Field>имя</Field>;
+        # строка/массив → под-поля с авто-префиксом "имя." (путь с точкой / UUID / =имя — как есть).
+        # Нет ключа или false → не эмитим.
+        if 'save' in attr and attr['save'] is not None:
+            save_fields = []
+            sv = attr['save']
+            if isinstance(sv, bool):
+                if sv:
+                    save_fields.append(attr_name)
+            else:
+                for e in (sv if isinstance(sv, (list, tuple)) else [sv]):
+                    fld = str(e)
+                    if not fld:
+                        continue
+                    if fld != attr_name and '.' not in fld and not re.match(r'^\d+/\d+', fld):
+                        fld = f'{attr_name}.{fld}'
+                    if fld not in save_fields:
+                        save_fields.append(fld)
+            if save_fields:
+                lines.append(f'{inner}<Save>')
+                for f in save_fields:
+                    lines.append(f'{inner}\t<Field>{esc_xml_text(f)}</Field>')
+                lines.append(f'{inner}</Save>')
+        # Проверка заполнения → <FillCheck> (реальный тег; <FillChecking> в схеме нет).
+        # bool true → ShowError; строка → verbatim. Синоним fillChecking.
+        fc_raw = attr['fillCheck'] if 'fillCheck' in attr else attr.get('fillChecking')
+        if fc_raw:
+            fcv = 'ShowError' if isinstance(fc_raw, bool) else str(fc_raw)
+            lines.append(f'{inner}<FillCheck>{fcv}</FillCheck>')
+
+        # UseAlways: поля, всегда читаемые. Две формы DSL сливаются:
+        #  attr.useAlways[] (короткие имена) + columns с useAlways:true → <Field>ИмяРеквизита.Поле</Field>.
+        ua_fields = []
+        for e in (attr.get('useAlways') or []):
+            fld = str(e)
+            # Префикс "ИмяРеквизита." добавляем к коротким именам. Поля дин-списка с маркером "~"
+            # (query-поля, ~13% корпуса) — префикс ставится ПОСЛЕ "~": ~Остановлен → ~Список.Остановлен.
+            # Полная форма (~Список.Остановлен / Список.Остановлен) — verbatim (forgiving ввод).
+            if fld.startswith('~'):
+                bare = fld[1:]
+                if not re.match(r'^' + re.escape(attr_name) + r'\.', bare):
+                    bare = f'{attr_name}.{bare}'
+                fld = f'~{bare}'
+            elif not re.match(r'^' + re.escape(attr_name) + r'\.', fld) and not re.match(r'^\d+/\d+', fld):
+                # UUID-ссылка (1/0:GUID) — НЕ префиксуем (платформа хранит её без "имя.")
+                fld = f'{attr_name}.{fld}'
+            if fld not in ua_fields:
+                ua_fields.append(fld)
+        for col in (attr.get('columns') or []):
+            if col.get('useAlways') is True:
+                fld = f'{attr_name}.{col["name"]}'
+                if fld not in ua_fields:
+                    ua_fields.append(fld)
+        if ua_fields:
+            lines.append(f'{inner}<UseAlways>')
+            for f in ua_fields:
+                lines.append(f'{inner}\t<Field>{f}</Field>')
+            lines.append(f'{inner}</UseAlways>')
+
+        emit_functional_options(lines, attr.get('functionalOptions'), inner)
+
+        # Columns: прямые <Column> + <AdditionalColumns table="X"> (доп. колонки табличных частей объекта).
+        # Прямые сначала, затем AdditionalColumns-группы. Для дин-списка (settings) прямые НЕ эмитим.
+        has_direct_cols = bool(attr.get('columns')) and len(attr['columns']) > 0 and not attr.get('settings')
+        has_add_cols = bool(attr.get('additionalColumns')) and len(attr['additionalColumns']) > 0
+        if has_direct_cols or has_add_cols:
+            lines.append(f'{inner}<Columns>')
+            if has_direct_cols:
+                seen_cols = set()  # колонки уникальны в пределах своего реквизита
+                for col in attr['columns']:
+                    _ensure_unique(str(col['name']), seen_cols, f"column of '{attr_name}'")
+                    emit_attr_column(lines, col, f'{inner}\t')
+            if has_add_cols:
+                for ac in attr['additionalColumns']:
+                    # Пустой список колонок задаётся ЯВНО (`"columns": []`) — это законная форма,
+                    # платформа так пишет таблицу, у которой доп. колонок нет. А вот отсутствие ключа
+                    # — недосказанность автора: «доп. колонки есть», а какие, не указано. PS-порт на
+                    # этом падал с «Не удается индексировать в массив NULL» (@($null).Count = 1).
+                    if ac.get('columns') is None:
+                        print(f"additionalColumns group for table '{ac['table']}': key 'columns' is missing "
+                              "— list the columns, or pass an empty array for a table without extra columns",
+                              file=sys.stderr)
+                        sys.exit(1)
+                    ac_cols = ac['columns']
+                    if not ac_cols:
+                        # Явно пустая группа → self-closing (как платформа)
+                        lines.append(f'{inner}\t<AdditionalColumns table="{ac["table"]}"/>')
+                        continue
+                    lines.append(f'{inner}\t<AdditionalColumns table="{ac["table"]}">')
+                    seen_ac_cols = set()  # уникальность в пределах группы AdditionalColumns
+                    for col in ac_cols:
+                        _ensure_unique(str(col['name']), seen_ac_cols, f"column of '{attr_name}'")
+                        emit_attr_column(lines, col, f'{inner}\t\t')
+                    lines.append(f'{inner}\t</AdditionalColumns>')
+            lines.append(f'{inner}</Columns>')
+
+        # Settings (динамический список)
+        if attr.get('settings'):
+            s = attr['settings']
+            lines.append(f'{inner}<Settings xsi:type="DynamicList">')
+            si = f'{inner}\t'
+            # Порядок платформы: AutoFillAvailableFields, ManualQuery, DynamicDataRead, QueryText, Field*, MainTable, ListSettings
+            # AutoFillAvailableFields — дефолт true; эмитим только при заданном ключе (отклонение).
+            if s.get('autoFillAvailableFields') is not None:
+                lines.append(f'{si}<AutoFillAvailableFields>{"true" if s["autoFillAvailableFields"] else "false"}</AutoFillAvailableFields>')
+            # Порядок платформы: ManualQuery, DynamicDataRead, QueryText, Field*, MainTable, ListSettings
+            has_query = bool(s.get('query') and str(s['query']).strip())
+            # Явный ключ manualQuery (в т.ч. False) ПОБЕЖДАЕТ эвристику has_query (платформа изредка
+            # хранит QueryText при ManualQuery=false — декомпилятор фиксирует отклонение).
+            if s.get('manualQuery') is not None:
+                mq = 'true' if s['manualQuery'] else 'false'
+            else:
+                mq = 'true' if has_query else 'false'
+            lines.append(f'{si}<ManualQuery>{mq}</ManualQuery>')
+            # DynamicDataRead: дефолт true; false только при явном отключении
+            ddr = 'false' if s.get('dynamicDataRead') is False else 'true'
+            lines.append(f'{si}<DynamicDataRead>{ddr}</DynamicDataRead>')
+            if has_query:
+                qtext = resolve_text_from_file(str(s['query']), QUERY_BASE_DIR)
+                lines.append(f'{si}<QueryText>{esc_xml_text(qtext)}</QueryText>')
+            # Явные поля набора (редко): override title/dataPath
+            if s.get('fields'):
+                for fld in s['fields']:
+                    # Тип поля набора: DataSetFieldField (дефолт) vs DataSetFieldNestedDataSet
+                    # (поле-вложенный набор = реквизит табличной части; маркер nested).
+                    # folder = папка-группировка полей (DataSetFieldFolder, без <field>); nested = вложенный набор.
+                    is_folder = bool(fld.get('folder'))
+                    ftype = 'DataSetFieldNestedDataSet' if fld.get('nested') else ('DataSetFieldFolder' if is_folder else 'DataSetFieldField')
+                    lines.append(f'{si}<Field xsi:type="dcssch:{ftype}">')
+                    # dataPath: явный (включая "" → self-closing) побеждает; иначе fallback на field.
+                    if fld.get('dataPath') is not None:
+                        dp = str(fld.get('dataPath'))
+                    elif is_folder:
+                        dp = ''
+                    else:
+                        dp = str(fld.get('field', ''))
+                    if dp == '':
+                        lines.append(f'{si}\t<dcssch:dataPath/>')
+                    else:
+                        lines.append(f'{si}\t<dcssch:dataPath>{esc_xml_text(dp)}</dcssch:dataPath>')
+                    if not is_folder:
+                        lines.append(f'{si}\t<dcssch:field>{esc_xml_text(str(fld.get("field", "")))}</dcssch:field>')
+                    if fld.get('title'):
+                        lines.append(f'{si}\t<dcssch:title xsi:type="v8:LocalStringType">')
+                        emit_ml_items(lines, f'{si}\t\t', fld['title'])
+                        lines.append(f'{si}\t</dcssch:title>')
+                    # Ограничения использования поля — после title, перед presentationExpression
+                    emit_restrict_block(lines, 'useRestriction', fld.get('useRestriction'), f'{si}\t')
+                    emit_restrict_block(lines, 'attributeUseRestriction', fld.get('attributeUseRestriction'), f'{si}\t')
+                    # presentationExpression поля — перед valueType (порядок исходника)
+                    if fld.get('presentationExpression'):
+                        lines.append(f'{si}\t<dcssch:presentationExpression>{esc_xml_text(str(fld["presentationExpression"]))}</dcssch:presentationExpression>')
+                    # valueType поля набора (тип значения; вычисляемые/кастомные поля)
+                    if fld.get('valueType'):
+                        emit_dl_value_type(lines, fld['valueType'], f'{si}\t')
+                    # appearance поля (формат/оформление) — после valueType (порядок исходника)
+                    if fld.get('appearance'):
+                        lines.append(f'{si}\t<dcssch:appearance>')
+                        for ak, av in fld['appearance'].items():
+                            emit_appearance_value(lines, ak, av, f'{si}\t\t')
+                        lines.append(f'{si}\t</dcssch:appearance>')
+                    # inputParameters поля (связь по параметрам выбора) — в конце
+                    if fld.get('inputParameters'):
+                        emit_dl_input_parameters(lines, fld['inputParameters'], f'{si}\t')
+                    lines.append(f'{si}</Field>')
+            # Вычисляемые поля DataSet (<CalculatedField>) — после Field*, до Parameter*.
+            emit_calc_fields(lines, s.get('calculatedFields'), si)
+            # Schema-параметры дин-списка (DataCompositionSchemaParameter) — после Field*, до MainTable.
+            emit_dl_parameters(lines, s.get('parameters'), si)
+            # Ключ набора (query-based список без MainTable): KeyType (RowNumber/FieldValue/RowKey)
+            # + KeyField* — после Parameter*, до MainTable. Захват/эмит факт. значений.
+            if s.get('keyType'):
+                lines.append(f'{si}<KeyType>{esc_xml_text(str(s["keyType"]))}</KeyType>')
+            if s.get('keyFields'):
+                for kf in s['keyFields']:
+                    lines.append(f'{si}<KeyField>{esc_xml_text(str(kf))}</KeyField>')
+            if s.get('mainTable'):
+                lines.append(f'{si}<MainTable>{normalize_meta_type_ref(str(s["mainTable"]))}</MainTable>')
+            # GetInvisibleFieldPresentations — после MainTable (дефолт true; эмитим только при заданном ключе = отклонении false).
+            if s.get('getInvisibleFieldPresentations') is not None:
+                lines.append(f'{si}<GetInvisibleFieldPresentations>{"true" if s["getInvisibleFieldPresentations"] else "false"}</GetInvisibleFieldPresentations>')
+            # AutoSaveUserSettings — после MainTable (дефолт true; эмитим только при заданном ключе = отклонении).
+            if s.get('autoSaveUserSettings') is not None:
+                lines.append(f'{si}<AutoSaveUserSettings>{"true" if s["autoSaveUserSettings"] else "false"}</AutoSaveUserSettings>')
+            # ListSettings: filter/order/conditionalAppearance (skd-грамматика) + каноничные блок-GUID.
+            # Нет items → контейнеры всё равно эмитятся (blockMeta) = каноничный пустой скелет платформы.
+            lsi = f'{si}\t'
+            lines.append(f'{si}<ListSettings>')
+            ls_open_idx = len(lines) - 1  # для self-closing, если внутри ничего не эмитнётся
+            ls_shape = s.get('listSettings')
+            if ls_shape is not None:
+                # Частичная/минимальная форма скелета — эмитим ТОЛЬКО указанные части с их блок-метой.
+                for tag, pv in ls_shape.items():
+                    # Значение дескриптора: строка-код "vu" ИЛИ объект {meta, presentation}
+                    # (контейнер несёт собственный userSettingPresentation — подпись настройки).
+                    if isinstance(pv, dict):
+                        meta = str(pv.get('meta', '')); bpres = pv.get('presentation')
+                    else:
+                        meta = str(pv); bpres = None
+                    bvm = 'Normal' if 'v' in meta else None
+                    if tag == 'filter':
+                        bus = CANON_FILTER_ID if 'u' in meta else None
+                        emit_filter(lines, s.get('filter'), lsi, block_view_mode=bvm, block_user_setting_id=bus, block_user_setting_presentation=bpres)
+                    elif tag == 'order':
+                        bus = CANON_ORDER_ID if 'u' in meta else None
+                        emit_order(lines, s.get('order'), lsi, block_view_mode=bvm, block_user_setting_id=bus, block_user_setting_presentation=bpres)
+                    elif tag == 'conditionalAppearance':
+                        bus = CANON_CA_ID if 'u' in meta else None
+                        emit_conditional_appearance(lines, s.get('conditionalAppearance'), lsi, block_view_mode=bvm, block_user_setting_id=bus, block_user_setting_presentation=bpres)
+                    elif tag == 'itemsViewMode':
+                        lines.append(f'{lsi}<dcsset:itemsViewMode>Normal</dcsset:itemsViewMode>')
+                    elif tag == 'itemsUserSettingID':
+                        lines.append(f'{lsi}<dcsset:itemsUserSettingID>{CANON_ITEMS_ID}</dcsset:itemsUserSettingID>')
+                    elif tag == 'itemsUserSettingPresentation':
+                        emit_us_presentation(lines, lsi, 'dcsset:itemsUserSettingPresentation', pv)
+                    elif tag == 'dataParameters':
+                        emit_data_parameters(lines, s.get('dataParameters'), lsi)
+                    elif tag == 'structure':
+                        emit_list_grouping(lines, get_list_grouping_value(s), lsi)
+            else:
+                # Полный каноничный скелет (умолчание, ~93% форм) — без изменений.
+                emit_filter(lines, s.get('filter'), lsi, block_view_mode='Normal', block_user_setting_id=CANON_FILTER_ID)
+                # dataParameters — после filter, до order (XSD-порядок ListSettings)
+                if 'dataParameters' in s:
+                    emit_data_parameters(lines, s.get('dataParameters'), lsi)
+                emit_order(lines, s.get('order'), lsi, block_view_mode='Normal', block_user_setting_id=CANON_ORDER_ID)
+                emit_conditional_appearance(lines, s.get('conditionalAppearance'), lsi, block_view_mode='Normal', block_user_setting_id=CANON_CA_ID)
+                # Группировка строк списка (авторинг без round-trip дескриптора) — после CA, до itemsViewMode
+                emit_list_grouping(lines, get_list_grouping_value(s), lsi)
+                lines.append(f'{lsi}<dcsset:itemsViewMode>Normal</dcsset:itemsViewMode>')
+                lines.append(f'{lsi}<dcsset:itemsUserSettingID>{CANON_ITEMS_ID}</dcsset:itemsUserSettingID>')
+            if len(lines) - 1 == ls_open_idx:
+                # Пустой дескриптор listSettings:{} (оригинал = <ListSettings/>) → зеркалим self-closing.
+                lines[ls_open_idx] = f'{si}<ListSettings/>'
+            else:
+                lines.append(f'{si}</ListSettings>')
+            lines.append(f'{inner}</Settings>')
+
+        lines.append(f'{indent}\t</Attribute>')
+    # Условное оформление формы — последний child <Attributes> (та же DCS-грамматика, что settings CA)
+    emit_conditional_appearance(lines, conditional_appearance, f'{indent}\t', wrap_tag='ConditionalAppearance')
+    lines.append(f'{indent}</Attributes>')
+
+
+# --- Parameter emitter ---
+
+
+def emit_parameters(lines, params, indent):
+    if not params or len(params) == 0:
+        return
+
+    lines.append(f'{indent}<Parameters>')
+    seen_params = set()
+    for param in params:
+        _ensure_unique(str(param['name']), seen_params, 'parameter')
+        lines.append(f'{indent}\t<Parameter name="{param["name"]}">')
+        inner = f'{indent}\t\t'
+
+        emit_type(lines, str(param.get('type', '')), inner)
+
+        if param.get('key') is True:
+            lines.append(f'{inner}<KeyParameter>true</KeyParameter>')
+
+        lines.append(f'{indent}\t</Parameter>')
+    lines.append(f'{indent}</Parameters>')
+
+
+# --- Command emitter ---
+
+
+def emit_commands(lines, cmds, indent):
+    if not cmds or len(cmds) == 0:
+        return
+
+    lines.append(f'{indent}<Commands>')
+    seen_cmds = set()
+    for cmd in cmds:
+        cmd_id = new_id()
+        _ensure_unique(str(cmd['name']), seen_cmds, 'command')
+        lines.append(f'{indent}\t<Command name="{cmd["name"]}" id="{cmd_id}">')
+        inner = f'{indent}\t\t'
+
+        # Заголовок команды (зеркало emit_title): ключ есть+непустой → эмитим; ключ есть+"" → суппресс
+        # (в оригинале <Title> нет — не додумывать); ключ отсутствует → авто-вывод из имени.
+        if 'title' in cmd:
+            if cmd['title']:
+                emit_mltext(lines, inner, 'Title', cmd['title'])
+        else:
+            cmd_title = title_from_name(str(cmd['name']))
+            if cmd_title:
+                emit_mltext(lines, inner, 'Title', cmd_title)
+
+        if cmd.get('tooltip'):
+            emit_mltext(lines, inner, 'ToolTip', cmd['tooltip'])
+
+        # Доступность команды по ролям (после ToolTip, до Action)
+        if cmd.get('use') is not None:
+            emit_xr_flag(lines, 'Use', cmd.get('use'), inner)
+
+        # Обработчик; в расширении — с видом вызова (callType), или несколько: actions [{handler, callType}]
+        if cmd.get('actions'):
+            acts = cmd['actions'] if isinstance(cmd['actions'], list) else [cmd['actions']]
+            for act in acts:
+                ct = normalize_call_type(act.get('callType'), str(cmd.get('name', '')), 'Action')
+                ct_attr = f' callType="{ct}"' if ct else ''
+                lines.append(f'{inner}<Action{ct_attr}>{act.get("handler") if act.get("handler") is not None else ""}</Action>')
+        elif cmd.get('action'):
+            ct = normalize_call_type(cmd.get('callType'), str(cmd.get('name', '')), 'Action')
+            ct_attr = f' callType="{ct}"' if ct else ''
+            lines.append(f'{inner}<Action{ct_attr}>{cmd["action"]}</Action>')
+
+        if cmd.get('modifiesSavedData') is True:
+            lines.append(f'{inner}<ModifiesSavedData>true</ModifiesSavedData>')
+
+        emit_functional_options(lines, cmd.get('functionalOptions'), inner)
+
+        if cmd.get('currentRowUse'):
+            lines.append(f'{inner}<CurrentRowUse>{cmd["currentRowUse"]}</CurrentRowUse>')
+
+        # Используемая таблица — имя элемента-таблицы (xsi:type обязателен).
+        # Forgiving-ключи: table / associatedTableElementId (XML-тег) / ИспользуемаяТаблица (рус., регистр-незав.)
+        _cmd_norm = {k.replace(' ', '').lower(): v for k, v in cmd.items()}
+        cmd_table = (_cmd_norm.get('table') or _cmd_norm.get('associatedtableelementid')
+                     or _cmd_norm.get('используемаятаблица'))
+        if cmd_table:
+            lines.append(f'{inner}<AssociatedTableElementId xsi:type="xs:string">{esc_xml_text(str(cmd_table))}</AssociatedTableElementId>')
+
+        if cmd.get('shortcut'):
+            lines.append(f'{inner}<Shortcut>{cmd["shortcut"]}</Shortcut>')
+
+        emit_command_picture(lines, cmd.get('picture'), cmd.get('loadTransparent'), inner)
+
+        if cmd.get('representation'):
+            lines.append(f'{inner}<Representation>{cmd["representation"]}</Representation>')
+
+        lines.append(f'{indent}\t</Command>')
+    lines.append(f'{indent}</Commands>')
+
+
+# Командный интерфейс формы (<CommandInterface>): панели CommandBar + NavigationPanel.
+# Элемент: строка (голый command, Type=Auto) или dict. Порядок тегов:
+# Command, Type(деф. Auto), Attribute, CommandGroup, Index, DefaultVisible, Visible(xr-flag).
+
+
+def _resolve_command_group_key(key, panel_tag):
+    """Ключ-группа древовидной формы → CommandGroup (зависит от панели); иначе verbatim."""
+    k = re.sub(r'\s', '', str(key)).lower()
+    if panel_tag == 'NavigationPanel':
+        m = {'important': 'FormNavigationPanelImportant', 'важное': 'FormNavigationPanelImportant',
+             'goto': 'FormNavigationPanelGoTo', 'перейти': 'FormNavigationPanelGoTo',
+             'seealso': 'FormNavigationPanelSeeAlso', 'смтакже': 'FormNavigationPanelSeeAlso'}
+    else:
+        m = {'important': 'FormCommandBarImportant', 'важное': 'FormCommandBarImportant',
+             'createbasedon': 'FormCommandBarCreateBasedOn', 'создатьнаосновании': 'FormCommandBarCreateBasedOn'}
+    return m.get(k, key)
+
+
+def emit_command_interface(lines, ci, indent):
+    if not ci:
+        return
+    inner = f'{indent}\t'
+    panels = [
+        # Порядок панелей — как в выгрузке: панель навигации раньше командной (607 из 607 форм корпуса)
+        ('NavigationPanel', ('navigationPanel', 'панельНавигации', 'ПанельНавигации')),
+        ('CommandBar', ('commandBar', 'команднаяПанель', 'КоманднаяПанель')),
+    ]
+    present = []
+    for tag, syns in panels:
+        items = None
+        for syn in syns:
+            if isinstance(ci, dict) and syn in ci:
+                items = ci[syn]
+                break
+        if items is not None:
+            present.append((tag, items))
+    if not present:
+        return
+    lines.append(f'{indent}<CommandInterface>')
+    for tag, items in present:
+        lines.append(f'{inner}<{tag}>')
+        # Нормализация: плоский список пар (элемент, group-из-дерева). dict → древовидная форма.
+        flat = []
+        if isinstance(items, dict):
+            for gkey, gitems in items.items():
+                grp_tree = _resolve_command_group_key(gkey, tag)
+                for it in gitems:
+                    flat.append((it, grp_tree))
+        else:
+            for it in items:
+                flat.append((it, None))
+        for item, tree_group in flat:
+            if isinstance(item, str):
+                cmd, typ, attr, grp, idx, dv, vis = item, 'Auto', None, None, None, None, None
+            else:
+                cmd = get_el_prop(item, ('command', 'команда'))
+                typ = get_el_prop(item, ('type', 'тип')) or 'Auto'
+                attr = get_el_prop(item, ('attribute', 'реквизит'))
+                grp = get_el_prop(item, ('group', 'группа', 'группаКоманд'))
+                idx = get_el_prop(item, ('index', 'индекс'))
+                dv = get_el_prop(item, ('defaultVisible', 'видимость', 'видимостьПоУмолчанию'))
+                vis = get_el_prop(item, ('visible', 'видимостьПоРолям', 'настройкаВидимости'))
+            # group из дерева побеждает (если задан и непустой); явный group элемента — фолбэк
+            if tree_group:
+                grp = tree_group
+            lines.append(f'{inner}\t<Item>')
+            lines.append(f'{inner}\t\t<Command>{esc_xml_text(str(cmd))}</Command>')
+            lines.append(f'{inner}\t\t<Type>{typ}</Type>')
+            if attr:
+                lines.append(f'{inner}\t\t<Attribute>{esc_xml_text(str(attr))}</Attribute>')
+            if grp:
+                lines.append(f'{inner}\t\t<CommandGroup>{esc_xml_text(str(grp))}</CommandGroup>')
+            if idx is not None:
+                lines.append(f'{inner}\t\t<Index>{idx}</Index>')
+            if dv is not None:
+                lines.append(f'{inner}\t\t<DefaultVisible>{"true" if dv else "false"}</DefaultVisible>')
+            if vis is not None:
+                emit_xr_flag(lines, 'Visible', vis, f'{inner}\t\t')
+            lines.append(f'{inner}\t</Item>')
+        lines.append(f'{inner}</{tag}>')
+    lines.append(f'{indent}</CommandInterface>')
+
+
+# --- Properties emitter ---
+
+
+def get_form_root_rank(tag):
+    order = FORM_ROOT_TAG_ORDER.split(' ')
+    if tag not in order:
+        return order.index('AutoCommandBar') - 0.5
+    return order.index(tag)
+
+
+# Незнакомое событие формы — предупреждение (опечатка в имени события не даёт ошибки платформы).
+
+
+def warn_unknown_form_event(name):
+    if name not in KNOWN_FORM_EVENTS:
+        print(f"[WARN] Unknown form event '{name}'. Known: {', '.join(KNOWN_FORM_EVENTS)}")
+
+
+def emit_properties(lines, props, indent):
+    if not props:
+        return
+
+    for p_name, p_value in props.items():
+        xml_name = PROP_MAP.get(p_name)
+        if not xml_name:
+            # Auto PascalCase
+            xml_name = p_name[0].upper() + p_name[1:]
+
+        # Пустая строка = суппресс-маркер (напр. autoTitle:"" — не эмитить и не додумывать)
+        if isinstance(p_value, str) and p_value == '':
+            continue
+        # Convert boolean to lowercase
+        if isinstance(p_value, bool):
+            val = 'true' if p_value else 'false'
+        else:
+            val = str(p_value)
+        lines.append(f'{indent}<{xml_name}>{esc_xml_text(val)}</{xml_name}>')
+
+
 def _normalize_synonyms(el):
     if not isinstance(el, dict):
         return
@@ -4637,6 +6677,9 @@ def find_module_refs(name, kind):
         elif kind == 'command':
             if re.search(rf"(?<!\w)(Команды|Commands)\s*\.\s*{n}(?!\w)", code, re.I):
                 hits.add(i + 1)
+        elif kind == 'parameter':
+            if re.search(rf"(?<!\w)(Параметры|Parameters)\s*\.\s*{n}(?!\w)", code, re.I):
+                hits.add(i + 1)
         else:
             # Реквизит формы: имя целым словом не после точки; после точки — только ЭтаФорма./ЭтотОбъект.
             for m in re.finditer(rf"(?<!\w){n}(?!\w)", code, re.I):
@@ -5026,6 +7069,249 @@ def remove_form_attribute(op, idx):
     removed_count += 1
 
 
+# ── 9e. Секции формы ──
+
+# Узел-секция корня формы; нет — создаётся на своём месте (порядок корня — по корпусу).
+def get_or_create_root_section(tag):
+    sec = root.find(f"f:{tag}", NS)
+    if sec is not None:
+        return sec
+    sec = etree.Element(f"{{{FORM_NS}}}{tag}")
+    insert_root_child(sec)
+    return sec
+
+
+def insert_root_child(node):
+    rank = get_form_root_rank(local_name(node))
+    ref = None
+    for c in root:
+        if not _is_el(c):
+            continue
+        if get_form_root_rank(local_name(c)) > rank:
+            ref = c
+            break
+    insert_node_at(root, node, ref, get_child_indent(root))
+
+
+# Вывод эмиттера form-compile во фрагмент: функция пишет в lines; результат — узлы верхнего уровня.
+def invoke_section_emit(emit):
+    global next_elem_id
+    save_id = next_elem_id
+    xml_lines.clear()
+    X(f"<_F {ALL_NS_DECL}>")
+    emit(xml_lines)
+    X("</_F>")
+    next_elem_id = save_id
+    return import_element_nodes(parse_fragment("\n".join(xml_lines)))
+
+
+# Свойство формы: значение — как в form-compile; null — убрать.
+def set_form_property(key, value):
+    global form_changed
+    if value is not None and not isinstance(value, (str, bool, int, float)):
+        fail(f"properties.{key}: значение — строка, число или true/false")
+    empty = value is None or (isinstance(value, str) and value == '')
+    node = invoke_section_emit(lambda lines: emit_properties(lines, {key: 'x' if empty else value}, '\t'))[0]
+    tag = local_name(node)
+    existing = root.find(f"f:{tag}", NS)
+    if empty:
+        if existing is not None:
+            remove_node_with_ws(existing)
+            form_log.append(f"  * {tag} убрано")
+            form_changed += 1
+        return
+    node.tail = None
+    if existing is not None:
+        node.tail = existing.tail
+        root.replace(existing, node)
+    else:
+        insert_root_child(node)
+    form_log.append(f"  * {tag}={node.text or ''}")
+    form_changed += 1
+
+
+# События формы: { Событие: обработчик | { handler, callType } | [ … ] } — как events элемента.
+def add_form_events_dsl(events):
+    global form_changed
+    if not isinstance(events, dict):
+        fail("events — объект { Событие: обработчик }")
+    sec = None
+    for ev_name, val in events.items():
+        warn_unknown_form_event(ev_name)
+        for v in (val if isinstance(val, list) else [val]):
+            if isinstance(v, dict):
+                h = '' if v.get('handler') is None else str(v.get('handler'))
+                ct = normalize_call_type(v.get('callType'), 'Form', ev_name)
+            else:
+                h = '' if v is None else str(v)
+                ct = ''
+            if not h:
+                fail(f"events: у события формы {ev_name} укажите имя обработчика")
+            ct_str = f"[{ct}]" if ct else ""
+            if sec is None:
+                sec = root.find("f:Events", NS)
+            if sec is not None:
+                dup = None
+                for e in sec.findall("f:Event", NS):
+                    if (e.get('name') or '').lower() == ev_name.lower() and (e.get('callType') or '').lower() == ct.lower():
+                        dup = e
+                        break
+                if dup is not None:
+                    if (dup.text or '').lower() == h.lower():
+                        form_log.append(f"  = событие {ev_name}{ct_str} -> {h} уже есть")
+                        continue
+                    fail(f"events: событие формы {ev_name}{ct_str} уже обрабатывает '{dup.text}' — второй обработчик не повесить")
+            if sec is None:
+                sec = get_or_create_root_section('Events')
+            ev = etree.Element(f"{{{FORM_NS}}}Event")
+            ev.set('name', ev_name)
+            if ct:
+                ev.set('callType', ct)
+            ev.text = h
+            insert_node_at(sec, ev, None, get_child_indent(sec))
+            form_log.append(f"  + событие {ev_name}{ct_str} -> {h}")
+            form_changed += 1
+
+
+# Исключённые команды: список имён — исключить; { remove: [...] } — вернуть.
+def update_excluded_commands(spec):
+    global form_changed
+    if isinstance(spec, dict):
+        assert_op_keys(spec, ['remove'], "excludedCommands")
+        sec = root.find("f:CommandSet", NS)
+        for n in _names_of(spec.get('remove')):
+            hit = None
+            if sec is not None:
+                for e in sec.findall("f:ExcludedCommand", NS):
+                    if (e.text or '').strip().lower() == n.lower():
+                        hit = e
+                        break
+            if hit is None:
+                fail(f"excludedCommands: команда '{n}' не исключена в форме")
+            remove_node_with_ws(hit)
+            form_log.append(f"  - исключение команды {n}")
+            form_changed += 1
+        if sec is not None and get_first_element_child(sec) is None:
+            remove_node_with_ws(sec)
+        return
+    sec = None
+    for n in _names_of(spec):
+        if sec is None:
+            sec = get_or_create_root_section('CommandSet')
+        if any((e.text or '').strip().lower() == n.lower() for e in sec.findall("f:ExcludedCommand", NS)):
+            form_log.append(f"  = команда {n} уже исключена")
+            continue
+        e = etree.Element(f"{{{FORM_NS}}}ExcludedCommand")
+        e.text = n
+        insert_node_at(sec, e, None, get_child_indent(sec))
+        form_log.append(f"  + исключена команда {n}")
+        form_changed += 1
+
+
+# Параметры формы: определения — как в form-compile; { remove: имя | [...] } — удалить.
+def update_form_parameters(lst):
+    global form_changed
+    adds = []
+    for i, p in enumerate(lst if isinstance(lst, list) else [lst]):
+        if isinstance(p, dict) and 'remove' in p:
+            assert_op_keys(p, ['remove'], f"parameters[{i}] remove")
+            for n in _names_of(p.get('remove')):
+                sec = root.find("f:Parameters", NS)
+                hit = None
+                if sec is not None:
+                    for e in sec.findall("f:Parameter", NS):
+                        if (e.get('name') or '').lower() == n.lower():
+                            hit = e
+                            break
+                if hit is None:
+                    fail(f"parameters[{i}] remove: параметр '{n}' не найден в форме")
+                refs = find_module_refs(n, 'parameter')
+                if refs:
+                    fail(f"parameters[{i}] remove: к параметру '{n}' обращается модуль формы — сначала убери обращения из кода:\n{format_module_refs(refs)}")
+                remove_node_with_ws(hit)
+                if get_first_element_child(sec) is None:
+                    remove_node_with_ws(sec)
+                form_log.append(f"  - параметр {n}")
+                form_changed += 1
+        else:
+            adds.append(p)
+    if not adds:
+        return
+    sec = get_or_create_root_section('Parameters')
+    seen = set()
+    for p in adds:
+        _assert_edit_unique(str(p.get('name')), seen, 'parameter name')
+        for e in sec.findall("f:Parameter", NS):
+            if (e.get('name') or '').lower() == str(p.get('name')).lower():
+                fail(f"parameters: параметр '{p.get('name')}' уже есть в форме")
+    wrap = invoke_section_emit(lambda lines: emit_parameters(lines, adds, '\t'))[0]
+    for node in list(wrap.findall("f:Parameter", NS)):
+        wrap.remove(node)
+        node.tail = None
+        insert_node_at(sec, node, None, get_child_indent(sec))
+        form_log.append(f"  + параметр {node.get('name')}")
+        form_changed += 1
+
+
+# Условное оформление: правила — как в form-compile; добавляются в конец оформления формы.
+def add_form_conditional_appearance(items):
+    global form_changed
+    items = items if isinstance(items, list) else [items]
+    if not items:
+        return
+    attrs = get_or_create_root_section('Attributes')
+    ca = attrs.find("f:ConditionalAppearance", NS)
+    wrap = invoke_section_emit(lambda lines: emit_conditional_appearance(lines, items, '\t\t', wrap_tag='ConditionalAppearance'))[0]
+    if ca is None:
+        wrap.tail = None
+        insert_node_at(attrs, wrap, None, get_child_indent(attrs))
+        n = len([c for c in wrap if _is_el(c)])
+    else:
+        n = 0
+        for r in [c for c in wrap if _is_el(c)]:
+            wrap.remove(r)
+            r.tail = None
+            insert_node_at(ca, r, None, get_child_indent(ca))
+            n += 1
+    form_log.append(f"  + условное оформление: правил {n}")
+    form_changed += n
+
+
+# Командный интерфейс: пункты панелей — как в form-compile; добавляются в конец своей панели.
+def add_form_command_interface(ci):
+    global form_changed
+    nodes = invoke_section_emit(lambda lines: emit_command_interface(lines, ci, '\t'))
+    if not nodes:
+        return
+    wrap = nodes[0]
+    sec = root.find("f:CommandInterface", NS)
+    if sec is None:
+        wrap.tail = None
+        insert_root_child(wrap)
+        for pn in [c for c in wrap if _is_el(c)]:
+            form_log.append(f"  + командный интерфейс, {local_name(pn)}: пунктов {len(pn.findall('f:Item', NS))}")
+            form_changed += 1
+        return
+    for pn in [c for c in wrap if _is_el(c)]:
+        target = sec.find(f"f:{local_name(pn)}", NS)
+        if target is None:
+            wrap.remove(pn)
+            pn.tail = None
+            # Как в выгрузке: панель навигации раньше командной панели
+            ref = sec.find("f:CommandBar", NS) if local_name(pn) == 'NavigationPanel' else None
+            insert_node_at(sec, pn, ref, get_child_indent(sec))
+            cnt = len(pn.findall('f:Item', NS))
+        else:
+            cnt = 0
+            for it in list(pn.findall("f:Item", NS)):
+                pn.remove(it)
+                it.tail = None
+                insert_node_at(target, it, None, get_child_indent(target))
+                cnt += 1
+        form_log.append(f"  + командный интерфейс, {local_name(pn)}: пунктов {cnt}")
+        form_changed += 1
+
+
 # ── 10. Elements: добавление, перенос, изменение, удаление — по порядку ──
 
 companion_count = 0
@@ -5114,20 +7400,8 @@ for _i, _op in enumerate(_attr_ops):
     else:
         attrs_list.append(_op)
 if attrs_list:
-    attrs_section = root.find("f:Attributes", NS)
-    if attrs_section is None:
-        # Секция реквизитов — после ChildItems, Events или AutoCommandBar (как в PS-мастере)
-        attrs_section = etree.Element(f"{{{FORM_NS}}}Attributes")
-        _after = root_ci
-        if _after is None:
-            _after = root.find("f:Events", NS)
-        if _after is None:
-            _after = root.find("f:AutoCommandBar", NS)
-        insert_node_at(root, attrs_section, get_next_element_sibling(_after) if _after is not None else None, "\t")
-
+    attrs_section = get_or_create_root_section('Attributes')
     attr_child_indent = get_child_indent(attrs_section)
-    if not attr_child_indent:
-        attr_child_indent = "\t\t"
 
     # Уникальность имён реквизитов: внутри JSON-определения (+ колонки в пределах реквизита) и
     # против уже существующих реквизитов формы.
@@ -5138,56 +7412,35 @@ if attrs_list:
             dsl_col_names = set()
             for col in attr["columns"]:
                 _assert_edit_unique(str(col["name"]), dsl_col_names, f"column name of '{attr['name']}'")
-        if attrs_section.find(f"f:Attribute[@name='{attr['name']}']", NS) is not None:
-            print(f"[ERROR] Attribute '{attr['name']}' already exists in form — attribute names must be unique")
-            sys.exit(1)
-
-    # Generate attribute fragments
-    xml_lines.clear()
-    X(f"<_F {ALL_NS_DECL}>")
-    for attr in attrs_list:
-        attr_id = new_attr_id()
-        attr_name = str(attr["name"])
-        X(f'{attr_child_indent}<Attribute name="{attr_name}" id="{attr_id}">')
-        inner = attr_child_indent + "\t"
-
-        if attr.get("title"):
-            emit_mltext(xml_lines, inner, "Title", str(attr["title"]))
-        if attr.get("type"):
-            emit_type(xml_lines, str(attr["type"]), inner)
-        else:
-            X(f"{inner}<Type/>")
+        for a in attrs_section.findall("f:Attribute", NS):
+            if (a.get('name') or '').lower() == str(attr['name']).lower():
+                print(f"[ERROR] Attribute '{attr['name']}' already exists in form — attribute names must be unique")
+                sys.exit(1)
         if attr.get("main") is True:
-            X(f"{inner}<MainAttribute>true</MainAttribute>")
-        if attr.get("savedData") is True:
-            X(f"{inner}<SavedData>true</SavedData>")
-        if attr.get("fillChecking"):
-            X(f"{inner}<FillChecking>{attr['fillChecking']}</FillChecking>")
+            for m in attrs_section.findall("f:Attribute/f:MainAttribute", NS):
+                if (m.text or '').strip() == 'true':
+                    fail(f"attributes: '{attr['name']}' — у формы уже есть основной реквизит '{m.getparent().get('name')}'")
 
-        columns = attr.get("columns")
-        if columns and len(columns) > 0:
-            X(f"{inner}<Columns>")
-            col_id = 1
-            for col in columns:
-                X(f'{inner}\t<Column name="{col["name"]}" id="{col_id}">')
-                if col.get("title"):
-                    emit_mltext(xml_lines, inner + "\t\t", "Title", str(col["title"]))
-                emit_type(xml_lines, str(col["type"]), inner + "\t\t")
-                X(f'{inner}\t</Column>')
-                col_id += 1
-            X(f"{inner}</Columns>")
-
-        X(f"{attr_child_indent}</Attribute>")
-        type_str = str(attr["type"]) if attr.get("type") else "(no type)"
-        added_attrs.append(f"  + {attr_name}: {type_str} (id={attr_id})")
-    X("</_F>")
-
-    frag_text = "\n".join(xml_lines)
-    frag_root = parse_fragment(frag_text)
-    imported_attrs = import_element_nodes(frag_root)
-
-    for node in imported_attrs:
-        insert_into_container(attrs_section, node, None, attr_child_indent)
+    # Реквизиты пишет эмиттер form-compile (все его ключи); id — из пулов формы
+    wrap = invoke_section_emit(lambda lines: emit_attributes(lines, attrs_list, '\t'))[0]
+    for node in list(wrap.findall("f:Attribute", NS)):
+        attr_id = new_attr_id()
+        node.set('id', str(attr_id))
+        col_id = 1
+        for col in node.iterfind(".//f:Column", NS):
+            col.set('id', str(col_id))
+            col_id += 1
+        wrap.remove(node)
+        node.tail = None
+        # Условное оформление — последнее в Attributes: реквизит встаёт перед ним
+        ca_node = attrs_section.find("f:ConditionalAppearance", NS)
+        if ca_node is not None:
+            insert_node_at(attrs_section, node, ca_node, attr_child_indent)
+        else:
+            insert_into_container(attrs_section, node, None, attr_child_indent)
+        t = node.find("f:Type/v8:Type", NS)
+        type_str = t.text if t is not None else "(no type)"
+        added_attrs.append(f"  + {node.get('name')}: {type_str} (id={attr_id})")
 
 # ── 12. Add commands ────────────────────────────────────────
 
@@ -5206,76 +7459,34 @@ for _i, _op in enumerate(_cmd_ops):
     else:
         cmds_list.append(_op)
 if cmds_list:
-    cmds_section = root.find("f:Commands", NS)
-    if cmds_section is None:
-        # Секция команд — после Attributes (порядок платформы: Attributes, Commands, Parameters)
-        cmds_section = etree.Element(f"{{{FORM_NS}}}Commands")
-        _after = root.find("f:Attributes", NS)
-        if _after is None:
-            _after = root_ci
-        if _after is None:
-            _after = root.find("f:Events", NS)
-        if _after is None:
-            _after = root.find("f:AutoCommandBar", NS)
-        insert_node_at(root, cmds_section, get_next_element_sibling(_after) if _after is not None else None, "\t")
-
+    cmds_section = get_or_create_root_section('Commands')
     cmd_child_indent = get_child_indent(cmds_section)
-    if not cmd_child_indent:
-        cmd_child_indent = "\t\t"
 
     # Уникальность имён команд: внутри JSON-определения и против существующих команд формы.
     dsl_cmd_names = set()
     for cmd in cmds_list:
         _assert_edit_unique(str(cmd["name"]), dsl_cmd_names, "command name")
-        if cmds_section.find(f"f:Command[@name='{cmd['name']}']", NS) is not None:
-            print(f"[ERROR] Command '{cmd['name']}' already exists in form — command names must be unique")
-            sys.exit(1)
+        for c in cmds_section.findall("f:Command", NS):
+            if (c.get('name') or '').lower() == str(cmd['name']).lower():
+                print(f"[ERROR] Command '{cmd['name']}' already exists in form — command names must be unique")
+                sys.exit(1)
 
-    xml_lines.clear()
-    X(f"<_F {ALL_NS_DECL}>")
-    for cmd in cmds_list:
+    # Команды пишет эмиттер form-compile (все его ключи); id — из пула формы
+    wrap = invoke_section_emit(lambda lines: emit_commands(lines, cmds_list, '\t'))[0]
+    for node in list(wrap.findall("f:Command", NS)):
         cmd_id = new_cmd_id()
-        cmd_name = str(cmd["name"])
-        X(f'{cmd_child_indent}<Command name="{cmd_name}" id="{cmd_id}">')
-        inner = cmd_child_indent + "\t"
-
-        if cmd.get("title"):
-            emit_mltext(xml_lines, inner, "Title", str(cmd["title"]))
-
-        if cmd.get("actions"):
-            for act in cmd["actions"]:
-                act_handler = str(act["handler"])
-                call_type_attr = f' callType="{act["callType"]}"' if act.get("callType") else ""
-                X(f"{inner}<Action{call_type_attr}>{act_handler}</Action>")
-        elif cmd.get("action"):
-            call_type_attr = f' callType="{cmd["callType"]}"' if cmd.get("callType") else ""
-            X(f"{inner}<Action{call_type_attr}>{cmd['action']}</Action>")
-
-        if cmd.get("shortcut"):
-            X(f"{inner}<Shortcut>{cmd['shortcut']}</Shortcut>")
-        if cmd.get("picture"):
-            X(f"{inner}<Picture>")
-            X(f"{inner}\t<xr:Ref>{cmd['picture']}</xr:Ref>")
-            X(f"{inner}\t<xr:LoadTransparent>true</xr:LoadTransparent>")
-            X(f"{inner}</Picture>")
-        if cmd.get("representation"):
-            X(f"{inner}<Representation>{cmd['representation']}</Representation>")
-
-        X(f"{cmd_child_indent}</Command>")
-        action_str = ""
-        if cmd.get("action"):
-            action_str = f" -> {cmd['action']}"
-        elif cmd.get("actions"):
-            action_str = f" -> {len(cmd['actions'])} action(s)"
-        added_cmds.append(f"  + {cmd_name}{action_str} (id={cmd_id})")
-    X("</_F>")
-
-    frag_text = "\n".join(xml_lines)
-    frag_root = parse_fragment(frag_text)
-    imported_cmds = import_element_nodes(frag_root)
-
-    for node in imported_cmds:
+        node.set('id', str(cmd_id))
+        wrap.remove(node)
+        node.tail = None
         insert_into_container(cmds_section, node, None, cmd_child_indent)
+        acts = node.findall("f:Action", NS)
+        if len(acts) == 1:
+            action_str = f" -> {acts[0].text or ''}"
+        elif len(acts) > 1:
+            action_str = f" -> {len(acts)} action(s)"
+        else:
+            action_str = ""
+        added_cmds.append(f"  + {node.get('name')}{action_str} (id={cmd_id})")
 
 # ── 12b. Add form-level events ──────────────────────────────
 
@@ -5362,6 +7573,73 @@ if elem_events_list:
         ct_str = f"[{ee['callType']}]" if ee.get("callType") else ""
         added_elem_events.append(f"  + {target_name}.{ee_name}{ct_str} -> {ee_handler}")
 
+# ── 12d. Форма: заголовок, свойства, события, исключённые команды, параметры, оформление, интерфейс ──
+
+form_log = []
+form_changed = 0
+
+# Заголовок формы. Новый заголовок без AutoTitle в форме — AutoTitle=false (как в form-compile:
+# иначе платформа допишет к нему синоним объекта).
+_props = defn.get('properties')
+_form_title_val, _has_form_title = None, False
+_props_title = isinstance(_props, dict) and 'title' in _props
+if 'title' in defn:
+    if _props_title:
+        fail("заголовок формы задан дважды — в title и в properties.title")
+    _form_title_val, _has_form_title = defn.get('title'), True
+elif _props_title:
+    _form_title_val, _has_form_title = _props.get('title'), True
+_auto_given = isinstance(_props, dict) and 'autoTitle' in _props
+if _has_form_title:
+    _t_node = root.find("f:Title", NS)
+    if _form_title_val is None or (isinstance(_form_title_val, str) and _form_title_val == ''):
+        if _t_node is not None:
+            remove_node_with_ws(_t_node)
+            form_log.append("  * заголовок убран")
+            form_changed += 1
+        # Без своего заголовка форма берёт синоним объекта — AutoTitle=false оставил бы её без заголовка
+        _at = root.find("f:AutoTitle", NS)
+        if not _auto_given and _at is not None and (_at.text or '').strip() == 'false':
+            set_form_property('autoTitle', None)
+    else:
+        if _t_node is None:
+            insert_root_child(etree.Element(f"{{{FORM_NS}}}Title"))
+        set_ml_tag(root, 'Title', _form_title_val)
+        _shown = _form_title_val if isinstance(_form_title_val, str) else " ".join(f"{k}:{v}" for k, v in _form_title_val.items())
+        form_log.append(f"  * заголовок \"{_shown}\"")
+        form_changed += 1
+        if not _auto_given and root.find("f:AutoTitle", NS) is None:
+            set_form_property('autoTitle', False)
+
+if _props:
+    if not isinstance(_props, dict):
+        fail("properties — объект { свойство: значение }")
+    for _k, _v in _props.items():
+        if _k.lower() == 'title':
+            continue
+        set_form_property(_k, _v)
+
+if 'events' in defn:
+    add_form_events_dsl(defn.get('events'))
+
+if 'excludedCommands' in defn:
+    update_excluded_commands(defn.get('excludedCommands'))
+
+if 'parameters' in defn:
+    update_form_parameters(defn.get('parameters'))
+
+if 'conditionalAppearance' in defn:
+    add_form_conditional_appearance(defn.get('conditionalAppearance'))
+
+if 'commandInterface' in defn:
+    add_form_command_interface(defn.get('commandInterface'))
+
+# Вид вызова обработчика (callType) бывает только в форме расширения
+if not is_extension:
+    _ct_node = next((n for n in root.iter() if isinstance(n.tag, str) and n.get('callType') is not None), None)
+    if _ct_node is not None:
+        fail(f"callType '{_ct_node.get('callType')}' у '{_ct_node.text or ''}' — вид вызова обработчика задаётся только в форме расширения")
+
 # ── 13. Save ────────────────────────────────────────────────
 
 # Round-trip: определить стиль исходного файла (на диске он ещё не перезаписан).
@@ -5436,6 +7714,12 @@ if left_handlers:
         print(f"  {h}")
     print()
 
+if form_log:
+    print("Form:")
+    for line in form_log:
+        print(line)
+    print()
+
 if added_attrs:
     print("Added attributes:")
     for line in added_attrs:
@@ -5467,5 +7751,9 @@ if added_attrs:
     total_parts.append(f"{len(added_attrs)} attribute(s)")
 if added_cmds:
     total_parts.append(f"{len(added_cmds)} command(s)")
+if form_changed > 0:
+    total_parts.append(f"{form_changed} form change(s)")
+if not total_parts:
+    total_parts.append("no changes")
 print(f"Total: {', '.join(total_parts)}")
 print("Run /form-validate to verify.")

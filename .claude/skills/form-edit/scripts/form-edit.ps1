@@ -1,4 +1,4 @@
-﻿# form-edit v1.23 — Edit 1C managed form elements
+﻿# form-edit v1.24 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -394,7 +394,34 @@ function Assert-EditUnique {
 
 # === 5b. Эмиттер элементов — общий с form-compile (эталон там; копии держит check-inline-drift) ===
 
+$script:queryBaseDir = if ($JsonPath) { [System.IO.Path]::GetDirectoryName((Resolve-Path $JsonPath).Path) } else { (Get-Location).Path }
+
 $script:fmtMarkupRe = '</>|<\s*(?:link|b|i|u|s|color|colorStyle|bgColor|bgColorStyle|font|fontSize|fontStyle|img)(?:\s|>)'
+
+$script:CANON_FILTER_ID = 'dfcece9d-5077-440b-b6b3-45a5cb4538eb'
+
+$script:CANON_ORDER_ID  = '88619765-ccb3-46c6-ac52-38e9c992ebd4'
+
+$script:CANON_CA_ID     = 'b75fecce-942b-4aed-abc9-e6a02e460fb3'
+
+$script:CANON_ITEMS_ID  = '911b6018-f537-43e8-a417-da56b22f9aec'
+
+$script:comparisonTypes = @{
+	"=" = "Equal"; "<>" = "NotEqual"
+	">" = "Greater"; ">=" = "GreaterOrEqual"
+	"<" = "Less"; "<=" = "LessOrEqual"
+	"in" = "InList"; "notIn" = "NotInList"
+	"inHierarchy" = "InHierarchy"; "inListByHierarchy" = "InListByHierarchy"
+	"contains" = "Contains"; "notContains" = "NotContains"
+	"beginsWith" = "BeginsWith"; "notBeginsWith" = "NotBeginsWith"
+	"like" = "Like"; "notLike" = "NotLike"
+	"подобно" = "Like"; "неподобно" = "NotLike"   # рус. синоним (хэш регистронезависим: ПОДОБНО=подобно)
+	"filled" = "Filled"; "notFilled" = "NotFilled"
+}
+
+$script:calcRestrictMap = @{ 'noField'='field'; 'noFilter'='condition'; 'noCondition'='condition'; 'noGroup'='group'; 'noOrder'='order' }
+
+$script:dcsCommonNs = 'http://v8.1c.ru/8.1/data-composition-system/common'
 
 $script:knownInvalidTypes = @{
 	"FormDataStructure"     = "Runtime type. Use object type without cfg: prefix (e.g. CatalogObject.Контрагенты, DocumentObject.Приход)"
@@ -453,6 +480,8 @@ $script:knownEvents = @{
 	"popup"     = @()
 	"group"     = @()
 }
+
+$script:knownFormEvents = @("OnCreateAtServer","OnOpen","BeforeClose","OnClose","NotificationProcessing","ChoiceProcessing","OnReadAtServer","AfterWriteAtServer","BeforeWriteAtServer","AfterWrite","BeforeWrite","OnWriteAtServer","FillCheckProcessingAtServer","OnLoadDataFromSettingsAtServer","BeforeLoadDataFromSettingsAtServer","OnSaveDataInSettingsAtServer","ExternalEvent","OnReopen","Opening")
 
 $script:companionStructKeys = @(
 	'width','autoMaxWidth','maxWidth','height','autoMaxHeight','maxHeight','verticalAlign','titleHeight',
@@ -690,6 +719,16 @@ $script:genericScalars = @(
 	@{ Tag='BehaviorOnHorizontalCompression'; Key='behaviorOnHorizontalCompression'; Kind='value' }
 )
 
+$script:PLANNER_NS = 'http://v8.1c.ru/8.3/data/planner'
+
+$script:CHART_NS   = 'http://v8.1c.ru/8.2/data/chart'
+
+$script:CHART_ML_FIELDS = @{ 'title'=1;'lbFormat'=1;'lbpFormat'=1;'vsFormat'=1;'dtFormat'=1;'dataSourceDescription'=1;'labelFormat'=1;'text'=1 }
+
+$script:CHART_ATTR_FIELDS = @{ 'gaugeQualityBands'=1 }
+
+$script:CHART_FONT_KEYS = @('ref','faceName','height','bold','italic','underline','strikeout','kind','scale')
+
 $script:refRootSynonyms = @{
 	"Перечисление"            = "Enum"
 	"Справочник"              = "Catalog"
@@ -711,6 +750,29 @@ $script:refRootSynonyms = @{
 }
 
 $script:enumValueSynonyms = @("EnumValue","ЗначениеПеречисления")
+
+$script:formRootTagOrder = 'Title Width Height WindowOpeningMode EnterKeyBehavior AutoSaveDataInSettings SaveDataInSettings SaveWindowSettings SettingsStorage AutoTitle AutoURL Group HorizontalAlign ChildItemsWidth VerticalAlign HorizontalSpacing VerticalSpacing AutoFillCheck Customizable Enabled ChildrenAlign CommandBarLocation VerticalScroll ScalingMode ConversationsRepresentation MobileDeviceCommandBarContent CommandSet AutoTime UsePostingMode RepostOnWrite ReportResult DetailsData ReportFormType ShowTitle ShowCloseButton GroupList CollapseItemsByImportanceVariant UseForFoldersAndItems VariantAppearance AutoShowState CustomSettingsFolder ReportResultViewMode ViewModeApplicationOnSetReportResult Scale AutoCommandBar Events ChildItems Attributes Commands Parameters CommandInterface BaseForm'
+
+function Resolve-TextFromFile {
+	param([string]$val, [string]$baseDir)
+	if (-not $val.StartsWith("@")) { return $val }
+	$filePath = $val.Substring(1)
+	if ([System.IO.Path]::IsPathRooted($filePath)) {
+		$candidates = @($filePath)
+	} else {
+		$candidates = @(
+			(Join-Path $baseDir $filePath),
+			(Join-Path (Get-Location).Path $filePath)
+		)
+	}
+	foreach ($c in $candidates) {
+		if (Test-Path $c) {
+			return (Get-Content -Raw -Encoding UTF8 $c).TrimEnd()
+		}
+	}
+	Write-Error "Файл значения не найден: $filePath (искали: $($candidates -join ', '))"
+	exit 1
+}
 
 function Assert-UniqueName {
 	param([string]$name, [hashtable]$seen, [string]$kind)
@@ -758,6 +820,16 @@ function Emit-MLText {
 	X "$indent</$tag>"
 }
 
+function Emit-USPresentation {
+	param($val, [string]$tag, [string]$indent)
+	if ($null -eq $val) { return }
+	if ($val -is [string]) {
+		X "$indent<$tag xsi:type=`"xs:string`">$(Esc-XmlText $val)</$tag>"
+	} else {
+		Emit-MLText -tag $tag -text $val -indent $indent -xsiType "v8:LocalStringType"
+	}
+}
+
 function Test-HasRealMarkup {
 	param($text)
 	if ($null -eq $text) { return $false }
@@ -779,6 +851,534 @@ function Resolve-MLFormatted {
 		return @{ text = $t; formatted = [bool]$f }
 	}
 	return @{ text = $val; formatted = (Test-HasRealMarkup $val) }
+}
+
+function New-Guid-String { return [System.Guid]::NewGuid().ToString() }
+
+function Parse-FilterShorthand {
+	param([string]$s)
+	$result = @{ field = ""; op = "Equal"; value = $null; use = $true; userSettingID = $null; viewMode = $null; presentation = $null }
+	if ($s -match '@user') { $result.userSettingID = "auto"; $s = $s -replace '\s*@user', '' }
+	if ($s -match '@off') { $result.use = $false; $s = $s -replace '\s*@off', '' }
+	if ($s -match '@quickAccess') { $result.viewMode = "QuickAccess"; $s = $s -replace '\s*@quickAccess', '' }
+	if ($s -match '@normal') { $result.viewMode = "Normal"; $s = $s -replace '\s*@normal', '' }
+	if ($s -match '@inaccessible') { $result.viewMode = "Inaccessible"; $s = $s -replace '\s*@inaccessible', '' }
+	$s = $s.Trim()
+	$opPatterns = @('<>', '>=', '<=', '=', '>', '<',
+		'notIn\b', 'in\b', 'inHierarchy\b', 'inListByHierarchy\b',
+		'notContains\b', 'contains\b', 'notBeginsWith\b', 'beginsWith\b',
+		'notLike\b', 'like\b', 'неподобно\b', 'подобно\b',
+		'notFilled\b', 'filled\b')
+	$opJoined = $opPatterns -join '|'
+	if ($s -match "^(.+?)\s+($opJoined)\s*(.*)?$") {
+		$result.field = $Matches[1].Trim()
+		$result.op = $Matches[2].Trim()
+		$valPart = if ($Matches[3]) { $Matches[3].Trim() } else { "" }
+		if ($valPart -and $valPart -ne "_") {
+			if ($valPart -eq "true" -or $valPart -eq "false") { $result.value = [bool]($valPart -eq "true"); $result["valueType"] = "xs:boolean" }
+			elseif ($valPart -match '^\d{4}-\d{2}-\d{2}T') { $result.value = $valPart }  # дата без valueType → Emit-FilterItem выведет StandardBeginningDate Custom (дефолт даты в фильтре)
+			elseif ($valPart -match '^\d+(\.\d+)?$') { $result.value = $valPart; $result["valueType"] = "xs:decimal" }
+			elseif ($valPart -match '^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета)\.') { $result.value = $valPart; $result["valueType"] = "dcscor:DesignTimeValue" }
+			else { $result.value = $valPart; $result["valueType"] = "xs:string" }
+		}
+	} else { $result.field = $s }
+	return $result
+}
+
+function Get-ValueTypeNsAttr {
+	param([string]$valueType, [string]$value)
+	if ($valueType -eq 'v8:Type' -and "$value" -match '^([A-Za-z]\w*):') {
+		$pref = $Matches[1]
+		if ($pref -notin @('xs','cfg','v8','v8ui','ent','dcscor','dcsset','dcssch')) {
+			return " xmlns:$pref=`"http://v8.1c.ru/8.2/data/types`""
+		}
+	}
+	return ""
+}
+
+function Emit-FilterItem {
+	param($item, [string]$indent)
+	if ($item.group) {
+		$groupType = switch ("$($item.group)") { "And" { "AndGroup" } "Or" { "OrGroup" } "Not" { "NotGroup" } default { "$($item.group)Group" } }
+		X "$indent<dcsset:item xsi:type=`"dcsset:FilterItemGroup`">"
+		if ($item.use -eq $false) { X "$indent`t<dcsset:use>false</dcsset:use>" }   # группа отключена (перед groupType, порядок исходника)
+		X "$indent`t<dcsset:groupType>$groupType</dcsset:groupType>"
+		if ($item.items) {
+			foreach ($sub in $item.items) {
+				if ($sub -is [string]) {
+					$parsed = Parse-FilterShorthand $sub
+					$obj = @{ field = $parsed.field; op = $parsed.op }
+					if ($parsed.use -eq $false) { $obj.use = $false }
+					if ($null -ne $parsed.value) { $obj.value = $parsed.value }
+					if ($parsed["valueType"]) { $obj.valueType = $parsed["valueType"] }
+					if ($parsed.userSettingID) { $obj.userSettingID = $parsed.userSettingID }
+					if ($parsed.viewMode) { $obj.viewMode = $parsed.viewMode }
+					$sub = [pscustomobject]$obj
+				}
+				Emit-FilterItem -item $sub -indent "$indent`t"
+			}
+		}
+		if ($item.presentation) { Emit-USPresentation -val $item.presentation -tag "dcsset:presentation" -indent "$indent`t" }
+		if ($item.viewMode) { X "$indent`t<dcsset:viewMode>$(Esc-XmlText "$($item.viewMode)")</dcsset:viewMode>" }
+		if ($item.userSettingID) {
+			$guid = if ("$($item.userSettingID)" -eq "auto") { New-Guid-String } else { "$($item.userSettingID)" }
+			X "$indent`t<dcsset:userSettingID>$(Esc-XmlText $guid)</dcsset:userSettingID>"
+		}
+		if ($item.userSettingPresentation) { Emit-USPresentation -val $item.userSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t" }
+		X "$indent</dcsset:item>"
+		return
+	}
+	X "$indent<dcsset:item xsi:type=`"dcsset:FilterItemComparison`">"
+	if ($item.use -eq $false) { X "$indent`t<dcsset:use>false</dcsset:use>" }
+	X "$indent`t<dcsset:left xsi:type=`"dcscor:Field`">$(Esc-XmlText "$($item.field)")</dcsset:left>"
+	$compType = $script:comparisonTypes["$($item.op)"]
+	if (-not $compType) { $compType = "$($item.op)" }
+	X "$indent`t<dcsset:comparisonType>$(Esc-XmlText $compType)</dcsset:comparisonType>"
+	$valIsArray = ($item.value -is [array]) -or ($item.value -is [System.Collections.IList] -and $item.value -isnot [string])
+	if ($valIsArray) {
+		if (@($item.value).Count -eq 0) {
+			X "$indent`t<dcsset:right xsi:type=`"v8:ValueListType`">"
+			X "$indent`t`t<v8:valueType/>"
+			X "$indent`t`t<v8:lastId xsi:type=`"xs:decimal`">-1</v8:lastId>"
+			X "$indent`t</dcsset:right>"
+		} else {
+			foreach ($v in $item.value) {
+				$vt = if ($item.valueType) { "$($item.valueType)" } else { "" }
+				if (-not $vt) {
+					if ($v -is [bool]) { $vt = 'xs:boolean' }
+					elseif ($v -is [int] -or $v -is [long] -or $v -is [double]) { $vt = 'xs:decimal' }
+					elseif ("$v" -match '^\d{4}-\d{2}-\d{2}T') { $vt = 'xs:dateTime' }
+					elseif ("$v" -match '^-?\d+(\.\d+)?$') { $vt = 'xs:decimal' }
+					elseif ("$v" -match '^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена|Catalog|Enum|Document|ChartOfAccounts|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.') { $vt = 'dcscor:DesignTimeValue' }
+					else { $vt = 'xs:string' }
+				}
+				$vStr = if ($v -is [bool]) { "$v".ToLower() } else { Esc-XmlText "$v" }
+				$nsAttr = Get-ValueTypeNsAttr -valueType $vt -value "$v"
+				X "$indent`t<dcsset:right$nsAttr xsi:type=`"$vt`">$vStr</dcsset:right>"
+			}
+		}
+	} elseif ($null -ne $item.value -and (
+			"$($item.valueType)" -match 'Standard(Beginning|End)Date$' -or
+			(-not $item.valueType -and "$($item.value)" -match '^\d{4}-\d{2}-\d{2}T'))) {
+		# Стандартная дата начала/окончания. Формы значения:
+		#   объект {variant, date?} — полная (Custom несёт <v8:date>);
+		#   строка-вариант "BeginningOfThisDay" — именованный вариант без даты;
+		#   голая ISO-дата без valueType — шорткат для Custom+date (дата в фильтре платформой
+		#   почти всегда хранится как StandardBeginningDate Custom, корпус 268 vs 2 xs:dateTime;
+		#   явный valueType="xs:dateTime" → плоская дата, ветка ниже).
+		$sdType = if ($item.valueType) { "$($item.valueType)" -replace '^v8:','' } else { 'StandardBeginningDate' }
+		$sv = $item.value
+		if (($sv -is [PSCustomObject]) -or ($sv -is [System.Collections.IDictionary])) {
+			$variant = if ($sv -is [PSCustomObject]) { "$($sv.variant)" } else { "$($sv['variant'])" }
+			$hasDate = if ($sv -is [PSCustomObject]) { [bool]$sv.PSObject.Properties['date'] } else { $sv.Contains('date') }
+			$dateV = if ($hasDate) { if ($sv -is [PSCustomObject]) { "$($sv.date)" } else { "$($sv['date'])" } } else { $null }
+		} elseif ("$sv" -match '^\d{4}-\d{2}-\d{2}T') {
+			$variant = 'Custom'; $hasDate = $true; $dateV = "$sv"
+		} else {
+			$variant = "$sv"; $hasDate = $false; $dateV = $null
+		}
+		X "$indent`t<dcsset:right xsi:type=`"v8:$sdType`">"
+		X "$indent`t`t<v8:variant xsi:type=`"v8:${sdType}Variant`">$(Esc-XmlText $variant)</v8:variant>"
+		if ($hasDate) { X "$indent`t`t<v8:date>$(Esc-XmlText $dateV)</v8:date>" }
+		X "$indent`t</dcsset:right>"
+	} elseif ("$($item.value)" -eq '_') {
+		# "_" — маркер пустого значения: платформа эмитит пустой self-closing <dcsset:right>
+		# (напр. <dcsset:right xsi:type="dcscor:Field"/> — сравнение с незаданным полем).
+		$vt = if ($item.valueType) { "$($item.valueType)" } else { 'xs:string' }
+		X "$indent`t<dcsset:right xsi:type=`"$vt`"/>"
+	} elseif ($null -ne $item.value) {
+		$vt = if ($item.valueType) { "$($item.valueType)" } else { "" }
+		if (-not $vt) {
+			$v = $item.value
+			if ($v -is [bool]) { $vt = "xs:boolean" }
+			elseif ($v -is [int] -or $v -is [long] -or $v -is [double]) { $vt = "xs:decimal" }
+			elseif ("$v" -match '^\d{4}-\d{2}-\d{2}T') { $vt = "xs:dateTime" }
+			elseif ("$v" -match '^-?\d+(\.\d+)?$') { $vt = "xs:decimal" }
+			elseif ("$v" -match '^(Перечисление|Справочник|ПланСчетов|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена|Catalog|Enum|Document|ChartOfAccounts|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.') { $vt = "dcscor:DesignTimeValue" }
+			else { $vt = "xs:string" }
+		}
+		$vStr = if ($item.value -is [bool]) { "$($item.value)".ToLower() } else { Esc-XmlText "$($item.value)" }
+		$nsAttr = Get-ValueTypeNsAttr -valueType $vt -value "$($item.value)"
+		X "$indent`t<dcsset:right$nsAttr xsi:type=`"$vt`">$vStr</dcsset:right>"
+	}
+	if ($item.presentation) { Emit-USPresentation -val $item.presentation -tag "dcsset:presentation" -indent "$indent`t" }
+	if ($item.viewMode) { X "$indent`t<dcsset:viewMode>$(Esc-XmlText "$($item.viewMode)")</dcsset:viewMode>" }
+	if ($item.userSettingID) {
+		$uid = if ("$($item.userSettingID)" -eq "auto") { New-Guid-String } else { "$($item.userSettingID)" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-XmlText $uid)</dcsset:userSettingID>"
+	}
+	if ($item.userSettingPresentation) { Emit-USPresentation -val $item.userSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t" }
+	X "$indent</dcsset:item>"
+}
+
+function Emit-Filter {
+	param($items, [string]$indent, $blockViewMode = $null, $blockUserSettingID = $null, $blockUserSettingPresentation = $null)
+	$hasItems = $items -and $items.Count -gt 0
+	$hasBlockMeta = ($null -ne $blockViewMode) -or ($null -ne $blockUserSettingID) -or ($null -ne $blockUserSettingPresentation)
+	if (-not $hasItems -and -not $hasBlockMeta) { return }
+	X "$indent<dcsset:filter>"
+	foreach ($item in $items) {
+		if ($item -is [string]) {
+			$parsed = Parse-FilterShorthand $item
+			$obj = @{ field = $parsed.field; op = $parsed.op }
+			if ($parsed.use -eq $false) { $obj.use = $false }
+			if ($null -ne $parsed.value) { $obj.value = $parsed.value }
+			if ($parsed["valueType"]) { $obj.valueType = $parsed["valueType"] }
+			if ($parsed.userSettingID) { $obj.userSettingID = $parsed.userSettingID }
+			if ($parsed.viewMode) { $obj.viewMode = $parsed.viewMode }
+			Emit-FilterItem -item ([pscustomobject]$obj) -indent "$indent`t"
+		} else { Emit-FilterItem -item $item -indent "$indent`t" }
+	}
+	if ($null -ne $blockViewMode) { X "$indent`t<dcsset:viewMode>$(Esc-XmlText "$blockViewMode")</dcsset:viewMode>" }
+	if ($null -ne $blockUserSettingID) {
+		$uid = if ("$blockUserSettingID" -eq 'auto') { New-Guid-String } else { "$blockUserSettingID" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-XmlText $uid)</dcsset:userSettingID>"
+	}
+	if ($null -ne $blockUserSettingPresentation) { Emit-USPresentation -val $blockUserSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t" }
+	X "$indent</dcsset:filter>"
+}
+
+function Emit-Order {
+	param($items, [string]$indent, [switch]$skipAuto, $blockViewMode = $null, $blockUserSettingID = $null, $blockUserSettingPresentation = $null)
+	$hasItems = $items -and $items.Count -gt 0
+	$hasBlockMeta = ($null -ne $blockViewMode) -or ($null -ne $blockUserSettingID) -or ($null -ne $blockUserSettingPresentation)
+	if (-not $hasItems -and -not $hasBlockMeta) { return }
+	X "$indent<dcsset:order>"
+	foreach ($item in $items) {
+		if ($item -is [string]) {
+			if ($item -eq "Auto") { if (-not $skipAuto) { X "$indent`t<dcsset:item xsi:type=`"dcsset:OrderItemAuto`"/>" } }
+			else {
+				$parts = $item -split '\s+'
+				$field = $parts[0]
+				$dir = "Asc"
+				if ($parts.Count -gt 1 -and $parts[1] -match '^(?i)(desc|убыв)') { $dir = "Desc" }
+				elseif ($parts.Count -gt 1 -and $parts[1] -match '^(?i)(asc|возр)') { $dir = "Asc" }
+				X "$indent`t<dcsset:item xsi:type=`"dcsset:OrderItemField`">"
+				X "$indent`t`t<dcsset:field>$(Esc-XmlText $field)</dcsset:field>"
+				X "$indent`t`t<dcsset:orderType>$dir</dcsset:orderType>"
+				X "$indent`t</dcsset:item>"
+			}
+		} else {
+			if ($item.field -eq "Auto" -or $item.type -eq "auto") { if (-not $skipAuto) { X "$indent`t<dcsset:item xsi:type=`"dcsset:OrderItemAuto`"/>" }; continue }
+			$dir = if ($item.direction) { "$($item.direction)" } else { "Asc" }
+			if ($dir -match '^(?i)(desc|убыв)') { $dir = "Desc" } elseif ($dir -match '^(?i)(asc|возр)') { $dir = "Asc" }
+			X "$indent`t<dcsset:item xsi:type=`"dcsset:OrderItemField`">"
+			if ($item.use -eq $false) { X "$indent`t`t<dcsset:use>false</dcsset:use>" }
+			X "$indent`t`t<dcsset:field>$(Esc-XmlText "$($item.field)")</dcsset:field>"
+			X "$indent`t`t<dcsset:orderType>$dir</dcsset:orderType>"
+			if ($item.viewMode) { X "$indent`t`t<dcsset:viewMode>$(Esc-XmlText "$($item.viewMode)")</dcsset:viewMode>" }
+			X "$indent`t</dcsset:item>"
+		}
+	}
+	if ($null -ne $blockViewMode) { X "$indent`t<dcsset:viewMode>$(Esc-XmlText "$blockViewMode")</dcsset:viewMode>" }
+	if ($null -ne $blockUserSettingID) {
+		$uid = if ("$blockUserSettingID" -eq 'auto') { New-Guid-String } else { "$blockUserSettingID" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-XmlText $uid)</dcsset:userSettingID>"
+	}
+	if ($null -ne $blockUserSettingPresentation) { Emit-USPresentation -val $blockUserSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t" }
+	X "$indent</dcsset:order>"
+}
+
+function Emit-AppearanceValue {
+	param([string]$key, $val, [string]$indent)
+	X "$indent<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
+	function _HasKey { param($o, [string]$k)
+		if ($o -is [PSCustomObject]) { return [bool]$o.PSObject.Properties[$k] }
+		if ($o -is [System.Collections.IDictionary]) { return $o.Contains($k) }
+		return $false
+	}
+	function _Get { param($o, [string]$k)
+		if ($o -is [PSCustomObject]) { return $o.$k }
+		if ($o -is [System.Collections.IDictionary]) { return $o[$k] }
+		return $null
+	}
+	$isTopLevelLine = (_HasKey $val '@type') -and ("$(_Get $val '@type')" -eq 'Line')
+	$useWrapper = $false
+	$innerVal = $val
+	$nestedItems = $null
+	if ($isTopLevelLine) {
+		if ((_HasKey $val 'use') -and ((_Get $val 'use') -eq $false)) { $useWrapper = $true }
+		if (_HasKey $val 'items') { $nestedItems = (_Get $val 'items') }
+	} elseif ((_HasKey $val 'value') -and (($val -is [PSCustomObject]) -or ($val -is [System.Collections.IDictionary]))) {
+		$innerVal = (_Get $val 'value')
+		if ((_HasKey $val 'use') -and ((_Get $val 'use') -eq $false)) { $useWrapper = $true }
+		if (_HasKey $val 'items') { $nestedItems = (_Get $val 'items') }
+	}
+	if ($useWrapper) { X "$indent`t<dcscor:use>false</dcscor:use>" }
+	X "$indent`t<dcscor:parameter>$(Esc-XmlText $key)</dcscor:parameter>"
+	$isFontDict = $false
+	if ($innerVal -is [PSCustomObject]) {
+		$tProp = $innerVal.PSObject.Properties['@type']
+		if ($tProp -and "$($tProp.Value)" -eq 'Font') { $isFontDict = $true }
+	} elseif ($innerVal -is [System.Collections.IDictionary]) {
+		if ($innerVal.Contains('@type') -and "$($innerVal['@type'])" -eq 'Font') { $isFontDict = $true }
+	}
+	$isLineDict = $false
+	if (_HasKey $innerVal '@type') { $isLineDict = ("$(_Get $innerVal '@type')" -eq 'Line') }
+	$isDict = ($innerVal -is [hashtable]) -or ($innerVal -is [System.Collections.IDictionary]) -or ($innerVal -is [PSCustomObject])
+	if ($isLineDict) {
+		$lw = if (_HasKey $innerVal 'width') { _Get $innerVal 'width' } else { 0 }
+		$lg = if (_HasKey $innerVal 'gap') { if ((_Get $innerVal 'gap')) { 'true' } else { 'false' } } else { 'false' }
+		$ls = if (_HasKey $innerVal 'style') { "$(_Get $innerVal 'style')" } else { 'None' }
+		X "$indent`t<dcscor:value xsi:type=`"v8ui:Line`" width=`"$lw`" gap=`"$lg`">"
+		X "$indent`t`t<v8ui:style xsi:type=`"v8ui:SpreadsheetDocumentCellLineType`">$(Esc-XmlText $ls)</v8ui:style>"
+		X "$indent`t</dcscor:value>"
+	} elseif ($isFontDict) {
+		$attrParts = @()
+		foreach ($attrName in @('ref','faceName','height','bold','italic','underline','strikeout','kind','scale')) {
+			$av = $null
+			if ($innerVal -is [PSCustomObject]) { $ap = $innerVal.PSObject.Properties[$attrName]; if ($ap) { $av = $ap.Value } }
+			else { if ($innerVal.Contains($attrName)) { $av = $innerVal[$attrName] } }
+			if ($null -ne $av) { $attrParts += "$attrName=`"$(Esc-Xml "$av")`"" }
+		}
+		X "$indent`t<dcscor:value xsi:type=`"v8ui:Font`" $($attrParts -join ' ')/>"
+	} elseif ($isDict -and (_HasKey $innerVal 'field')) {
+		# Ссылка на поле (dcscor:Field) — значение параметра оформления = поле компоновки
+		X "$indent`t<dcscor:value xsi:type=`"dcscor:Field`">$(Esc-XmlText "$(_Get $innerVal 'field')")</dcscor:value>"
+	} elseif ($isDict) {
+		# Локализуемый текст параметра оформления: платформа объявляет xsi:type на dcscor:value
+		Emit-MLText -tag "dcscor:value" -text $innerVal -indent "$indent`t" -xsiType "v8:LocalStringType"
+	} else {
+		$actualVal = "$innerVal"
+		$keyTypeMap = @{
+			'Размещение'           = 'dcscor:DataCompositionTextPlacementType'
+			'ГоризонтальноеПоложение' = 'v8ui:HorizontalAlign'
+			'ВертикальноеПоложение' = 'v8ui:VerticalAlign'
+			'ОриентацияТекста'     = 'xs:decimal'
+			'РасположениеИтогов'   = 'dcscor:DataCompositionTotalPlacement'
+			'ТипМакета'            = 'dcsset:DataCompositionGroupTemplateType'
+		}
+		$keyType = $keyTypeMap[$key]
+		if ($keyType) { X "$indent`t<dcscor:value xsi:type=`"$keyType`">$(Esc-XmlText $actualVal)</dcscor:value>" }
+		elseif ($actualVal -match '^(style|web|win):') { X "$indent`t<dcscor:value xsi:type=`"v8ui:Color`">$(Esc-XmlText $actualVal)</dcscor:value>" }
+		elseif ($actualVal -eq "true" -or $actualVal -eq "false") { X "$indent`t<dcscor:value xsi:type=`"xs:boolean`">$actualVal</dcscor:value>" }
+		elseif ($key -eq "Текст" -or $key -eq "Заголовок" -or $key -eq "Формат") {
+			# Текст/Заголовок/Формат: голая строка = плоский xs:string (так платформа хранит
+			# нелокализованный литерал). Локализуемый текст → объект {ru,en} (ветка isDict выше).
+			# Пустая строка → самозакрывающийся тег (как у платформы).
+			if ($actualVal -eq '') { X "$indent`t<dcscor:value xsi:type=`"xs:string`"/>" }
+			else { X "$indent`t<dcscor:value xsi:type=`"xs:string`">$(Esc-XmlText $actualVal)</dcscor:value>" }
+		}
+		elseif ($actualVal -match '^-?\d+(\.\d+)?$') { X "$indent`t<dcscor:value xsi:type=`"xs:decimal`">$actualVal</dcscor:value>" }
+		elseif ($key -eq 'ЦветТекста' -or $key -eq 'ЦветФона' -or $key -eq 'ЦветГраницы') { X "$indent`t<dcscor:value xsi:type=`"v8ui:Color`">$(Esc-XmlText $actualVal)</dcscor:value>" }
+		else { X "$indent`t<dcscor:value xsi:type=`"xs:string`">$(Esc-XmlText $actualVal)</dcscor:value>" }
+	}
+	if ($nestedItems) {
+		$niProps = if ($nestedItems -is [PSCustomObject]) { $nestedItems.PSObject.Properties } else { $null }
+		if ($niProps) { foreach ($np in $niProps) { Emit-AppearanceValue -key $np.Name -val $np.Value -indent "$indent`t" } }
+		elseif ($nestedItems -is [System.Collections.IDictionary]) { foreach ($nk in $nestedItems.Keys) { Emit-AppearanceValue -key $nk -val $nestedItems[$nk] -indent "$indent`t" } }
+	}
+	X "$indent</dcscor:item>"
+}
+
+function Emit-ConditionalAppearance {
+	param($items, [string]$indent, $blockViewMode = $null, $blockUserSettingID = $null, [string]$wrapTag = 'dcsset:conditionalAppearance', $blockUserSettingPresentation = $null)
+	$hasItems = $items -and $items.Count -gt 0
+	$hasBlockMeta = ($null -ne $blockViewMode) -or ($null -ne $blockUserSettingID) -or ($null -ne $blockUserSettingPresentation)
+	if (-not $hasItems -and -not $hasBlockMeta) { return }
+	X "$indent<$wrapTag>"
+	foreach ($ca in $items) {
+		X "$indent`t<dcsset:item>"
+		if ($ca.use -eq $false) { X "$indent`t`t<dcsset:use>false</dcsset:use>" }
+		if ($ca.selection -and $ca.selection.Count -gt 0) {
+			X "$indent`t`t<dcsset:selection>"
+			foreach ($sel in $ca.selection) {
+				X "$indent`t`t`t<dcsset:item>"
+				X "$indent`t`t`t`t<dcsset:field>$(Esc-XmlText "$sel")</dcsset:field>"
+				X "$indent`t`t`t</dcsset:item>"
+			}
+			X "$indent`t`t</dcsset:selection>"
+		} else { X "$indent`t`t<dcsset:selection/>" }
+		if ($ca.filter -and $ca.filter.Count -gt 0) { Emit-Filter -items $ca.filter -indent "$indent`t`t" }
+		else { X "$indent`t`t<dcsset:filter/>" }
+		if ($ca.appearance) {
+			X "$indent`t`t<dcsset:appearance>"
+			foreach ($prop in $ca.appearance.PSObject.Properties) { Emit-AppearanceValue -key $prop.Name -val $prop.Value -indent "$indent`t`t`t" }
+			X "$indent`t`t</dcsset:appearance>"
+		}
+		if ($ca.presentation) {
+			if ($ca.presentation -is [hashtable] -or $ca.presentation -is [System.Collections.IDictionary] -or $ca.presentation -is [PSCustomObject]) {
+				# Мультиязык → LocalStringType (платформа объявляет тип у локализованного presentation)
+				X "$indent`t`t<dcsset:presentation xsi:type=`"v8:LocalStringType`">"
+				Emit-MLItems -val $ca.presentation -indent "$indent`t`t`t"
+				X "$indent`t`t</dcsset:presentation>"
+			}
+			else { X "$indent`t`t<dcsset:presentation xsi:type=`"xs:string`">$(Esc-XmlText "$($ca.presentation)")</dcsset:presentation>" }
+		}
+		if ($ca.viewMode) { X "$indent`t`t<dcsset:viewMode>$(Esc-XmlText "$($ca.viewMode)")</dcsset:viewMode>" }
+		if ($ca.userSettingID) {
+			$uid = if ("$($ca.userSettingID)" -eq "auto") { New-Guid-String } else { "$($ca.userSettingID)" }
+			X "$indent`t`t<dcsset:userSettingID>$(Esc-XmlText $uid)</dcsset:userSettingID>"
+		}
+		if ($ca.userSettingPresentation) { Emit-USPresentation -val $ca.userSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t`t" }
+		if ($ca.useInDontUse -and $ca.useInDontUse.Count -gt 0) {
+			$useInOrder = @('group','hierarchicalGroup','overall','fieldsHeader','header','parameters','filter','resourceFieldsHeader','overallHeader','overallResourceFieldsHeader')
+			$set = @{}
+			foreach ($n in $ca.useInDontUse) { $set["$n"] = $true }
+			foreach ($n in $useInOrder) {
+				if ($set.ContainsKey($n)) {
+					$tag = "useIn" + ($n.Substring(0,1).ToUpper()) + ($n.Substring(1))
+					X "$indent`t`t<dcsset:$tag>DontUse</dcsset:$tag>"
+				}
+			}
+		}
+		X "$indent`t</dcsset:item>"
+	}
+	if ($null -ne $blockViewMode) { X "$indent`t<dcsset:viewMode>$(Esc-XmlText "$blockViewMode")</dcsset:viewMode>" }
+	if ($null -ne $blockUserSettingID) {
+		$uid = if ("$blockUserSettingID" -eq 'auto') { New-Guid-String } else { "$blockUserSettingID" }
+		X "$indent`t<dcsset:userSettingID>$(Esc-XmlText $uid)</dcsset:userSettingID>"
+	}
+	if ($null -ne $blockUserSettingPresentation) { Emit-USPresentation -val $blockUserSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t" }
+	X "$indent</$wrapTag>"
+}
+
+function Get-ListGroupingValue {
+	param($st)
+	foreach ($k in 'grouping','structure','группировка') {
+		if ($st.PSObject.Properties[$k] -and $st.$k) { return $st.$k }
+	}
+	return $null
+}
+
+function Parse-ListGrouping {
+	param($grouping)
+	# Шорткат "A > B > C" → массив имён; массив строк/объектов → как есть.
+	# Unary comma: иначе PS разворачивает одноэлементный массив при return → строка → индексация даёт char.
+	if (-not $grouping) { return ,@() }
+	if ($grouping -is [string]) { return ,@($grouping -split '\s*>\s*' | Where-Object { "$_" -ne '' }) }
+	return ,@($grouping)
+}
+
+function Emit-GroupItemField {
+	param($level, [string]$indent)
+	if ($level -is [string]) {
+		$field = $level; $gt = 'Items'; $pat = 'None'; $pab = '0001-01-01T00:00:00'; $pae = '0001-01-01T00:00:00'
+	} else {
+		$field = "$($level.field)"
+		$gt  = if ($level.groupType) { "$($level.groupType)" } else { 'Items' }
+		$pat = if ($level.periodAdditionType) { "$($level.periodAdditionType)" } else { 'None' }
+		$pab = if ($level.periodAdditionBegin) { "$($level.periodAdditionBegin)" } else { '0001-01-01T00:00:00' }
+		$pae = if ($level.periodAdditionEnd)   { "$($level.periodAdditionEnd)"   } else { '0001-01-01T00:00:00' }
+	}
+	X "$indent<dcsset:item xsi:type=`"dcsset:GroupItemField`">"
+	X "$indent`t<dcsset:field>$(Esc-XmlText $field)</dcsset:field>"
+	X "$indent`t<dcsset:groupType>$(Esc-XmlText $gt)</dcsset:groupType>"
+	X "$indent`t<dcsset:periodAdditionType>$(Esc-XmlText $pat)</dcsset:periodAdditionType>"
+	# Авто-детект: ISO-дата → xs:dateTime, иначе путь → dcscor:Field.
+	$pabT = if ($pab -match '^\d{4}-\d{2}-\d{2}T') { 'xs:dateTime' } else { 'dcscor:Field' }
+	$paeT = if ($pae -match '^\d{4}-\d{2}-\d{2}T') { 'xs:dateTime' } else { 'dcscor:Field' }
+	X "$indent`t<dcsset:periodAdditionBegin xsi:type=`"$pabT`">$(Esc-XmlText $pab)</dcsset:periodAdditionBegin>"
+	X "$indent`t<dcsset:periodAdditionEnd xsi:type=`"$paeT`">$(Esc-XmlText $pae)</dcsset:periodAdditionEnd>"
+	X "$indent</dcsset:item>"
+}
+
+function Emit-ListGroupingLevels {
+	param($levels, [int]$i, [string]$indent)
+	X "$indent<dcsset:item xsi:type=`"dcsset:StructureItemGroup`">"
+	X "$indent`t<dcsset:groupItems>"
+	Emit-GroupItemField $levels[$i] "$indent`t`t"
+	X "$indent`t</dcsset:groupItems>"
+	if ($i -lt $levels.Count - 1) { Emit-ListGroupingLevels $levels ($i + 1) "$indent`t" }
+	X "$indent</dcsset:item>"
+}
+
+function Emit-ListGrouping {
+	param($grouping, [string]$indent)
+	$levels = Parse-ListGrouping $grouping
+	if ($levels.Count -eq 0) { return }
+	Emit-ListGroupingLevels $levels 0 $indent
+}
+
+function Parse-CalcShorthand {
+	param([string]$s)
+	$restrict = @()
+	foreach ($m in [regex]::Matches($s, '#(noField|noFilter|noCondition|noGroup|noOrder)\b')) { $restrict += $m.Groups[1].Value }
+	$s = [regex]::Replace($s, '\s*#(noField|noFilter|noCondition|noGroup|noOrder)\b', '')
+	$eq = $s.IndexOf('=')
+	if ($eq -gt 0) { $lhs = $s.Substring(0, $eq); $rhs = $s.Substring($eq + 1).Trim() } else { $lhs = $s; $rhs = '' }
+	$title = ''
+	if ($lhs -match '\[([^\]]+)\]') { $title = $Matches[1]; $lhs = $lhs -replace '\s*\[[^\]]+\]', '' }
+	$lhs = $lhs.Trim()
+	$type = ''; $dataPath = $lhs
+	if ($lhs.Contains(':')) { $parts = $lhs -split ':', 2; $dataPath = $parts[0].Trim(); $type = Resolve-TypeStr ($parts[1].Trim()) }
+	return @{ dataPath = $dataPath; expression = $rhs; type = $type; title = $title; restrict = $restrict }
+}
+
+function Emit-CalcFields {
+	param($calcFields, [string]$indent)
+	if (-not $calcFields) { return }
+	foreach ($cf in $calcFields) {
+		$pres = $null; $orderExpr = $null; $restrict = @()
+		if ($cf -is [string]) {
+			$p = Parse-CalcShorthand $cf
+			$dataPath = "$($p.dataPath)"; $expression = "$($p.expression)"; $title = $p.title; $typeStr = "$($p.type)"
+			foreach ($r in $p.restrict) { if ($script:calcRestrictMap[$r]) { $restrict += $script:calcRestrictMap[$r] } }
+		} else {
+			$dataPath = if ($cf.dataPath) { "$($cf.dataPath)" } elseif ($cf.field) { "$($cf.field)" } else { "$($cf.name)" }
+			$expression = "$($cf.expression)"
+			$title = $cf.title
+			$typeStr = if ($cf.valueType) { "$($cf.valueType)" } elseif ($cf.type) { "$($cf.type)" } else { '' }
+			$ur = if ($cf.useRestriction) { $cf.useRestriction } elseif ($cf.restrict) { $cf.restrict } else { $null }
+			if ($ur -is [System.Management.Automation.PSCustomObject] -or $ur -is [hashtable]) {
+				foreach ($k in 'field','condition','group','order') { if ($ur.$k -eq $true) { $restrict += $k } }
+			} elseif ($ur -is [string]) {
+				foreach ($tok in ($ur -split '\s+')) { $t = $tok.Trim().TrimStart('#'); if ($t) { $restrict += $(if ($script:calcRestrictMap[$t]) { $script:calcRestrictMap[$t] } else { $t }) } }
+			} elseif ($ur) {
+				foreach ($r in $ur) { $rr = "$r"; $restrict += $(if ($script:calcRestrictMap[$rr]) { $script:calcRestrictMap[$rr] } else { $rr }) }
+			}
+			$pres = $cf.presentationExpression
+			$orderExpr = $cf.orderExpression
+		}
+		$ci = "$indent`t"
+		X "$indent<CalculatedField>"
+		X "$ci<dcssch:dataPath>$(Esc-XmlText $dataPath)</dcssch:dataPath>"
+		X "$ci<dcssch:expression>$(Esc-XmlText $expression)</dcssch:expression>"
+		if ($title) { Emit-MLText -tag 'dcssch:title' -text $title -indent $ci -xsiType 'v8:LocalStringType' }
+		if ($restrict.Count -gt 0) {
+			X "$ci<dcssch:useRestriction>"
+			foreach ($r in @('field','condition','group','order')) { if ($restrict -contains $r) { X "$ci`t<dcssch:$r>true</dcssch:$r>" } }
+			X "$ci</dcssch:useRestriction>"
+		}
+		if ($pres) { X "$ci<dcssch:presentationExpression>$(Esc-XmlText "$pres")</dcssch:presentationExpression>" }
+		if ($orderExpr) {
+			$oeList = if ($orderExpr -is [System.Collections.IList]) { $orderExpr } else { @($orderExpr) }
+			foreach ($oe in $oeList) {
+				if ($oe -is [string]) { $exprV = $oe; $oType = 'Asc'; $auto = 'false' }
+				else { $exprV = "$($oe.expression)"; $oType = if ($oe.orderType) { "$($oe.orderType)" } else { 'Asc' }; $auto = if ($oe.autoOrder) { 'true' } else { 'false' } }
+				X "$ci<dcssch:orderExpression>"
+				X "$ci`t<expression xmlns=`"$($script:dcsCommonNs)`">$(Esc-XmlText $exprV)</expression>"
+				X "$ci`t<orderType xmlns=`"$($script:dcsCommonNs)`">$oType</orderType>"
+				X "$ci`t<autoOrder xmlns=`"$($script:dcsCommonNs)`">$auto</autoOrder>"
+				X "$ci</dcssch:orderExpression>"
+			}
+		}
+		if ($typeStr) { Emit-DLValueType -typeStr $typeStr -indent $ci }
+		X "$indent</CalculatedField>"
+	}
+}
+
+function Get-RestrictList {
+	param($ur)
+	$out = @()
+	if (-not $ur) { return ,$out }
+	if ($ur -is [System.Management.Automation.PSCustomObject] -or $ur -is [hashtable]) {
+		foreach ($k in 'field','condition','group','order') { if ($ur.$k -eq $true) { $out += $k } }
+	} elseif ($ur -is [string]) {
+		foreach ($tok in ($ur -split '\s+')) { $t = $tok.Trim().TrimStart('#'); if ($t) { $out += $(if ($script:calcRestrictMap[$t]) { $script:calcRestrictMap[$t] } else { $t }) } }
+	} else {
+		foreach ($r in $ur) { $rr = "$r"; $out += $(if ($script:calcRestrictMap[$rr]) { $script:calcRestrictMap[$rr] } else { $rr }) }
+	}
+	return ,$out
+}
+
+function Emit-RestrictBlock {
+	param([string]$tag, $ur, [string]$indent)
+	$r = Get-RestrictList $ur
+	if ($r.Count -eq 0) { return }
+	X "$indent<dcssch:$tag>"
+	foreach ($k in @('field','condition','group','order')) { if ($r -contains $k) { X "$indent`t<dcssch:$k>true</dcssch:$k>" } }
+	X "$indent</dcssch:$tag>"
 }
 
 function Resolve-TypeStr {
@@ -1593,6 +2193,267 @@ function Emit-BorderTag {
 	X "$indent</Border>"
 }
 
+function PL-Get {
+	param($o, [string]$k, $def = $null)
+	if ($null -ne $o -and $o.PSObject.Properties[$k] -and $null -ne $o.$k) { return $o.$k }
+	return $def
+}
+
+function PL-Bool {
+	param($v)
+	if ($v -is [bool]) { if ($v) { 'true' } else { 'false' } }
+	elseif ("$v" -eq 'True') { 'true' }
+	elseif ("$v" -eq 'False') { 'false' }
+	else { "$v" }
+}
+
+function Emit-PlannerColor {
+	param([string]$tag, $o, [string]$key, [string]$ind)
+	X "$ind<pl:$tag>$(Esc-XmlText "$(PL-Get $o $key 'auto')")</pl:$tag>"
+}
+
+function Emit-PlannerText {
+	param([string]$tag, $v, [string]$ind)
+	if ([string]::IsNullOrEmpty("$v")) { X "$ind<pl:$tag/>" }
+	else { X "$ind<pl:$tag>$(Esc-XmlText "$v")</pl:$tag>" }
+}
+
+function Test-PlannerRef {
+	param([string]$v)
+	return ($v -match '^(Enum|Catalog|Document|ChartOfAccounts|ChartOfCalculationTypes|ChartOfCharacteristicTypes|ExchangePlan|BusinessProcess|Task)\.' -or `
+		$v -match '\.EnumValue\.' -or $v -match 'EmptyRef$' -or `
+		$v -match '^(Перечисление|Справочник|Документ|ПланСчетов|ПланВидовХарактеристик|ПланВидовРасчета|ПланОбмена|БизнесПроцесс|Задача)\.')
+}
+
+function Emit-PlannerValue {
+	param($v, [string]$ind)
+	if ($null -eq $v -or "$v" -eq '') { X "$ind<pl:value xsi:nil=`"true`"/>"; return }
+	$t = if (Test-PlannerRef "$v") { 'xr:DesignTimeRef' } else { 'xs:string' }
+	X "$ind<pl:value xsi:type=`"$t`">$(Esc-XmlText "$v")</pl:value>"
+}
+
+function Emit-PlannerFont {
+	param($o, [string]$ind)
+	$f = PL-Get $o 'font' $null
+	if ($null -eq $f) { X "$ind<pl:font kind=`"AutoFont`"/>"; return }
+	Emit-FontTag -tag 'pl:font' -val $f -indent $ind
+}
+
+function Emit-PlannerBorder {
+	param($o, [string]$ind, [string]$key = 'border')
+	$b = PL-Get $o $key $null
+	$bw = if ($b) { PL-Get $b 'width' 1 } else { 1 }
+	$bs = if ($b) { PL-Get $b 'style' 'Single' } else { 'Single' }
+	X "$ind<pl:border width=`"$bw`">"
+	X "$ind`t<v8ui:style xsi:type=`"v8ui:ControlBorderType`">$(Esc-XmlText "$bs")</v8ui:style>"
+	X "$ind</pl:border>"
+}
+
+function Emit-PlannerLevel {
+	param($lv, [string]$cns, [string]$ind)
+	$li = "$ind`t"
+	X "$ind<level xmlns=`"$cns`">"
+	X "$li<measure>$(Esc-XmlText "$(PL-Get $lv 'measure' 'Hour')")</measure>"
+	X "$li<interval>$(PL-Get $lv 'interval' 1)</interval>"
+	X "$li<show>$(PL-Bool (PL-Get $lv 'show' $true))</show>"
+	$line = PL-Get $lv 'line' $null
+	$lw  = if ($line) { PL-Get $line 'width' 1 } else { 1 }
+	$lg  = if ($line) { PL-Get $line 'gap' $false } else { $false }
+	$lst = if ($line) { PL-Get $line 'style' 'Solid' } else { 'Solid' }
+	X "$li<line width=`"$lw`" gap=`"$(PL-Bool $lg)`">"
+	X "$li`t<v8ui:style xsi:type=`"v8ui:ChartLineType`">$(Esc-XmlText "$lst")</v8ui:style>"
+	X "$li</line>"
+	X "$li<scaleColor>$(Esc-XmlText "$(PL-Get $lv 'scaleColor' 'auto')")</scaleColor>"
+	X "$li<dayFormatRule>$(Esc-XmlText "$(PL-Get $lv 'dayFormatRule' 'MonthDayWeekDay')")</dayFormatRule>"
+	$fmt = PL-Get $lv 'format' $null
+	if ($null -eq $fmt) { $fmt = [ordered]@{ '#' = 'DF="HH:mm"'; 'ru' = 'DF="HH:mm"' } }
+	X "$li<format>"
+	Emit-MLItems -val $fmt -indent "$li`t"
+	X "$li</format>"
+	$labels = PL-Get $lv 'labels' $null
+	$ticks  = if ($labels) { PL-Get $labels 'ticks' 0 } else { 0 }
+	X "$li<labels>"
+	X "$li`t<ticks>$ticks</ticks>"
+	X "$li</labels>"
+	X "$li<backColor>$(Esc-XmlText "$(PL-Get $lv 'backColor' 'auto')")</backColor>"
+	X "$li<textColor>$(Esc-XmlText "$(PL-Get $lv 'textColor' 'auto')")</textColor>"
+	X "$li<showPereodicalLabels>$(PL-Bool (PL-Get $lv 'showPereodicalLabels' $true))</showPereodicalLabels>"
+	X "$ind</level>"
+}
+
+function Emit-PlannerTimeScale {
+	param($ts, [string]$ind)
+	$cns = $script:CHART_NS
+	$ci = "$ind`t"
+	X "$ind<pl:timeScale>"
+	X "$ci<placement xmlns=`"$cns`">$(Esc-XmlText "$(if ($ts) { PL-Get $ts 'placement' 'Left' } else { 'Left' })")</placement>"
+	$levels = if ($ts) { @(PL-Get $ts 'levels' @()) } else { @() }
+	if (@($levels).Count -eq 0) { $levels = @($null) }   # один уровень-дефолт
+	foreach ($lv in $levels) { Emit-PlannerLevel $lv $cns $ci }
+	$transp = if ($ts) { PL-Get $ts 'transparent' $false } else { $false }
+	X "$ci<transparent xmlns=`"$cns`">$(PL-Bool $transp)</transparent>"
+	X "$ci<backColor xmlns=`"$cns`">$(Esc-XmlText "$(if ($ts) { PL-Get $ts 'backColor' 'auto' } else { 'auto' })")</backColor>"
+	X "$ci<textColor xmlns=`"$cns`">$(Esc-XmlText "$(if ($ts) { PL-Get $ts 'textColor' 'auto' } else { 'auto' })")</textColor>"
+	X "$ci<currentLevel xmlns=`"$cns`">$(if ($ts) { PL-Get $ts 'currentLevel' 0 } else { 0 })</currentLevel>"
+	X "$ind</pl:timeScale>"
+}
+
+function Emit-PlannerItem {
+	param($it, [string]$ind)
+	X "$ind<pl:item>"
+	$ii = "$ind`t"
+	Emit-PlannerValue (PL-Get $it 'value' $null) $ii
+	Emit-PlannerText 'text' (PL-Get $it 'text' '') $ii
+	Emit-PlannerText 'tooltip' (PL-Get $it 'tooltip' '') $ii
+	X "$ii<pl:begin>$(PL-Get $it 'begin' '0001-01-01T00:00:00')</pl:begin>"
+	X "$ii<pl:end>$(PL-Get $it 'end' '0001-01-01T00:00:00')</pl:end>"
+	Emit-PlannerColor 'borderColor' $it 'borderColor' $ii
+	Emit-PlannerColor 'backColor'   $it 'backColor'   $ii
+	Emit-PlannerColor 'textColor'   $it 'textColor'   $ii
+	Emit-PlannerFont $it $ii
+	X "$ii<pl:dimensionValues/>"
+	X "$ii<pl:replacementDate>$(PL-Get $it 'replacementDate' '0001-01-01T00:00:00')</pl:replacementDate>"
+	X "$ii<pl:deleted>$(PL-Bool (PL-Get $it 'deleted' $false))</pl:deleted>"
+	$id = PL-Get $it 'id' $null
+	if ($null -eq $id) { $id = [guid]::NewGuid().ToString() }
+	X "$ii<pl:id>$id</pl:id>"
+	X "$ii<pl:textFormatted>$(PL-Bool (PL-Get $it 'textFormatted' $false))</pl:textFormatted>"
+	Emit-PlannerBorder $it $ii 'border'
+	X "$ii<pl:editMode>$(Esc-XmlText "$(PL-Get $it 'editMode' 'EnableEdit')")</pl:editMode>"
+	X "$ind</pl:item>"
+}
+
+function Emit-PlannerDimElement {
+	param($el, [string]$ind)
+	X "$ind<pl:item>"
+	$ii = "$ind`t"
+	Emit-PlannerValue (PL-Get $el 'value' $null) $ii
+	Emit-PlannerText 'text' (PL-Get $el 'text' '') $ii
+	Emit-PlannerColor 'borderColor' $el 'borderColor' $ii
+	Emit-PlannerColor 'backColor'   $el 'backColor'   $ii
+	Emit-PlannerColor 'textColor'   $el 'textColor'   $ii
+	Emit-PlannerFont $el $ii
+	foreach ($sub in @(PL-Get $el 'elements' @())) { Emit-PlannerDimElement $sub $ii }
+	X "$ii<pl:showOnlySubordinatesAreas>$(PL-Bool (PL-Get $el 'showOnlySubordinatesAreas' $true))</pl:showOnlySubordinatesAreas>"
+	X "$ii<pl:textFormatted>$(PL-Bool (PL-Get $el 'textFormatted' $false))</pl:textFormatted>"
+	X "$ind</pl:item>"
+}
+
+function Emit-PlannerDimension {
+	param($d, [string]$ind)
+	X "$ind<pl:dimension>"
+	$di = "$ind`t"
+	Emit-PlannerValue (PL-Get $d 'value' $null) $di
+	Emit-PlannerText 'text' (PL-Get $d 'text' '') $di
+	Emit-PlannerColor 'borderColor' $d 'borderColor' $di
+	Emit-PlannerColor 'backColor'   $d 'backColor'   $di
+	Emit-PlannerColor 'textColor'   $d 'textColor'   $di
+	Emit-PlannerFont $d $di
+	foreach ($el in @(PL-Get $d 'elements' @())) { Emit-PlannerDimElement $el $di }
+	X "$di<pl:textFormatted>$(PL-Bool (PL-Get $d 'textFormatted' $false))</pl:textFormatted>"
+	X "$ind</pl:dimension>"
+}
+
+function Emit-PlannerSettings {
+	param($pl, [string]$ind)
+	X "$ind<Settings xmlns:pl=`"$($script:PLANNER_NS)`" xsi:type=`"pl:Planner`">"
+	$si = "$ind`t"
+	foreach ($it in @(PL-Get $pl 'items' @())) { Emit-PlannerItem $it $si }
+	foreach ($d in @(PL-Get $pl 'dimensions' @())) { Emit-PlannerDimension $d $si }
+	Emit-PlannerColor 'borderColor' $pl 'borderColor' $si
+	Emit-PlannerColor 'backColor'   $pl 'backColor'   $si
+	Emit-PlannerColor 'textColor'   $pl 'textColor'   $si
+	Emit-PlannerColor 'lineColor'   $pl 'lineColor'   $si
+	Emit-PlannerFont $pl $si
+	X "$si<pl:beginOfRepresentationPeriod>$(PL-Get $pl 'beginOfRepresentationPeriod' '0001-01-01T00:00:00')</pl:beginOfRepresentationPeriod>"
+	X "$si<pl:endOfRepresentationPeriod>$(PL-Get $pl 'endOfRepresentationPeriod' '0001-01-01T00:00:00')</pl:endOfRepresentationPeriod>"
+	X "$si<pl:alignElementsOfTimeScale>$(PL-Bool (PL-Get $pl 'alignElementsOfTimeScale' $true))</pl:alignElementsOfTimeScale>"
+	X "$si<pl:displayTimeScaleWrapHeaders>$(PL-Bool (PL-Get $pl 'displayTimeScaleWrapHeaders' $true))</pl:displayTimeScaleWrapHeaders>"
+	X "$si<pl:displayWrapHeaders>$(PL-Bool (PL-Get $pl 'displayWrapHeaders' $true))</pl:displayWrapHeaders>"
+	$wfmt = PL-Get $pl 'timeScaleWrapHeadersFormat' $null
+	if ($null -eq $wfmt) { $wfmt = [ordered]@{ '#' = 'DLF="DD"'; 'ru' = 'DLF="DD"' } }
+	Emit-MLText -tag 'pl:timeScaleWrapHeadersFormat' -text $wfmt -indent $si
+	X "$si<pl:periodicVariantUnit>$(Esc-XmlText "$(PL-Get $pl 'periodicVariantUnit' 'Day')")</pl:periodicVariantUnit>"
+	X "$si<pl:periodicVariantRepetition>$(PL-Get $pl 'periodicVariantRepetition' 1)</pl:periodicVariantRepetition>"
+	X "$si<pl:timeScaleWrapBeginIndent>$(PL-Get $pl 'timeScaleWrapBeginIndent' 0)</pl:timeScaleWrapBeginIndent>"
+	X "$si<pl:timeScaleWrapEndIndent>$(PL-Get $pl 'timeScaleWrapEndIndent' 0)</pl:timeScaleWrapEndIndent>"
+	Emit-PlannerTimeScale (PL-Get $pl 'timeScale' $null) $si
+	$period = PL-Get $pl 'period' $null
+	if ($period) {
+		X "$si<pl:period>"
+		X "$si`t<pl:begin>$(PL-Get $period 'begin' '0001-01-01T00:00:00')</pl:begin>"
+		X "$si`t<pl:end>$(PL-Get $period 'end' '0001-01-01T00:00:00')</pl:end>"
+		X "$si</pl:period>"
+	}
+	X "$si<pl:displayCurrentDate>$(PL-Bool (PL-Get $pl 'displayCurrentDate' $true))</pl:displayCurrentDate>"
+	X "$si<pl:itemsTimeRepresentation>$(Esc-XmlText "$(PL-Get $pl 'itemsTimeRepresentation' 'BeginTime')")</pl:itemsTimeRepresentation>"
+	X "$si<pl:itemsBehaviorWhenSpaceInsufficient>$(Esc-XmlText "$(PL-Get $pl 'itemsBehaviorWhenSpaceInsufficient' 'CollapseItems')")</pl:itemsBehaviorWhenSpaceInsufficient>"
+	X "$si<pl:autoMinColumnWidth>$(PL-Bool (PL-Get $pl 'autoMinColumnWidth' $true))</pl:autoMinColumnWidth>"
+	X "$si<pl:autoMinRowHeight>$(PL-Bool (PL-Get $pl 'autoMinRowHeight' $true))</pl:autoMinRowHeight>"
+	X "$si<pl:minColumnWidth>$(PL-Get $pl 'minColumnWidth' 0)</pl:minColumnWidth>"
+	X "$si<pl:minRowHeight>$(PL-Get $pl 'minRowHeight' 0)</pl:minRowHeight>"
+	X "$si<pl:fixDimensionsHeader>$(Esc-XmlText "$(PL-Get $pl 'fixDimensionsHeader' 'auto')")</pl:fixDimensionsHeader>"
+	X "$si<pl:fixTimeScaleHeader>$(Esc-XmlText "$(PL-Get $pl 'fixTimeScaleHeader' 'auto')")</pl:fixTimeScaleHeader>"
+	Emit-PlannerBorder $pl $si 'border'
+	X "$si<pl:newItemsTextType>$(Esc-XmlText "$(PL-Get $pl 'newItemsTextType' 'String')")</pl:newItemsTextType>"
+	X "$ind</Settings>"
+}
+
+function Get-Keys { param($o) if ($o -is [System.Collections.IDictionary]) { return @($o.Keys) } else { return @($o.PSObject.Properties.Name) } }
+
+function Get-Prop { param($o, [string]$k) if ($o -is [System.Collections.IDictionary]) { return $o[$k] } else { $p = $o.PSObject.Properties[$k]; if ($p) { return $p.Value } else { return $null } } }
+
+function Emit-ChartNode {
+	param([string]$name, $val, [string]$ind)
+	if ($script:CHART_ML_FIELDS.Contains($name)) {
+		if ($null -eq $val -or "$val" -eq '') { X "$ind<d4p1:$name/>"; return }
+		X "$ind<d4p1:$name>"; Emit-MLItems -val $val -indent "$ind`t"; X "$ind</d4p1:$name>"; return
+	}
+	if (($val -is [System.Collections.IList]) -and ($val -isnot [string])) {
+		foreach ($e in $val) { Emit-ChartNode $name $e $ind }
+		return
+	}
+	if (($val -is [System.Management.Automation.PSCustomObject]) -or ($val -is [System.Collections.IDictionary])) {
+		$keys = Get-Keys $val
+		if ($script:CHART_ATTR_FIELDS.Contains($name)) {
+			$attrs = @(); foreach ($k in $keys) { $v = Get-Prop $val $k; if ($v -is [bool]) { $v = PL-Bool $v }; $attrs += "$k=`"$(Esc-Xml "$v")`"" }
+			X "$ind<d4p1:$name $($attrs -join ' ')/>"; return
+		}
+		if ($keys -contains 'gap') {
+			$w = Get-Prop $val 'width'; $g = Get-Prop $val 'gap'; $st = Get-Prop $val 'style'
+			X "$ind<d4p1:$name width=`"$w`" gap=`"$(PL-Bool $g)`">"
+			X "$ind`t<v8ui:style xsi:type=`"v8ui:ChartLineType`">$(Esc-XmlText "$st")</v8ui:style>"
+			X "$ind</d4p1:$name>"; return
+		}
+		if (($keys -contains 'style') -and ($keys -contains 'width')) {
+			$w = Get-Prop $val 'width'; $st = Get-Prop $val 'style'
+			X "$ind<d4p1:$name width=`"$w`">"
+			X "$ind`t<v8ui:style xsi:type=`"v8ui:ControlBorderType`">$(Esc-XmlText "$st")</v8ui:style>"
+			X "$ind</d4p1:$name>"; return
+		}
+		$isFont = $false; foreach ($fk in $script:CHART_FONT_KEYS) { if ($keys -contains $fk) { $isFont = $true; break } }
+		if ($isFont) {
+			$attrs = @(); foreach ($fk in $script:CHART_FONT_KEYS) { if ($keys -contains $fk) { $v = Get-Prop $val $fk; if ($v -is [bool]) { $v = PL-Bool $v }; $attrs += "$fk=`"$(Esc-Xml "$v")`"" } }
+			X "$ind<d4p1:$name $($attrs -join ' ')/>"; return
+		}
+		if (@($keys).Count -eq 0) { X "$ind<d4p1:$name/>"; return }
+		X "$ind<d4p1:$name>"
+		foreach ($k in $keys) { Emit-ChartNode $k (Get-Prop $val $k) "$ind`t" }
+		X "$ind</d4p1:$name>"
+		return
+	}
+	if ($null -eq $val -or "$val" -eq '') { X "$ind<d4p1:$name/>"; return }
+	if ($val -is [bool]) { X "$ind<d4p1:$name>$(PL-Bool $val)</d4p1:$name>"; return }
+	X "$ind<d4p1:$name>$(Esc-XmlText "$val")</d4p1:$name>"
+}
+
+function Emit-ChartSettings {
+	param($chart, [string]$ind, [string]$ctype = 'd4p1:Chart')
+	X "$ind<Settings xmlns:d4p1=`"$($script:CHART_NS)`" xsi:type=`"$ctype`">"
+	foreach ($k in (Get-Keys $chart)) { Emit-ChartNode $k (Get-Prop $chart $k) "$ind`t" }
+	X "$ind</Settings>"
+}
+
 function Emit-Appearance {
 	param($el, [string]$indent, [string]$profile = 'field')
 	if ($null -eq $el) { return }
@@ -1975,6 +2836,18 @@ function Emit-Check {
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "check"
 
 	X "$indent</CheckBoxField>"
+}
+
+function Normalize-MetaTypeRef {
+	param([string]$ref)
+	if ([string]::IsNullOrEmpty($ref)) { return $ref }
+	$dot = $ref.IndexOf('.')
+	if ($dot -lt 1) { return $ref }
+	$root = $ref.Substring(0, $dot)
+	if ($script:refRootSynonyms.ContainsKey($root)) {
+		return $script:refRootSynonyms[$root] + $ref.Substring($dot)
+	}
+	return $ref
 }
 
 function Normalize-ChoiceValue {
@@ -3041,6 +3914,983 @@ function Emit-Popup {
 	}
 
 	X "$indent</Popup>"
+}
+
+function Emit-FunctionalOptions {
+	param($fo, [string]$indent)
+	if (-not $fo -or @($fo).Count -eq 0) { return }
+	X "$indent<FunctionalOptions>"
+	foreach ($opt in @($fo)) {
+		$v = "$opt"
+		if ($v -match '^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}$') { }          # GUID — как есть
+		elseif ($v -match '^FunctionalOption\.') { }                     # уже с префиксом
+		else { $v = "FunctionalOption.$v" }
+		X "$indent`t<Item>$v</Item>"
+	}
+	X "$indent</FunctionalOptions>"
+}
+
+function Emit-AttrColumn {
+	param($col, [string]$indent)
+	$colId = New-Id
+	X "$indent<Column name=`"$($col.name)`" id=`"$colId`">"
+	if ($col.title) { Emit-MLText -tag "Title" -text $col.title -indent "$indent`t" }
+	Emit-Type -typeStr "$($col.type)" -indent "$indent`t"
+	# Проверка заполнения колонки → <FillCheck> (как у реквизита; bool true→ShowError / строка verbatim)
+	$cfcRaw = if ($null -ne $col.PSObject.Properties['fillCheck']) { $col.fillCheck } elseif ($null -ne $col.PSObject.Properties['fillChecking']) { $col.fillChecking } else { $null }
+	if ($null -ne $cfcRaw) { $cfcv = if ($cfcRaw -is [bool]) { if ($cfcRaw) { 'ShowError' } else { $null } } else { "$cfcRaw" }; if ($cfcv) { X "$indent`t<FillCheck>$cfcv</FillCheck>" } }
+	Emit-FunctionalOptions -fo $col.functionalOptions -indent "$indent`t"
+	# Ролевой доступ колонки (View/Edit) — xr-флаг, как у самого реквизита
+	if ($null -ne $col.view) { Emit-XrFlag -tag 'View' -val $col.view -indent "$indent`t" }
+	if ($null -ne $col.edit) { Emit-XrFlag -tag 'Edit' -val $col.edit -indent "$indent`t" }
+	X "$indent</Column>"
+}
+
+function Emit-DLMLText {
+	param([string]$tag, $text, [string]$indent)
+	X "$indent<$tag xsi:type=`"v8:LocalStringType`">"
+	Emit-MLItems -val $text -indent "$indent`t"
+	X "$indent</$tag>"
+}
+
+function Has-DLProp {
+	param($obj, [string]$name)
+	if ($null -eq $obj) { return $false }
+	if ($obj -is [System.Collections.IDictionary]) { return $obj.Contains($name) }
+	if ($obj.PSObject -and $obj.PSObject.Properties[$name]) { return $true }
+	return $false
+}
+
+function Split-DLValueListCsv {
+	param([string]$s)
+	$result = @()
+	if ($null -eq $s) { return ,$result }
+	$items = @(); $buf = New-Object System.Text.StringBuilder; $inQuote = $null
+	for ($i = 0; $i -lt $s.Length; $i++) {
+		$ch = $s[$i]
+		if ($inQuote) { [void]$buf.Append($ch); if ($ch -eq $inQuote) { $inQuote = $null } }
+		elseif ($ch -eq "'" -or $ch -eq '"') { $inQuote = $ch; [void]$buf.Append($ch) }
+		elseif ($ch -eq ',') { $items += $buf.ToString(); [void]$buf.Clear() }
+		else { [void]$buf.Append($ch) }
+	}
+	if ($buf.Length -gt 0) { $items += $buf.ToString() }
+	foreach ($raw in $items) {
+		$t = $raw.Trim()
+		if ($t.Length -ge 2 -and (($t[0] -eq "'" -and $t[-1] -eq "'") -or ($t[0] -eq '"' -and $t[-1] -eq '"'))) { $t = $t.Substring(1, $t.Length - 2) }
+		if ($t -ne "") { $result += $t }
+	}
+	return ,$result
+}
+
+function Parse-DLParamShorthand {
+	param([string]$s)
+	$result = @{ name = ""; type = ""; value = $null; title = $null }
+	if ($s -match '@valueList') { $result.valueListAllowed = $true; $s = $s -replace '\s*@valueList', '' }
+	if ($s -match '@hidden')    { $result.hidden = $true; $s = $s -replace '\s*@hidden', '' }
+	if ($s -match '\[([^\]]*)\]') { $result.title = $Matches[1].Trim(); $s = ($s -replace '\s*\[[^\]]*\]\s*', ' ').Trim() }
+	# Тип может быть СОСТАВНЫМ (A | B | C — с пробелами); значение — после '=' (тип '=' не содержит).
+	if ($s -match '^([^:]+):\s*([^=]+?)(\s*=\s*(.*))?$') {
+		$result.name = $Matches[1].Trim()
+		$typeRaw = $Matches[2].Trim()
+		if ($typeRaw -match '[|+]') {
+			$result.type = (($typeRaw -split '\s*[|+]\s*') | ForEach-Object { Resolve-TypeStr ($_.Trim()) }) -join ' | '
+		} else {
+			$result.type = Resolve-TypeStr $typeRaw
+		}
+		if ($Matches[4]) {
+			$rhs = $Matches[4].Trim()
+			$items = Split-DLValueListCsv $rhs
+			if ($items.Count -ge 2) { $result.value = $items; $result.valueListAllowed = $true }
+			elseif ($items.Count -eq 1) { $result.value = $items[0] }
+			else { $result.value = $rhs }
+		}
+	} else { $result.name = $s.Trim() }
+	return $result
+}
+
+function Test-DLEmptyValue {
+	param($v)
+	if ($null -eq $v) { return $true }
+	$s = "$v".Trim()
+	if ($s -eq "" -or $s -eq "_" -or $s.ToLowerInvariant() -eq "null") { return $true }
+	return $false
+}
+
+function Emit-DLValue {
+	param([string]$type, $val, [string]$indent, [bool]$valueListAllowed = $false)
+	if (Test-DLEmptyValue $val) {
+		# Дин-список: пустое значение платформа ВСЕГДА пишет как xsi:nil, даже при известном
+		# типе (в отличие от типизированного пустого в параметрах отчёта СКД).
+		if ($valueListAllowed) { return }
+		X "$indent<dcssch:value xsi:nil=`"true`"/>"
+		return
+	}
+	$valStr = if ($val -is [bool]) { if ($val) { 'true' } else { 'false' } } else { "$val" }
+	if ($type -match '^(date|dateTime|time)') { X "$indent<dcssch:value xsi:type=`"xs:dateTime`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	elseif ($type -eq "boolean") { X "$indent<dcssch:value xsi:type=`"xs:boolean`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	elseif ($type -eq 'v8:Type') { $nsAttr = Get-ValueTypeNsAttr -valueType 'v8:Type' -value $valStr; X "$indent<dcssch:value$nsAttr xsi:type=`"v8:Type`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	elseif ($type -match '^ent:') { X "$indent<dcssch:value xsi:type=`"$type`">$(Esc-XmlText $valStr)</dcssch:value>" }   # системное перечисление (ent:X) — value несёт тот же xsi:type
+	elseif ($type -match '^decimal') { X "$indent<dcssch:value xsi:type=`"xs:decimal`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	elseif ($type -match '^string') { X "$indent<dcssch:value xsi:type=`"xs:string`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	elseif ($type -match '^(CatalogRef|DocumentRef|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef|ChartOfCalculationTypesRef|BusinessProcessRef|TaskRef|ExchangePlanRef)\.') { X "$indent<dcssch:value xsi:type=`"dcscor:DesignTimeValue`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	else {
+		if ($valStr -match '^\d{4}-\d{2}-\d{2}T') { X "$indent<dcssch:value xsi:type=`"xs:dateTime`">$(Esc-XmlText $valStr)</dcssch:value>" }
+		elseif ($valStr -eq "true" -or $valStr -eq "false") { X "$indent<dcssch:value xsi:type=`"xs:boolean`">$(Esc-XmlText $valStr)</dcssch:value>" }
+		elseif ($valStr -match '^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена)\.' -or $valStr -match '^(ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.') { X "$indent<dcssch:value xsi:type=`"dcscor:DesignTimeValue`">$(Esc-XmlText $valStr)</dcssch:value>" }
+		else { X "$indent<dcssch:value xsi:type=`"xs:string`">$(Esc-XmlText $valStr)</dcssch:value>" }
+	}
+}
+
+function Emit-DLValueType {
+	param($typeStr, [string]$indent)
+	if (-not $typeStr) { return }
+	X "$indent<dcssch:valueType>"
+	$parts = "$typeStr" -split '\s*[|+]\s*'
+	foreach ($part in $parts) { Emit-SingleType -typeStr $part.Trim() -indent "$indent`t" }
+	X "$indent</dcssch:valueType>"
+}
+
+function Emit-DLAvailableValue {
+	param($av, [string]$type, [string]$indent)
+	X "$indent<dcssch:availableValue>"
+	$avVal = if (Has-DLProp $av 'value') { $av.value } else { $null }
+	Emit-DLValue -type $type -val $avVal -indent "$indent`t" -valueListAllowed $false
+	$pres = if ($av.presentation) { $av.presentation } elseif ($av.title) { $av.title } else { $null }
+	if ($pres) { Emit-DLMLText -tag "dcssch:presentation" -text $pres -indent "$indent`t" }
+	X "$indent</dcssch:availableValue>"
+}
+
+function Emit-DLInputParameters {
+	param($ip, [string]$indent)
+	if ($null -eq $ip) { return }
+	$items = @($ip)
+	if ($items.Count -eq 0) { return }
+	X "$indent<dcssch:inputParameters>"
+	foreach ($item in $items) {
+		X "$indent`t<dcscor:item>"
+		if ((Has-DLProp $item 'use') -and $null -ne $item.use -and -not $item.use) { X "$indent`t`t<dcscor:use>false</dcscor:use>" }
+		X "$indent`t`t<dcscor:parameter>$(Esc-XmlText "$($item.parameter)")</dcscor:parameter>"
+		if (Has-DLProp $item 'choiceParameters') {
+			$cpItems = if ($null -ne $item.choiceParameters) { @($item.choiceParameters) } else { @() }
+			if ($cpItems.Count -eq 0) { X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameters`"/>" }
+			else {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameters`">"
+				foreach ($cpItem in $cpItems) {
+					X "$indent`t`t`t<dcscor:item>"
+					X "$indent`t`t`t`t<dcscor:choiceParameter>$(Esc-XmlText "$($cpItem.name)")</dcscor:choiceParameter>"
+					foreach ($v in @($cpItem.values)) {
+						if ($v -is [bool]) { X "$indent`t`t`t`t<dcscor:value xsi:type=`"xs:boolean`">$(if ($v) { 'true' } else { 'false' })</dcscor:value>" }
+						elseif ($v -is [int] -or $v -is [long] -or $v -is [double] -or $v -is [decimal]) { X "$indent`t`t`t`t<dcscor:value xsi:type=`"xs:decimal`">$v</dcscor:value>" }
+						else { X "$indent`t`t`t`t<dcscor:value xsi:type=`"dcscor:DesignTimeValue`">$(Esc-XmlText "$v")</dcscor:value>" }
+					}
+					X "$indent`t`t`t</dcscor:item>"
+				}
+				X "$indent`t`t</dcscor:value>"
+			}
+		} elseif (Has-DLProp $item 'choiceParameterLinks') {
+			$cplItems = if ($null -ne $item.choiceParameterLinks) { @($item.choiceParameterLinks) } else { @() }
+			if ($cplItems.Count -eq 0) { X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameterLinks`"/>" }
+			else {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:ChoiceParameterLinks`">"
+				foreach ($cplItem in $cplItems) {
+					X "$indent`t`t`t<dcscor:item>"
+					X "$indent`t`t`t`t<dcscor:choiceParameter>$(Esc-XmlText "$($cplItem.name)")</dcscor:choiceParameter>"
+					X "$indent`t`t`t`t<dcscor:value>$(Esc-XmlText "$($cplItem.value)")</dcscor:value>"
+					$mode = if ($cplItem.mode) { "$($cplItem.mode)" } else { 'Auto' }
+					X "$indent`t`t`t`t<dcscor:mode xmlns:d8p1=`"http://v8.1c.ru/8.1/data/enterprise`" xsi:type=`"d8p1:LinkedValueChangeMode`">$mode</dcscor:mode>"
+					X "$indent`t`t`t</dcscor:item>"
+				}
+				X "$indent`t`t</dcscor:value>"
+			}
+		} elseif (Has-DLProp $item 'typeLink') {
+			# Связь по типу (dcscor:TypeLink) — field + linkItem (структурное значение параметра).
+			$tl = $item.typeLink
+			X "$indent`t`t<dcscor:value xsi:type=`"dcscor:TypeLink`">"
+			$tlf = Get-Prop $tl 'field'; if ($null -ne $tlf) { X "$indent`t`t`t<dcscor:field>$(Esc-XmlText "$tlf")</dcscor:field>" }
+			$tli = Get-Prop $tl 'linkItem'; if ($null -ne $tli) { X "$indent`t`t`t<dcscor:linkItem>$(Esc-XmlText "$tli")</dcscor:linkItem>" }
+			X "$indent`t`t</dcscor:value>"
+		} elseif (Has-DLProp $item 'value') {
+			$val = $item.value
+			if ($val -is [bool]) { X "$indent`t`t<dcscor:value xsi:type=`"xs:boolean`">$(if ($val) { 'true' } else { 'false' })</dcscor:value>" }
+			elseif ($val -is [int] -or $val -is [long] -or $val -is [double] -or $val -is [decimal]) { X "$indent`t`t<dcscor:value xsi:type=`"xs:decimal`">$val</dcscor:value>" }
+			elseif ($val -is [hashtable] -or $val -is [System.Collections.IDictionary] -or $val -is [PSCustomObject]) { Emit-DLMLText -tag "dcscor:value" -text $val -indent "$indent`t`t" }
+			else { X "$indent`t`t<dcscor:value xsi:type=`"xs:string`">$(Esc-XmlText "$val")</dcscor:value>" }
+		}
+		X "$indent`t</dcscor:item>"
+	}
+	X "$indent</dcssch:inputParameters>"
+}
+
+function Test-EmptyValue {
+	param($v)
+	if ($null -eq $v) { return $true }
+	$s = "$v".Trim()
+	if ($s -eq "") { return $true }
+	if ($s -eq "_") { return $true }
+	if ($s.ToLowerInvariant() -eq "null") { return $true }
+	return $false
+}
+
+function Emit-EmptyValue {
+	param([string]$type, [string]$indent, [string]$tagPrefix = "", [bool]$valueListAllowed = $false)
+	if ($valueListAllowed) { return }
+	$t = if ($null -eq $type) { "" } else { "$type" }
+	$tBare = if ($t -match '^xs:(.+)$') { $matches[1] } else { $t }
+	$pf = $tagPrefix
+	if ($t -eq "") { X "$indent<${pf}value xsi:nil=`"true`"/>" }
+	elseif ($t -eq "StandardPeriod") {
+		X "$indent<${pf}value xsi:type=`"v8:StandardPeriod`">"
+		X "$indent`t<v8:variant xsi:type=`"v8:StandardPeriodVariant`">Custom</v8:variant>"
+		X "$indent`t<v8:startDate>0001-01-01T00:00:00</v8:startDate>"
+		X "$indent`t<v8:endDate>0001-01-01T00:00:00</v8:endDate>"
+		X "$indent</${pf}value>"
+	}
+	elseif ($tBare -match '^string') { X "$indent<${pf}value xsi:type=`"xs:string`"/>" }
+	elseif ($tBare -match '^(date|time)') { X "$indent<${pf}value xsi:type=`"xs:dateTime`">0001-01-01T00:00:00</${pf}value>" }
+	elseif ($tBare -match '^decimal') { X "$indent<${pf}value xsi:type=`"xs:decimal`">0</${pf}value>" }
+	elseif ($tBare -eq "boolean") { X "$indent<${pf}value xsi:type=`"xs:boolean`">false</${pf}value>" }
+	else { X "$indent<${pf}value xsi:nil=`"true`"/>" }
+}
+
+function Parse-DataParamShorthand {
+	param([string]$s)
+	$result = @{ parameter = ""; value = $null; use = $true; userSettingID = $null; viewMode = $null }
+	if ($s -match '@user') { $result.userSettingID = "auto"; $s = $s -replace '\s*@user', '' }
+	if ($s -match '@off') { $result.use = $false; $s = $s -replace '\s*@off', '' }
+	if ($s -match '@quickAccess') { $result.viewMode = "QuickAccess"; $s = $s -replace '\s*@quickAccess', '' }
+	if ($s -match '@normal') { $result.viewMode = "Normal"; $s = $s -replace '\s*@normal', '' }
+	$s = $s.Trim()
+	if ($s -match '^([^=]+)=\s*(.+)$') {
+		$result.parameter = $Matches[1].Trim()
+		$valStr = $Matches[2].Trim()
+		$periodVariants = @("Custom","Today","ThisWeek","ThisTenDays","ThisMonth","ThisQuarter","ThisHalfYear","ThisYear","FromBeginningOfThisWeek","FromBeginningOfThisTenDays","FromBeginningOfThisMonth","FromBeginningOfThisQuarter","FromBeginningOfThisHalfYear","FromBeginningOfThisYear","LastWeek","LastTenDays","LastMonth","LastQuarter","LastHalfYear","LastYear","NextDay","NextWeek","NextTenDays","NextMonth","NextQuarter","NextHalfYear","NextYear","TillEndOfThisWeek","TillEndOfThisTenDays","TillEndOfThisMonth","TillEndOfThisQuarter","TillEndOfThisHalfYear","TillEndOfThisYear")
+		if ($periodVariants -contains $valStr) { $result.value = @{ variant = $valStr } }
+		elseif ($valStr -match '^\d{4}-\d{2}-\d{2}T') { $result.value = $valStr }
+		elseif ($valStr -eq "true" -or $valStr -eq "false") { $result.value = [bool]($valStr -eq "true") }
+		else { $result.value = $valStr }
+	} else { $result.parameter = $s }
+	return $result
+}
+
+function Emit-DataParameters {
+	param($items, [string]$indent, $blockViewMode = $null)
+	if (-not $items -or @($items).Count -eq 0) { return }
+	X "$indent<dcsset:dataParameters>"
+	foreach ($dp in @($items)) {
+		if ($dp -is [string]) {
+			$parsed = Parse-DataParamShorthand $dp
+			$dpObj = New-Object PSObject
+			$dpObj | Add-Member -NotePropertyName "parameter" -NotePropertyValue $parsed.parameter
+			if ($null -ne $parsed.value) { $dpObj | Add-Member -NotePropertyName "value" -NotePropertyValue $parsed.value }
+			if ($parsed.use -eq $false) { $dpObj | Add-Member -NotePropertyName "use" -NotePropertyValue $false }
+			if ($parsed.userSettingID) { $dpObj | Add-Member -NotePropertyName "userSettingID" -NotePropertyValue $parsed.userSettingID }
+			if ($parsed.viewMode) { $dpObj | Add-Member -NotePropertyName "viewMode" -NotePropertyValue $parsed.viewMode }
+			$dp = $dpObj
+		}
+		X "$indent`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
+		if ($dp.use -eq $false) { X "$indent`t`t<dcscor:use>false</dcscor:use>" }
+		X "$indent`t`t<dcscor:parameter>$(Esc-XmlText "$($dp.parameter)")</dcscor:parameter>"
+		$dpValIsArr = ($dp.value -is [array]) -or ($dp.value -is [System.Collections.IList] -and $dp.value -isnot [string])
+		if ($dpValIsArr) {
+			# Список значений параметра (valueListAllowed) — отдельный <dcscor:value> на каждое.
+			$avtype = "$($dp.valueType)"
+			foreach ($v in @($dp.value)) {
+				$vStr = if ($v -is [bool]) { "$v".ToLower() } else { "$v" }
+				if ($avtype -match '^[a-zA-Z]+:') { X "$indent`t`t<dcscor:value xsi:type=`"$avtype`">$(Esc-XmlText $vStr)</dcscor:value>" }
+				elseif ("$vStr" -match '^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена)\.' -or "$vStr" -match '^(ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.') { X "$indent`t`t<dcscor:value xsi:type=`"dcscor:DesignTimeValue`">$(Esc-XmlText $vStr)</dcscor:value>" }
+				else { X "$indent`t`t<dcscor:value xsi:type=`"xs:string`">$(Esc-XmlText $vStr)</dcscor:value>" }
+			}
+		} elseif ($dp.nilValue -eq $true) {
+			X "$indent`t`t<dcscor:value xsi:nil=`"true`"/>"
+		} elseif ((Test-EmptyValue $dp.value) -and $dp.valueType) {
+			# Явный типизированный пустой (xs:string-плейсхолдер и т.п.)
+			Emit-EmptyValue -type "$($dp.valueType)" -indent "$indent`t`t" -tagPrefix "dcscor:" -valueListAllowed $false
+		} elseif (Test-EmptyValue $dp.value) {
+			# Нет значения и нет valueType → НЕ эмитим value-узел (form дин-список: use=false плейсхолдер).
+			# (В отличие от skd-settings, где значение всегда присутствует.)
+		} elseif ($null -ne $dp.value) {
+			$vtype = "$($dp.valueType)"
+			if (($dp.value -is [PSCustomObject] -or $dp.value -is [hashtable] -or $dp.value -is [System.Collections.IDictionary]) -and ($dp.value.variant)) {
+				$_hasDate = $false; $_hasSD = $false
+				if ($dp.value -is [PSCustomObject]) { $_hasDate = [bool]$dp.value.PSObject.Properties['date']; $_hasSD = [bool]$dp.value.PSObject.Properties['startDate'] }
+				else { $_hasDate = $dp.value.Contains('date'); $_hasSD = $dp.value.Contains('startDate') }
+				$_variantStr = "$($dp.value.variant)"
+				$_isSBD = $_hasDate -or (-not $_hasSD -and $_variantStr -like 'BeginningOf*')
+				if ($_isSBD) {
+					$_d = $null
+					if ($dp.value -is [PSCustomObject] -and $dp.value.PSObject.Properties['date']) { $_d = "$($dp.value.date)" }
+					elseif (($dp.value -is [System.Collections.IDictionary]) -and $dp.value.Contains('date')) { $_d = "$($dp.value['date'])" }
+					X "$indent`t`t<dcscor:value xsi:type=`"v8:StandardBeginningDate`">"
+					X "$indent`t`t`t<v8:variant xsi:type=`"v8:StandardBeginningDateVariant`">$(Esc-XmlText $_variantStr)</v8:variant>"
+					if ($_variantStr -eq 'Custom') { if (-not $_d) { $_d = '0001-01-01T00:00:00' }; X "$indent`t`t`t<v8:date>$(Esc-XmlText $_d)</v8:date>" }
+					X "$indent`t`t</dcscor:value>"
+				} else {
+					$_sd = $null; $_ed = $null
+					if ($dp.value -is [PSCustomObject]) { if ($dp.value.PSObject.Properties['startDate']) { $_sd = "$($dp.value.startDate)" }; if ($dp.value.PSObject.Properties['endDate']) { $_ed = "$($dp.value.endDate)" } }
+					else { if ($dp.value.Contains('startDate')) { $_sd = "$($dp.value['startDate'])" }; if ($dp.value.Contains('endDate')) { $_ed = "$($dp.value['endDate'])" } }
+					X "$indent`t`t<dcscor:value xsi:type=`"v8:StandardPeriod`">"
+					X "$indent`t`t`t<v8:variant xsi:type=`"v8:StandardPeriodVariant`">$(Esc-XmlText $_variantStr)</v8:variant>"
+					if ($_variantStr -eq 'Custom') { if (-not $_sd) { $_sd = '0001-01-01T00:00:00' }; if (-not $_ed) { $_ed = '0001-01-01T00:00:00' }; X "$indent`t`t`t<v8:startDate>$(Esc-XmlText $_sd)</v8:startDate>"; X "$indent`t`t`t<v8:endDate>$(Esc-XmlText $_ed)</v8:endDate>" }
+					X "$indent`t`t</dcscor:value>"
+				}
+			} elseif ($vtype -match '^[a-zA-Z]+:') {
+				$vStr = if ($dp.value -is [bool]) { "$($dp.value)".ToLower() } else { "$($dp.value)" }
+				X "$indent`t`t<dcscor:value xsi:type=`"$vtype`">$(Esc-XmlText $vStr)</dcscor:value>"
+			} elseif ($vtype -eq 'boolean' -or $dp.value -is [bool]) {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:boolean`">$(Esc-XmlText ("$($dp.value)".ToLower()))</dcscor:value>"
+			} elseif ($vtype -match '^date' -or "$($dp.value)" -match '^\d{4}-\d{2}-\d{2}T') {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:dateTime`">$(Esc-XmlText "$($dp.value)")</dcscor:value>"
+			} elseif ($vtype -match '^decimal') {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:decimal`">$(Esc-XmlText "$($dp.value)")</dcscor:value>"
+			} elseif ($vtype -match '^string') {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:string`">$(Esc-XmlText "$($dp.value)")</dcscor:value>"
+			} elseif ("$($dp.value)" -match '^(ПланСчетов|Справочник|Перечисление|Документ|ПланВидовХарактеристик|ПланВидовРасчета|БизнесПроцесс|Задача|РегистрСведений|ПланОбмена)\.' -or "$($dp.value)" -match '^(ChartOfAccounts|Catalog|Enum|Document|ChartOfCharacteristicTypes|ChartOfCalculationTypes|BusinessProcess|Task|InformationRegister|ExchangePlan)\.') {
+				X "$indent`t`t<dcscor:value xsi:type=`"dcscor:DesignTimeValue`">$(Esc-XmlText "$($dp.value)")</dcscor:value>"
+			} else {
+				X "$indent`t`t<dcscor:value xsi:type=`"xs:string`">$(Esc-XmlText "$($dp.value)")</dcscor:value>"
+			}
+		}
+		if ($dp.viewMode) { X "$indent`t`t<dcsset:viewMode>$(Esc-XmlText "$($dp.viewMode)")</dcsset:viewMode>" }
+		if ($dp.userSettingID) { $uid = if ("$($dp.userSettingID)" -eq "auto") { New-Guid-String } else { "$($dp.userSettingID)" }; X "$indent`t`t<dcsset:userSettingID>$(Esc-XmlText $uid)</dcsset:userSettingID>" }
+		if ($dp.userSettingPresentation) { Emit-USPresentation -val $dp.userSettingPresentation -tag "dcsset:userSettingPresentation" -indent "$indent`t`t" }
+		X "$indent`t</dcscor:item>"
+	}
+	if ($null -ne $blockViewMode) { X "$indent`t<dcsset:viewMode>$(Esc-XmlText "$blockViewMode")</dcsset:viewMode>" }
+	X "$indent</dcsset:dataParameters>"
+}
+
+function Emit-DLParameter {
+	param($p, $parsed, [string]$indent)
+	X "$indent<Parameter>"
+	$ci = "$indent`t"
+	X "$ci<dcssch:name>$(Esc-XmlText $parsed.name)</dcssch:name>"
+	# Title: явный override (shorthand [..] / объект title/presentation) или авто из имени.
+	$title = $null
+	if ($parsed.title) { $title = $parsed.title }
+	elseif ($p -isnot [string] -and (Has-DLProp $p 'title') -and $p.title) { $title = $p.title }
+	elseif ($p -isnot [string] -and (Has-DLProp $p 'presentation') -and $p.presentation) { $title = $p.presentation }
+	if ($null -eq $title -or ($title -is [string] -and $title -eq '')) { $title = Title-FromName -name $parsed.name }
+	Emit-DLMLText -tag "dcssch:title" -text $title -indent $ci
+	# valueType
+	if ($parsed.type) { Emit-DLValueType -typeStr $parsed.type -indent $ci }
+	# value (дефолт nil; при valueListAllowed пустое — опускаем)
+	$vla = [bool]$parsed.valueListAllowed
+	$valIsArray = ($parsed.value -is [array]) -or ($parsed.value -is [System.Collections.IList] -and $parsed.value -isnot [string])
+	if ($valIsArray) {
+		foreach ($v in @($parsed.value)) { Emit-DLValue -type $parsed.type -val $v -indent $ci -valueListAllowed $false }
+	} elseif ($parsed.valueExplicit -and ($null -ne $parsed.value) -and ("$($parsed.value)" -eq '') -and (("$($parsed.type)" -eq '') -or ("$($parsed.type)" -match '^string'))) {
+		# Явный пустой СТРОКОВЫЙ параметр (value:"" от декомпилятора) → типизированный пустой
+		# <dcssch:value xsi:type="xs:string"/>, НЕ nil. Решается ФОРМОЙ value (""→typed-empty,
+		# null/отсутствие→nil), независимо от valueListAllowed; декомпилятор различает ""/null
+		# (Convert-TypedValue пустого xs:string → "", nil → value опущен/null). Корпус: 26 xs:string.
+		X "$ci<dcssch:value xsi:type=`"xs:string`"/>"
+	} elseif ($vla -and (Test-DLEmptyValue $parsed.value) -and $parsed.valueExplicit) {
+		# valueListAllowed + явный пустой (value:null от декомпилятора) → платформа здесь пишет nil
+		X "$ci<dcssch:value xsi:nil=`"true`"/>"
+	} else {
+		Emit-DLValue -type $parsed.type -val $parsed.value -indent $ci -valueListAllowed $vla
+	}
+	# useRestriction — ВСЕГДА; дефолт true; false только при явном useRestriction:false.
+	$ur = $true
+	if ($p -isnot [string] -and (Has-DLProp $p 'useRestriction')) { $ur = [bool]$p.useRestriction }
+	X "$ci<dcssch:useRestriction>$(if ($ur) { 'true' } else { 'false' })</dcssch:useRestriction>"
+	# expression
+	$expr = $null
+	if ($p -isnot [string] -and (Has-DLProp $p 'expression') -and $p.expression) { $expr = "$($p.expression)" }
+	if ($expr) { X "$ci<dcssch:expression>$(Esc-XmlText $expr)</dcssch:expression>" }
+	# availableValues
+	if ($p -isnot [string] -and (Has-DLProp $p 'availableValues') -and $p.availableValues) {
+		foreach ($av in @($p.availableValues)) { Emit-DLAvailableValue -av $av -type $parsed.type -indent $ci }
+	}
+	# valueListAllowed
+	if ($vla) { X "$ci<dcssch:valueListAllowed>true</dcssch:valueListAllowed>" }
+	# availableAsField=false (hidden или явный)
+	$aaf = $null
+	if ($parsed.hidden -eq $true) { $aaf = $false }
+	if ($p -isnot [string] -and (Has-DLProp $p 'availableAsField')) { $aaf = [bool]$p.availableAsField }
+	if ($aaf -eq $false) { X "$ci<dcssch:availableAsField>false</dcssch:availableAsField>" }
+	# inputParameters
+	if ($p -isnot [string] -and (Has-DLProp $p 'inputParameters') -and $p.inputParameters) { Emit-DLInputParameters -ip $p.inputParameters -indent $ci }
+	# denyIncompleteValues
+	if ($p -isnot [string] -and (Has-DLProp $p 'denyIncompleteValues') -and $p.denyIncompleteValues -eq $true) { X "$ci<dcssch:denyIncompleteValues>true</dcssch:denyIncompleteValues>" }
+	# use
+	$useVal = $null
+	if ($p -isnot [string] -and (Has-DLProp $p 'use') -and $p.use) { $useVal = "$($p.use)" }
+	if ($useVal) { X "$ci<dcssch:use>$(Esc-XmlText $useVal)</dcssch:use>" }
+	X "$indent</Parameter>"
+}
+
+function Emit-DLParameters {
+	param($params, [string]$indent)
+	if (-not $params) { return }
+	foreach ($p in @($params)) {
+		if ($p -is [string]) {
+			$parsed = Parse-DLParamShorthand $p
+		} else {
+			$resolvedType = ""
+			if ((Has-DLProp $p 'type') -and $p.type) {
+				if ($p.type -is [array] -or ($p.type -is [System.Collections.IList] -and $p.type -isnot [string])) {
+					$resolvedType = (@($p.type | ForEach-Object { Resolve-TypeStr "$_" })) -join ' | '
+				} else { $resolvedType = Resolve-TypeStr "$($p.type)" }
+			} elseif ((Has-DLProp $p 'valueType') -and $p.valueType) {
+				$resolvedType = Resolve-TypeStr "$($p.valueType)"
+			}
+			$parsed = @{ name = "$($p.name)"; type = $resolvedType; value = $(if (Has-DLProp $p 'value') { $p.value } else { $null }); valueExplicit = (Has-DLProp $p 'value'); title = $null }
+			if ((Has-DLProp $p 'valueListAllowed') -and $p.valueListAllowed -eq $true) { $parsed.valueListAllowed = $true }
+			if ((Has-DLProp $p 'hidden') -and $p.hidden -eq $true) { $parsed.hidden = $true }
+		}
+		Emit-DLParameter -p $p -parsed $parsed -indent $indent
+	}
+}
+
+function Emit-Attributes {
+	param($attrs, [string]$indent, $conditionalAppearance = $null)
+
+	$hasCA = $conditionalAppearance -and @($conditionalAppearance).Count -gt 0
+	# Платформа ВСЕГДА эмитит <Attributes> (100% корпуса; 162 формы — пустой <Attributes/>).
+	if ((-not $attrs -or $attrs.Count -eq 0) -and -not $hasCA) { X "$indent<Attributes/>"; return }
+	if (-not $attrs -or $attrs.Count -eq 0) {
+		# Нет реквизитов, но есть условное оформление (последний child <Attributes>)
+		X "$indent<Attributes>"
+		Emit-ConditionalAppearance -items $conditionalAppearance -indent "$indent`t" -wrapTag 'ConditionalAppearance'
+		X "$indent</Attributes>"
+		return
+	}
+
+	X "$indent<Attributes>"
+	$seenAttrs = @{}
+	foreach ($attr in $attrs) {
+		$attrId = New-Id
+		$attrName = "$($attr.name)"
+		Assert-UniqueName -name $attrName -seen $seenAttrs -kind 'attribute'
+
+		X "$indent`t<Attribute name=`"$attrName`" id=`"$attrId`">"
+		$inner = "$indent`t`t"
+
+		# Title атрибута (зеркало Emit-Title): нет ключа → авто-вывод из имени (кроме main);
+		# title "" → подавить; непустой → эмитить как есть.
+		$hasTitleKey = $null -ne $attr.PSObject.Properties['title']
+		if ($hasTitleKey) {
+			if ($attr.title) { Emit-MLText -tag "Title" -text $attr.title -indent $inner }
+		} elseif ($attr.main -ne $true) {
+			Emit-MLText -tag "Title" -text (Title-FromName -name $attrName) -indent $inner
+		}
+
+		# Type
+		if ($attr.type) {
+			Emit-Type -typeStr "$($attr.type)" -indent $inner
+		} else {
+			X "$inner<Type/>"
+		}
+		# valueType: уточнение типа значений ValueList → <Settings xsi:type="v8:TypeDescription">
+		# (та же грамматика типа, что и Type, включая составной "A | B"). Forgiving-синонимы.
+		# Три состояния: нет ключа → нет Settings; "" → пустой <Settings…/>; тип → с типом.
+		$vtSpec = $null; $hasVt = $false
+		foreach ($k in @('valueType','typeDescription','описаниеТипов','типЗначений')) {
+			if ($attr.PSObject.Properties[$k]) { $vtSpec = $attr.$k; $hasVt = $true; break }
+		}
+		if ($hasVt) {
+			Emit-Type -typeStr "$vtSpec" -indent $inner -tag "Settings" -tagAttrs ' xsi:type="v8:TypeDescription"'
+		}
+		# Planner design-time <Settings xsi:type="pl:Planner"> (встроенный конфиг планировщика).
+		# Идёт сразу после <Type> (как valueType/DynamicList Settings — взаимоисключающи).
+		if ($attr.PSObject.Properties['planner'] -and $null -ne $attr.planner) {
+			Emit-PlannerSettings -pl $attr.planner -ind $inner
+		}
+		# Chart/GanttChart design-time <Settings xsi:type="d4p1:Chart"/"d4p1:GanttChart">.
+		# Тип Settings выводится из типа реквизита (d5p1:GanttChart → d4p1:GanttChart).
+		if ($attr.PSObject.Properties['chart'] -and $null -ne $attr.chart) {
+			$ctype = if ("$($attr.type)" -match 'GanttChart') { 'd4p1:GanttChart' } else { 'd4p1:Chart' }
+			Emit-ChartSettings -chart $attr.chart -ind $inner -ctype $ctype
+		}
+
+		if ($attr.main -eq $true) {
+			X "$inner<MainAttribute>true</MainAttribute>"
+		}
+		# Доступ по ролям: просмотр/редактирование (порядок схемы: View → Edit, после MainAttribute)
+		if ($null -ne $attr.view) { Emit-XrFlag -tag 'View' -val $attr.view -indent $inner }
+		if ($null -ne $attr.edit) { Emit-XrFlag -tag 'Edit' -val $attr.edit -indent $inner }
+		$mainSaved = $false
+		if ($attr.main -eq $true -and $attr.type) {
+			$mainSaved = ("$($attr.type)") -match '^(CatalogObject|DocumentObject|ChartOfAccountsObject|ChartOfCalculationTypesObject|ChartOfCharacteristicTypesObject|ExchangePlanObject|BusinessProcessObject|TaskObject)\.' -or ("$($attr.type)") -match 'RecordManager\.'
+		}
+		# Явный ключ savedData побеждает (в т.ч. false → суппресс авто-вывода $mainSaved); нет ключа → авто.
+		$emitSaved = if ($null -ne $attr.PSObject.Properties['savedData']) { $attr.savedData -eq $true } else { $mainSaved }
+		if ($emitSaved) {
+			X "$inner<SavedData>true</SavedData>"
+		}
+		# Save: сохранение значения реквизита в пользовательских настройках. true → <Field>имя</Field>;
+		# строка/массив → под-поля с авто-префиксом "имя." (путь с точкой / UUID / =имя — как есть).
+		# Нет ключа или false → не эмитим.
+		if ($null -ne $attr.PSObject.Properties['save'] -and $null -ne $attr.save) {
+			$saveFields = New-Object System.Collections.ArrayList
+			if ($attr.save -is [bool]) {
+				if ($attr.save) { [void]$saveFields.Add($attrName) }
+			} else {
+				foreach ($e in @($attr.save)) {
+					$fld = "$e"
+					if ([string]::IsNullOrEmpty($fld)) { continue }
+					if ($fld -ne $attrName -and $fld -notmatch '\.' -and $fld -notmatch '^\d+/\d+') { $fld = "$attrName.$fld" }
+					if (-not $saveFields.Contains($fld)) { [void]$saveFields.Add($fld) }
+				}
+			}
+			if ($saveFields.Count -gt 0) {
+				X "$inner<Save>"
+				foreach ($f in $saveFields) { X "$inner`t<Field>$(Esc-XmlText $f)</Field>" }
+				X "$inner</Save>"
+			}
+		}
+		# Проверка заполнения реквизита → <FillCheck> (реальный тег; <FillChecking> в схеме нет).
+		# bool true → ShowError (единственное значение в корпусе); строка → verbatim. Синоним fillChecking.
+		$fcRaw = if ($null -ne $attr.PSObject.Properties['fillCheck']) { $attr.fillCheck } elseif ($null -ne $attr.PSObject.Properties['fillChecking']) { $attr.fillChecking } else { $null }
+		if ($fcRaw) {
+			$fcv = if ($fcRaw -is [bool]) { 'ShowError' } else { "$fcRaw" }
+			X "$inner<FillCheck>$fcv</FillCheck>"
+		}
+
+		# UseAlways: поля, всегда читаемые (дин-список/таблица). Две формы DSL сливаются:
+		#  attr.useAlways[] (короткие имена) + columns с useAlways:true → <Field>ИмяРеквизита.Поле</Field>.
+		$uaFields = New-Object System.Collections.ArrayList
+		if ($attr.useAlways) {
+			foreach ($e in @($attr.useAlways)) {
+				$fld = "$e"
+				# Префикс "ИмяРеквизита." добавляем к коротким именам. Поля дин-списка с маркером "~"
+				# (query-поля, ~13% корпуса) — префикс ставится ПОСЛЕ "~": ~Остановлен → ~Список.Остановлен.
+				# Полная форма (~Список.Остановлен / Список.Остановлен) — verbatim (forgiving ввод).
+				if ($fld.StartsWith('~')) {
+					$bare = $fld.Substring(1)
+					if ($bare -notmatch "^$([regex]::Escape($attrName))\.") { $bare = "$attrName.$bare" }
+					$fld = "~$bare"
+				} elseif ($fld -notmatch "^$([regex]::Escape($attrName))\." -and $fld -notmatch '^\d+/\d+') {
+					# UUID-ссылка (1/0:GUID) — НЕ префиксуем (платформа хранит её без "имя.")
+					$fld = "$attrName.$fld"
+				}
+				if (-not $uaFields.Contains($fld)) { [void]$uaFields.Add($fld) }
+			}
+		}
+		if ($attr.columns) {
+			foreach ($col in $attr.columns) {
+				if ($col.useAlways -eq $true) {
+					$fld = "$attrName.$($col.name)"
+					if (-not $uaFields.Contains($fld)) { [void]$uaFields.Add($fld) }
+				}
+			}
+		}
+		if ($uaFields.Count -gt 0) {
+			X "$inner<UseAlways>"
+			foreach ($f in $uaFields) { X "$inner`t<Field>$f</Field>" }
+			X "$inner</UseAlways>"
+		}
+
+		Emit-FunctionalOptions -fo $attr.functionalOptions -indent $inner
+
+		# Columns: прямые <Column> (ValueTable/Tree) + <AdditionalColumns table="X"> (доп. колонки
+		# табличных частей объекта). Порядок схемы: прямые сначала, затем AdditionalColumns-группы.
+		# Для дин-списка (есть settings) прямые колонки НЕ эмитим (служат лишь для UseAlways).
+		$hasDirectCols = $attr.columns -and $attr.columns.Count -gt 0 -and -not $attr.settings
+		$hasAddCols = $attr.additionalColumns -and @($attr.additionalColumns).Count -gt 0
+		if ($hasDirectCols -or $hasAddCols) {
+			X "$inner<Columns>"
+			if ($hasDirectCols) {
+				$seenCols = @{}  # колонки уникальны в пределах своего реквизита
+				foreach ($col in $attr.columns) {
+					Assert-UniqueName -name "$($col.name)" -seen $seenCols -kind "column of '$attrName'"
+					Emit-AttrColumn -col $col -indent "$inner`t"
+				}
+			}
+			if ($hasAddCols) {
+				foreach ($ac in @($attr.additionalColumns)) {
+					# Пустой список колонок задаётся ЯВНО (`"columns": []`) — это законная форма,
+					# платформа так пишет таблицу, у которой доп. колонок нет. А вот отсутствие ключа
+					# — недосказанность автора: «доп. колонки есть», а какие, не указано. Раньше на
+					# этом PS падал с «Не удается индексировать в массив NULL» (@($null).Count = 1).
+					if ($null -eq $ac.PSObject.Properties['columns'] -or $null -eq $ac.columns) {
+						Write-Error "additionalColumns group for table '$($ac.table)': key 'columns' is missing — list the columns, or pass an empty array for a table without extra columns"
+						exit 1
+					}
+					$acCols = @($ac.columns)
+					if ($acCols.Count -eq 0) {
+						# Явно пустая группа → self-closing (как платформа)
+						X "$inner`t<AdditionalColumns table=`"$($ac.table)`"/>"
+						continue
+					}
+					X "$inner`t<AdditionalColumns table=`"$($ac.table)`">"
+					$seenAcCols = @{}  # уникальность в пределах группы AdditionalColumns
+					foreach ($col in $acCols) {
+						Assert-UniqueName -name "$($col.name)" -seen $seenAcCols -kind "column of '$attrName'"
+						Emit-AttrColumn -col $col -indent "$inner`t`t"
+					}
+					X "$inner`t</AdditionalColumns>"
+				}
+			}
+			X "$inner</Columns>"
+		}
+
+		# Settings (динамический список)
+		if ($attr.settings) {
+			$st = $attr.settings
+			X "$inner<Settings xsi:type=`"DynamicList`">"
+			$si = "$inner`t"
+			# Порядок платформы: AutoFillAvailableFields, ManualQuery, DynamicDataRead, QueryText, Field*, MainTable, ListSettings
+			# AutoFillAvailableFields — дефолт true; эмитим только при заданном ключе (отклонение).
+			if ($null -ne $st.autoFillAvailableFields) { X "$si<AutoFillAvailableFields>$(if ($st.autoFillAvailableFields){'true'}else{'false'})</AutoFillAvailableFields>" }
+			$hasQuery = $st.query -and "$($st.query)".Trim()
+			# Явный ключ manualQuery (в т.ч. false) ПОБЕЖДАЕТ эвристику hasQuery (платформа изредка
+			# хранит QueryText при ManualQuery=false — декомпилятор фиксирует это отклонение).
+			$hasMQKey = ($st.PSObject.Properties['manualQuery']) -and ($null -ne $st.manualQuery)
+			$mq = if ($hasMQKey) { if ($st.manualQuery) { "true" } else { "false" } } elseif ($hasQuery) { "true" } else { "false" }
+			X "$si<ManualQuery>$mq</ManualQuery>"
+			# DynamicDataRead: дефолт true; false только при явном отключении
+			$ddr = if ($st.dynamicDataRead -eq $false) { "false" } else { "true" }
+			X "$si<DynamicDataRead>$ddr</DynamicDataRead>"
+			if ($hasQuery) {
+				$qtext = Resolve-TextFromFile "$($st.query)" $script:queryBaseDir
+				X "$si<QueryText>$(Esc-XmlText $qtext)</QueryText>"
+			}
+			# Явные поля набора (редко): override title/dataPath
+			if ($st.fields) {
+				foreach ($fld in $st.fields) {
+					# Тип поля набора: DataSetFieldField (дефолт) vs DataSetFieldNestedDataSet
+					# (поле-вложенный набор = реквизит табличной части; маркер nested).
+					# folder = папка-группировка полей (DataSetFieldFolder, без <field>); nested = вложенный набор.
+					$isFolder = [bool](Get-Prop $fld 'folder')
+					$ftype = if ($fld.nested) { "DataSetFieldNestedDataSet" } elseif ($isFolder) { "DataSetFieldFolder" } else { "DataSetFieldField" }
+					X "$si<Field xsi:type=`"dcssch:$ftype`">"
+					# dataPath: явный (включая пустой "" → self-closing <dcssch:dataPath/>) побеждает; иначе fallback на field.
+					if ($null -ne (Get-Prop $fld 'dataPath')) { $dp = "$($fld.dataPath)" }
+					elseif ($isFolder) { $dp = "" }
+					else { $dp = "$($fld.field)" }
+					if ($dp -eq "") { X "$si`t<dcssch:dataPath/>" } else { X "$si`t<dcssch:dataPath>$(Esc-XmlText "$dp")</dcssch:dataPath>" }
+					if (-not $isFolder) { X "$si`t<dcssch:field>$(Esc-XmlText "$($fld.field)")</dcssch:field>" }
+					if ($fld.title) {
+						X "$si`t<dcssch:title xsi:type=`"v8:LocalStringType`">"
+						Emit-MLItems -val $fld.title -indent "$si`t`t"
+						X "$si`t</dcssch:title>"
+					}
+					# Ограничения использования поля — после title, перед presentationExpression (порядок исходника)
+					Emit-RestrictBlock 'useRestriction' $fld.useRestriction "$si`t"
+					Emit-RestrictBlock 'attributeUseRestriction' $fld.attributeUseRestriction "$si`t"
+					# presentationExpression поля — перед valueType (порядок исходника)
+					if ($fld.presentationExpression) { X "$si`t<dcssch:presentationExpression>$(Esc-XmlText "$($fld.presentationExpression)")</dcssch:presentationExpression>" }
+					# valueType поля набора (тип значения; вычисляемые/кастомные поля)
+					if ($fld.valueType) { Emit-DLValueType -typeStr "$($fld.valueType)" -indent "$si`t" }
+					# appearance поля (формат/оформление) — после valueType (порядок исходника)
+					if ($fld.appearance) {
+						X "$si`t<dcssch:appearance>"
+						foreach ($prop in $fld.appearance.PSObject.Properties) { Emit-AppearanceValue -key $prop.Name -val $prop.Value -indent "$si`t`t" }
+						X "$si`t</dcssch:appearance>"
+					}
+					# inputParameters поля (связь по параметрам выбора) — в конце
+					if ($fld.inputParameters) { Emit-DLInputParameters -ip $fld.inputParameters -indent "$si`t" }
+					X "$si</Field>"
+				}
+			}
+			# Вычисляемые поля DataSet (<CalculatedField>) — после Field*, до Parameter*.
+			Emit-CalcFields -calcFields $st.calculatedFields -indent $si
+			# Schema-параметры дин-списка (DataCompositionSchemaParameter) — после Field*, до MainTable.
+			Emit-DLParameters -params $st.parameters -indent $si
+			# Ключ набора (query-based список без MainTable): KeyType (RowNumber/FieldValue/RowKey)
+			# + KeyField* — после Parameter*, до MainTable. Захват/эмит факт. значений.
+			if ($st.keyType) { X "$si<KeyType>$(Esc-XmlText "$($st.keyType)")</KeyType>" }
+			if ($st.keyFields) { foreach ($kf in @($st.keyFields)) { X "$si<KeyField>$(Esc-XmlText "$kf")</KeyField>" } }
+			if ($st.mainTable) { X "$si<MainTable>$(Normalize-MetaTypeRef "$($st.mainTable)")</MainTable>" }
+			# GetInvisibleFieldPresentations — после MainTable (дефолт true; эмитим только при заданном ключе = отклонении false).
+			if ($null -ne $st.getInvisibleFieldPresentations) { X "$si<GetInvisibleFieldPresentations>$(if ($st.getInvisibleFieldPresentations){'true'}else{'false'})</GetInvisibleFieldPresentations>" }
+			# AutoSaveUserSettings — после MainTable (дефолт true; эмитим только при заданном ключе = отклонении).
+			if ($null -ne $st.autoSaveUserSettings) { X "$si<AutoSaveUserSettings>$(if ($st.autoSaveUserSettings){'true'}else{'false'})</AutoSaveUserSettings>" }
+			# ListSettings: filter/order/conditionalAppearance (skd-грамматика) + каноничные блок-GUID.
+			# Нет items → контейнеры всё равно эмитятся (blockMeta) = каноничный пустой скелет платформы.
+			$lsi = "$si`t"
+			$lsOpenLen = $script:xml.Length
+			X "$si<ListSettings>"
+			$lsAfterOpenLen = $script:xml.Length  # для self-closing, если внутри ничего не эмитнётся
+			if ($st.PSObject.Properties['listSettings'] -and $null -ne $st.listSettings) {
+				# Частичная/минимальная форма скелета — эмитим ТОЛЬКО указанные части с их блок-метой.
+				# meta: 'v'=viewMode, 'u'=userSettingID (контейнеры); itemsViewMode/itemsUserSettingID → present.
+				foreach ($prop in $st.listSettings.PSObject.Properties) {
+					$tag = $prop.Name; $pv = $prop.Value
+					# Значение дескриптора: строка-код "vu" ИЛИ объект { meta:"vu", presentation:<текст/ML> }
+					# (контейнер несёт собственный userSettingPresentation — кастомную подпись настройки).
+					if (($pv -is [PSCustomObject]) -or ($pv -is [System.Collections.IDictionary])) {
+						$meta = "$(Get-Prop $pv 'meta')"; $bpres = Get-Prop $pv 'presentation'
+					} else { $meta = "$pv"; $bpres = $null }
+					$bvm = if ($meta -match 'v') { 'Normal' } else { $null }
+					switch ($tag) {
+						'filter'                { $bus = if ($meta -match 'u') { $script:CANON_FILTER_ID } else { $null }; Emit-Filter -items $st.filter -indent $lsi -blockViewMode $bvm -blockUserSettingID $bus -blockUserSettingPresentation $bpres }
+						'order'                 { $bus = if ($meta -match 'u') { $script:CANON_ORDER_ID } else { $null }; Emit-Order -items $st.order -indent $lsi -blockViewMode $bvm -blockUserSettingID $bus -blockUserSettingPresentation $bpres }
+						'conditionalAppearance' { $bus = if ($meta -match 'u') { $script:CANON_CA_ID } else { $null }; Emit-ConditionalAppearance -items $st.conditionalAppearance -indent $lsi -blockViewMode $bvm -blockUserSettingID $bus -blockUserSettingPresentation $bpres }
+						'itemsViewMode'         { X "$lsi<dcsset:itemsViewMode>Normal</dcsset:itemsViewMode>" }
+						'itemsUserSettingID'    { X "$lsi<dcsset:itemsUserSettingID>$($script:CANON_ITEMS_ID)</dcsset:itemsUserSettingID>" }
+						'itemsUserSettingPresentation' { Emit-USPresentation -val $pv -tag "dcsset:itemsUserSettingPresentation" -indent $lsi }
+						'dataParameters'        { Emit-DataParameters -items $st.dataParameters -indent $lsi }
+						'structure'             { Emit-ListGrouping (Get-ListGroupingValue $st) $lsi }
+					}
+				}
+			} else {
+				# Полный каноничный скелет (умолчание, ~93% форм) — без изменений.
+				Emit-Filter -items $st.filter -indent $lsi -blockViewMode 'Normal' -blockUserSettingID $script:CANON_FILTER_ID
+				# dataParameters — после filter, до order (XSD-порядок ListSettings)
+				if ($st.PSObject.Properties['dataParameters']) { Emit-DataParameters -items $st.dataParameters -indent $lsi }
+				Emit-Order -items $st.order -indent $lsi -blockViewMode 'Normal' -blockUserSettingID $script:CANON_ORDER_ID
+				Emit-ConditionalAppearance -items $st.conditionalAppearance -indent $lsi -blockViewMode 'Normal' -blockUserSettingID $script:CANON_CA_ID
+				# Группировка строк списка (авторинг без round-trip дескриптора) — после CA, до itemsViewMode
+				Emit-ListGrouping (Get-ListGroupingValue $st) $lsi
+				X "$lsi<dcsset:itemsViewMode>Normal</dcsset:itemsViewMode>"
+				X "$lsi<dcsset:itemsUserSettingID>$($script:CANON_ITEMS_ID)</dcsset:itemsUserSettingID>"
+			}
+			if ($script:xml.Length -eq $lsAfterOpenLen) {
+				# Пустой дескриптор listSettings:{} (оригинал = <ListSettings/>) → зеркалим self-closing.
+				$script:xml.Length = $lsOpenLen
+				X "$si<ListSettings/>"
+			} else {
+				X "$si</ListSettings>"
+			}
+			X "$inner</Settings>"
+		}
+
+		X "$indent`t</Attribute>"
+	}
+	# Условное оформление формы — последний child <Attributes> (та же DCS-грамматика, что settings CA)
+	Emit-ConditionalAppearance -items $conditionalAppearance -indent "$indent`t" -wrapTag 'ConditionalAppearance'
+	X "$indent</Attributes>"
+}
+
+function Emit-Parameters {
+	param($params, [string]$indent)
+
+	if (-not $params -or $params.Count -eq 0) { return }
+
+	X "$indent<Parameters>"
+	$seenParams = @{}
+	foreach ($param in $params) {
+		Assert-UniqueName -name "$($param.name)" -seen $seenParams -kind 'parameter'
+		X "$indent`t<Parameter name=`"$($param.name)`">"
+		$inner = "$indent`t`t"
+
+		Emit-Type -typeStr "$($param.type)" -indent $inner
+
+		if ($param.key -eq $true) {
+			X "$inner<KeyParameter>true</KeyParameter>"
+		}
+
+		X "$indent`t</Parameter>"
+	}
+	X "$indent</Parameters>"
+}
+
+function Emit-Commands {
+	param($cmds, [string]$indent)
+
+	if (-not $cmds -or $cmds.Count -eq 0) { return }
+
+	X "$indent<Commands>"
+	$seenCmds = @{}
+	foreach ($cmd in $cmds) {
+		$cmdId = New-Id
+		Assert-UniqueName -name "$($cmd.name)" -seen $seenCmds -kind 'command'
+		X "$indent`t<Command name=`"$($cmd.name)`" id=`"$cmdId`">"
+		$inner = "$indent`t`t"
+
+		# Заголовок команды (зеркало Emit-Title): ключ есть+непустой → эмитим; ключ есть+"" → суппресс
+		# (в оригинале <Title> нет — не додумывать); ключ отсутствует → авто-вывод из имени (помощь модели).
+		if ($null -ne $cmd.PSObject.Properties['title']) {
+			if ($cmd.title) { Emit-MLText -tag "Title" -text $cmd.title -indent $inner }
+		} else {
+			$cmdTitle = Title-FromName -name "$($cmd.name)"
+			if ($cmdTitle) { Emit-MLText -tag "Title" -text $cmdTitle -indent $inner }
+		}
+
+		if ($cmd.tooltip) {
+			Emit-MLText -tag "ToolTip" -text $cmd.tooltip -indent $inner
+		}
+
+		# Доступность команды по ролям (после ToolTip, до Action)
+		if ($null -ne $cmd.use) { Emit-XrFlag -tag 'Use' -val $cmd.use -indent $inner }
+
+		# Обработчик; в расширении — с видом вызова (callType), или несколько: actions [{handler, callType}]
+		if ($cmd.actions) {
+			foreach ($act in @($cmd.actions)) {
+				$ct = Normalize-CallType "$($act.callType)" "$($cmd.name)" 'Action'
+				$ctAttr = if ($ct) { " callType=`"$ct`"" } else { "" }
+				X "$inner<Action$ctAttr>$($act.handler)</Action>"
+			}
+		} elseif ($cmd.action) {
+			$ct = Normalize-CallType "$($cmd.callType)" "$($cmd.name)" 'Action'
+			$ctAttr = if ($ct) { " callType=`"$ct`"" } else { "" }
+			X "$inner<Action$ctAttr>$($cmd.action)</Action>"
+		}
+
+		if ($cmd.modifiesSavedData -eq $true) { X "$inner<ModifiesSavedData>true</ModifiesSavedData>" }
+
+		Emit-FunctionalOptions -fo $cmd.functionalOptions -indent $inner
+
+		if ($cmd.currentRowUse) {
+			X "$inner<CurrentRowUse>$($cmd.currentRowUse)</CurrentRowUse>"
+		}
+
+		# Используемая таблица — имя элемента-таблицы (xsi:type обязателен).
+		# Forgiving-ключи: table / associatedTableElementId (XML-тег) / ИспользуемаяТаблица (рус., регистр-незав.)
+		$cmdTable = $cmd.table
+		if (-not $cmdTable) { $cmdTable = $cmd.associatedTableElementId }
+		if (-not $cmdTable) { $cmdTable = $cmd.используемаяТаблица }
+		if ($cmdTable) {
+			X "$inner<AssociatedTableElementId xsi:type=`"xs:string`">$(Esc-XmlText "$cmdTable")</AssociatedTableElementId>"
+		}
+
+		if ($cmd.shortcut) {
+			X "$inner<Shortcut>$($cmd.shortcut)</Shortcut>"
+		}
+
+		Emit-CommandPicture -pic $cmd.picture -elemLt $cmd.loadTransparent -indent $inner
+
+		if ($cmd.representation) {
+			X "$inner<Representation>$($cmd.representation)</Representation>"
+		}
+
+		X "$indent`t</Command>"
+	}
+	X "$indent</Commands>"
+}
+
+function Resolve-CommandGroupKey {
+	param([string]$key, [string]$panelTag)
+	$k = ($key -replace '\s','').ToLower()
+	if ($panelTag -eq 'NavigationPanel') {
+		switch ($k) {
+			'important' { return 'FormNavigationPanelImportant' }
+			'важное'    { return 'FormNavigationPanelImportant' }
+			'goto'      { return 'FormNavigationPanelGoTo' }
+			'перейти'   { return 'FormNavigationPanelGoTo' }
+			'seealso'   { return 'FormNavigationPanelSeeAlso' }
+			'смтакже'   { return 'FormNavigationPanelSeeAlso' }
+		}
+	} else {
+		switch ($k) {
+			'important'          { return 'FormCommandBarImportant' }
+			'важное'             { return 'FormCommandBarImportant' }
+			'createbasedon'      { return 'FormCommandBarCreateBasedOn' }
+			'создатьнаосновании' { return 'FormCommandBarCreateBasedOn' }
+		}
+	}
+	return $key  # verbatim
+}
+
+function Emit-CommandInterface {
+	param($ci, [string]$indent)
+	if (-not $ci) { return }
+	$inner = "$indent`t"
+	$panels = @(
+		# Порядок панелей — как в выгрузке: панель навигации раньше командной (607 из 607 форм корпуса)
+		@{ Tag='NavigationPanel'; Syns=@('navigationPanel','панельНавигации','ПанельНавигации') },
+		@{ Tag='CommandBar';      Syns=@('commandBar','команднаяПанель','КоманднаяПанель') }
+	)
+	$present = @()
+	foreach ($p in $panels) {
+		$items = $null
+		foreach ($syn in $p.Syns) { if ($null -ne $ci.PSObject.Properties[$syn]) { $items = $ci.($syn); break } }
+		if ($null -ne $items) { $present += ,@{ Tag=$p.Tag; Items=$items } }
+	}
+	if ($present.Count -eq 0) { return }
+	X "$indent<CommandInterface>"
+	foreach ($p in $present) {
+		X "$inner<$($p.Tag)>"
+		# Нормализация: плоский список пар (элемент, group-из-дерева). Объект → дерево.
+		$flat = New-Object System.Collections.ArrayList
+		if ($p.Items -is [System.Management.Automation.PSCustomObject]) {
+			foreach ($prop in $p.Items.PSObject.Properties) {
+				$grpFromTree = Resolve-CommandGroupKey -key $prop.Name -panelTag $p.Tag
+				foreach ($it in @($prop.Value)) { [void]$flat.Add(@{ item=$it; treeGroup=$grpFromTree }) }
+			}
+		} else {
+			foreach ($it in @($p.Items)) { [void]$flat.Add(@{ item=$it; treeGroup=$null }) }
+		}
+		foreach ($fi in $flat) {
+			$item = $fi.item; $treeGroup = $fi.treeGroup
+			if ($item -is [string]) {
+				$cmd = $item; $type = 'Auto'; $attr = $null; $grp = $null; $idx = $null; $dv = $null; $vis = $null
+			} else {
+				$cmd  = Get-ElProp $item @('command','команда')
+				$type = Get-ElProp $item @('type','тип'); if (-not $type) { $type = 'Auto' }
+				$attr = Get-ElProp $item @('attribute','реквизит')
+				$grp  = Get-ElProp $item @('group','группа','группаКоманд')
+				$idx  = Get-ElProp $item @('index','индекс')
+				$dv   = Get-ElProp $item @('defaultVisible','видимость','видимостьПоУмолчанию')
+				$vis  = Get-ElProp $item @('visible','видимостьПоРолям','настройкаВидимости')
+			}
+			# group из дерева побеждает (если задан и непустой); явный group элемента — фолбэк
+			if ($treeGroup) { $grp = $treeGroup }
+			X "$inner`t<Item>"
+			X "$inner`t`t<Command>$(Esc-XmlText "$cmd")</Command>"
+			X "$inner`t`t<Type>$type</Type>"
+			if ($attr) { X "$inner`t`t<Attribute>$(Esc-XmlText "$attr")</Attribute>" }
+			if ($grp)  { X "$inner`t`t<CommandGroup>$(Esc-XmlText "$grp")</CommandGroup>" }
+			if ($null -ne $idx) { X "$inner`t`t<Index>$idx</Index>" }
+			if ($null -ne $dv)  { X "$inner`t`t<DefaultVisible>$(if ($dv){'true'}else{'false'})</DefaultVisible>" }
+			if ($null -ne $vis) { Emit-XrFlag -tag 'Visible' -val $vis -indent "$inner`t`t" }
+			X "$inner`t</Item>"
+		}
+		X "$inner</$($p.Tag)>"
+	}
+	X "$indent</CommandInterface>"
+}
+
+function Get-FormRootRank([string]$tag) {
+	$i = [array]::IndexOf(($script:formRootTagOrder -split ' '), $tag)
+	if ($i -lt 0) { return [array]::IndexOf(($script:formRootTagOrder -split ' '), 'AutoCommandBar') - 0.5 }
+	return $i
+}
+
+function Warn-UnknownFormEvent([string]$name) {
+	if ($script:knownFormEvents -notcontains $name) {
+		Write-Host "[WARN] Unknown form event '$name'. Known: $($script:knownFormEvents -join ', ')"
+	}
+}
+
+function Emit-Properties {
+	param($props, [string]$indent)
+
+	if (-not $props) { return }
+
+	# camelCase -> PascalCase mapping for known properties
+	$propMap = @{
+		"autoTitle"              = "AutoTitle"
+		"windowOpeningMode"      = "WindowOpeningMode"
+		"commandBarLocation"     = "CommandBarLocation"
+		"saveDataInSettings"     = "SaveDataInSettings"
+		"autoSaveDataInSettings" = "AutoSaveDataInSettings"
+		"autoTime"               = "AutoTime"
+		"usePostingMode"         = "UsePostingMode"
+		"repostOnWrite"          = "RepostOnWrite"
+		"autoURL"                = "AutoURL"
+		"autoFillCheck"          = "AutoFillCheck"
+		"customizable"           = "Customizable"
+		"enterKeyBehavior"       = "EnterKeyBehavior"
+		"verticalScroll"         = "VerticalScroll"
+		"scalingMode"            = "ScalingMode"
+		"useForFoldersAndItems"  = "UseForFoldersAndItems"
+		"reportResult"           = "ReportResult"
+		"detailsData"            = "DetailsData"
+		"reportFormType"         = "ReportFormType"
+		"autoShowState"          = "AutoShowState"
+		"width"                  = "Width"
+		"height"                 = "Height"
+		"group"                  = "Group"
+	}
+
+	foreach ($p in $props.PSObject.Properties) {
+		$xmlName = if ($propMap.ContainsKey($p.Name)) { $propMap[$p.Name] } else {
+			# Auto PascalCase: first letter uppercase
+			$p.Name.Substring(0,1).ToUpper() + $p.Name.Substring(1)
+		}
+		# Convert boolean to lowercase string (PS renders as True/False)
+		$val = $p.Value
+		# Пустая строка = суппресс-маркер (напр. autoTitle:"" — не эмитить и не додумывать)
+		if ($val -is [string] -and $val -eq '') { continue }
+		if ($val -is [bool]) {
+			$val = if ($val) { "true" } else { "false" }
+		}
+		X "$indent<$xmlName>$(Esc-XmlText "$val")</$xmlName>"
+	}
 }
 
 function Normalize-PanelSynonyms {
@@ -4313,6 +6163,8 @@ function Find-ModuleRefs([string]$name, [string]$kind) {
 			if ([regex]::IsMatch($code, "(?<!\w)(Элементы|Items|ПодчиненныеЭлементы|ChildItems)\s*\.\s*$n(?!\w)", $opt)) { [void]$hits.Add($i + 1) }
 		} elseif ($kind -eq 'command') {
 			if ([regex]::IsMatch($code, "(?<!\w)(Команды|Commands)\s*\.\s*$n(?!\w)", $opt)) { [void]$hits.Add($i + 1) }
+		} elseif ($kind -eq 'parameter') {
+			if ([regex]::IsMatch($code, "(?<!\w)(Параметры|Parameters)\s*\.\s*$n(?!\w)", $opt)) { [void]$hits.Add($i + 1) }
 		} else {
 			# Реквизит формы: имя целым словом не после точки; после точки — только ЭтаФорма./ЭтотОбъект.
 			foreach ($m in [regex]::Matches($code, "(?<!\w)$n(?!\w)", $opt)) {
@@ -4667,6 +6519,219 @@ function Remove-FormAttribute($op, [int]$idx) {
 	$script:removedCount++
 }
 
+# === 9e. Секции формы ===
+
+# Узел-секция корня формы; нет — создаётся на своём месте (порядок корня — по корпусу).
+function Get-OrCreateRootSection([string]$tag) {
+	$sec = $root.SelectSingleNode("f:$tag", $nsMgr)
+	if ($null -ne $sec) { return $sec }
+	$sec = $xmlDoc.CreateElement($tag, $formNs)
+	Insert-RootChild $sec
+	return $sec
+}
+
+function Insert-RootChild($node) {
+	$rank = Get-FormRootRank $node.LocalName
+	$ref = $null
+	foreach ($c in $root.ChildNodes) {
+		if ($c.NodeType -ne 'Element') { continue }
+		if ((Get-FormRootRank $c.LocalName) -gt $rank) { $ref = $c; break }
+	}
+	Insert-NodeAt $root $node $ref (Get-ChildIndent $root)
+}
+
+# Вывод эмиттера form-compile во фрагмент: блок пишет через X; результат — узлы верхнего уровня.
+function Invoke-SectionEmit([scriptblock]$emit) {
+	$saveId = $script:nextElemId
+	$script:xml = New-Object System.Text.StringBuilder 2048
+	X "<_F $allNsDecl>"
+	. $emit
+	X "</_F>"
+	$script:nextElemId = $saveId
+	return @(Import-ElementNodes (Parse-Fragment $script:xml.ToString()))
+}
+
+# Свойство формы: значение — как в form-compile; null — убрать.
+function Set-FormProperty([string]$key, $value) {
+	if ($null -ne $value -and -not ($value -is [string] -or $value -is [bool] -or $value -is [int] -or $value -is [long] -or $value -is [double] -or $value -is [decimal])) {
+		Fail "properties.${key}: значение — строка, число или true/false"
+	}
+	$probe = New-Object PSObject
+	$probe | Add-Member -NotePropertyName $key -NotePropertyValue $(if ($null -eq $value -or "$value" -eq '') { 'x' } else { $value })
+	$node = @(Invoke-SectionEmit { Emit-Properties -props $probe -indent "`t" })[0]
+	$tag = $node.LocalName
+	$existing = $root.SelectSingleNode("f:$tag", $nsMgr)
+	if ($null -eq $value -or "$value" -eq '') {
+		if ($null -ne $existing) { Remove-NodeWithWs $existing; $script:formLog += "  * $tag убрано"; $script:formChanged++ }
+		return
+	}
+	if ($null -ne $existing) { $root.ReplaceChild($node, $existing) | Out-Null } else { Insert-RootChild $node }
+	$script:formLog += "  * ${tag}=$($node.InnerText)"
+	$script:formChanged++
+}
+
+# События формы: { Событие: обработчик | { handler, callType } | [ … ] } — как events элемента.
+function Add-FormEventsDsl($events) {
+	if (-not ($events -is [System.Management.Automation.PSCustomObject])) { Fail "events — объект { Событие: обработчик }" }
+	$sec = $null
+	foreach ($p in $events.PSObject.Properties) {
+		Warn-UnknownFormEvent $p.Name
+		foreach ($v in @($p.Value)) {
+			$h = ""; $ct = ""
+			if ($v -is [System.Management.Automation.PSCustomObject]) { $h = "$($v.handler)"; $ct = Normalize-CallType "$($v.callType)" 'Form' $p.Name } else { $h = "$v" }
+			if (-not $h) { Fail "events: у события формы $($p.Name) укажите имя обработчика" }
+			$ctStr = if ($ct) { "[$ct]" } else { "" }
+			if ($null -eq $sec) { $sec = $root.SelectSingleNode("f:Events", $nsMgr) }
+			if ($null -ne $sec) {
+				$dup = $null
+				foreach ($e in $sec.SelectNodes("f:Event", $nsMgr)) {
+					if ($e.GetAttribute('name') -eq $p.Name -and $e.GetAttribute('callType') -eq $ct) { $dup = $e; break }
+				}
+				if ($null -ne $dup) {
+					if ($dup.InnerText -eq $h) { $script:formLog += "  = событие $($p.Name)$ctStr -> $h уже есть"; continue }
+					Fail "events: событие формы $($p.Name)$ctStr уже обрабатывает '$($dup.InnerText)' — второй обработчик не повесить"
+				}
+			}
+			if ($null -eq $sec) { $sec = Get-OrCreateRootSection 'Events' }
+			$ev = $xmlDoc.CreateElement("Event", $formNs)
+			$ev.SetAttribute('name', $p.Name)
+			if ($ct) { $ev.SetAttribute('callType', $ct) }
+			$ev.InnerText = $h
+			Insert-NodeAt $sec $ev $null (Get-ChildIndent $sec)
+			$script:formLog += "  + событие $($p.Name)$ctStr -> $h"
+			$script:formChanged++
+		}
+	}
+}
+
+# Исключённые команды: список имён — исключить; { remove: [...] } — вернуть.
+function Update-ExcludedCommands($spec) {
+	if ($spec -is [System.Management.Automation.PSCustomObject]) {
+		Assert-OpKeys $spec @('remove') "excludedCommands"
+		$sec = $root.SelectSingleNode("f:CommandSet", $nsMgr)
+		foreach ($n in @(@($spec.remove) | ForEach-Object { "$_" })) {
+			$hit = $null
+			if ($null -ne $sec) { foreach ($e in $sec.SelectNodes("f:ExcludedCommand", $nsMgr)) { if ($e.InnerText.Trim() -eq $n) { $hit = $e; break } } }
+			if ($null -eq $hit) { Fail "excludedCommands: команда '$n' не исключена в форме" }
+			Remove-NodeWithWs $hit
+			$script:formLog += "  - исключение команды $n"
+			$script:formChanged++
+		}
+		if ($null -ne $sec -and $null -eq (Get-FirstElementChild $sec)) { Remove-NodeWithWs $sec }
+		return
+	}
+	$sec = $null
+	foreach ($n in @(@($spec) | ForEach-Object { "$_" } | Where-Object { $_ })) {
+		if ($null -eq $sec) { $sec = Get-OrCreateRootSection 'CommandSet' }
+		$dup = $false
+		foreach ($e in $sec.SelectNodes("f:ExcludedCommand", $nsMgr)) { if ($e.InnerText.Trim() -eq $n) { $dup = $true; break } }
+		if ($dup) { $script:formLog += "  = команда $n уже исключена"; continue }
+		$e = $xmlDoc.CreateElement("ExcludedCommand", $formNs)
+		$e.InnerText = $n
+		Insert-NodeAt $sec $e $null (Get-ChildIndent $sec)
+		$script:formLog += "  + исключена команда $n"
+		$script:formChanged++
+	}
+}
+
+# Параметры формы: определения — как в form-compile; { remove: имя | [...] } — удалить.
+function Update-FormParameters($list) {
+	$adds = @()
+	$i = 0
+	foreach ($p in @($list)) {
+		if ($null -ne $p.PSObject.Properties['remove']) {
+			Assert-OpKeys $p @('remove') "parameters[$i] remove"
+			foreach ($n in @(@($p.remove) | ForEach-Object { "$_" })) {
+				$sec = $root.SelectSingleNode("f:Parameters", $nsMgr)
+				$hit = $null
+				if ($null -ne $sec) { foreach ($e in $sec.SelectNodes("f:Parameter", $nsMgr)) { if ($e.GetAttribute('name') -eq $n) { $hit = $e; break } } }
+				if ($null -eq $hit) { Fail "parameters[$i] remove: параметр '$n' не найден в форме" }
+				$refs = Find-ModuleRefs $n 'parameter'
+				if ($refs.Count -gt 0) { Fail "parameters[$i] remove: к параметру '$n' обращается модуль формы — сначала убери обращения из кода:`n$(Format-ModuleRefs $refs)" }
+				Remove-NodeWithWs $hit
+				if ($null -eq (Get-FirstElementChild $sec)) { Remove-NodeWithWs $sec }
+				$script:formLog += "  - параметр $n"
+				$script:formChanged++
+			}
+		} else { $adds += $p }
+		$i++
+	}
+	if ($adds.Count -eq 0) { return }
+	$sec = Get-OrCreateRootSection 'Parameters'
+	$seen = @{}
+	foreach ($p in $adds) {
+		Assert-EditUnique -name "$($p.name)" -seen $seen -ctx 'parameter name'
+		foreach ($e in $sec.SelectNodes("f:Parameter", $nsMgr)) {
+			if ($e.GetAttribute('name') -eq "$($p.name)") { Fail "parameters: параметр '$($p.name)' уже есть в форме" }
+		}
+	}
+	$wrap = @(Invoke-SectionEmit { Emit-Parameters -params $adds -indent "`t" })[0]
+	foreach ($node in @($wrap.SelectNodes("f:Parameter", $nsMgr))) {
+		$wrap.RemoveChild($node) | Out-Null
+		Insert-NodeAt $sec $node $null (Get-ChildIndent $sec)
+		$script:formLog += "  + параметр $($node.GetAttribute('name'))"
+		$script:formChanged++
+	}
+}
+
+# Условное оформление: правила — как в form-compile; добавляются в конец оформления формы.
+function Add-FormConditionalAppearance($items) {
+	$items = @($items)
+	if ($items.Count -eq 0) { return }
+	$attrs = Get-OrCreateRootSection 'Attributes'
+	if ($attrs.IsEmpty) { $attrs.IsEmpty = $false }
+	$ca = $attrs.SelectSingleNode("f:ConditionalAppearance", $nsMgr)
+	$wrap = @(Invoke-SectionEmit { Emit-ConditionalAppearance -items $items -indent "`t`t" -wrapTag 'ConditionalAppearance' })[0]
+	if ($null -eq $ca) {
+		Insert-NodeAt $attrs $wrap $null (Get-ChildIndent $attrs)
+		$n = @($wrap.ChildNodes | Where-Object { $_.NodeType -eq 'Element' }).Count
+	} else {
+		$n = 0
+		foreach ($r in @($wrap.ChildNodes | Where-Object { $_.NodeType -eq 'Element' })) {
+			$wrap.RemoveChild($r) | Out-Null
+			Insert-NodeAt $ca $r $null (Get-ChildIndent $ca)
+			$n++
+		}
+	}
+	$script:formLog += "  + условное оформление: правил $n"
+	$script:formChanged += $n
+}
+
+# Командный интерфейс: пункты панелей — как в form-compile; добавляются в конец своей панели.
+function Add-FormCommandInterface($ci) {
+	$wrap = @(Invoke-SectionEmit { Emit-CommandInterface -ci $ci -indent "`t" })
+	if ($wrap.Count -eq 0) { return }
+	$wrap = $wrap[0]
+	$sec = $root.SelectSingleNode("f:CommandInterface", $nsMgr)
+	if ($null -eq $sec) {
+		Insert-RootChild $wrap
+		foreach ($pn in @($wrap.ChildNodes | Where-Object { $_.NodeType -eq 'Element' })) {
+			$script:formLog += "  + командный интерфейс, $($pn.LocalName): пунктов $(@($pn.SelectNodes('f:Item', $nsMgr)).Count)"
+			$script:formChanged++
+		}
+		return
+	}
+	foreach ($pn in @($wrap.ChildNodes | Where-Object { $_.NodeType -eq 'Element' })) {
+		$target = $sec.SelectSingleNode("f:$($pn.LocalName)", $nsMgr)
+		if ($null -eq $target) {
+			$wrap.RemoveChild($pn) | Out-Null
+			# Как в выгрузке: панель навигации раньше командной панели
+			$ref = if ($pn.LocalName -eq 'NavigationPanel') { $sec.SelectSingleNode("f:CommandBar", $nsMgr) } else { $null }
+			Insert-NodeAt $sec $pn $ref (Get-ChildIndent $sec)
+			$cnt = @($pn.SelectNodes('f:Item', $nsMgr)).Count
+		} else {
+			$cnt = 0
+			foreach ($it in @($pn.SelectNodes("f:Item", $nsMgr))) {
+				$pn.RemoveChild($it) | Out-Null
+				Insert-NodeAt $target $it $null (Get-ChildIndent $target)
+				$cnt++
+			}
+		}
+		$script:formLog += "  + командный интерфейс, $($pn.LocalName): пунктов $cnt"
+		$script:formChanged++
+	}
+}
+
 # === 10. Elements: добавление, перенос, изменение, удаление — по порядку ===
 
 $script:opLog = @()
@@ -4745,32 +6810,8 @@ if ($def.attributes) {
 }
 
 if ($attrAdds.Count -gt 0) {
-	$attrsSection = $root.SelectSingleNode("f:Attributes", $nsMgr)
-	if (-not $attrsSection) {
-		# Create Attributes section — insert after ChildItems or after Events
-		$attrsSection = $xmlDoc.CreateElement("Attributes", $formNs)
-		# Find insertion point: after ChildItems or after the last pre-Attributes element
-		$insertAfter = $rootCI
-		if (-not $insertAfter) {
-			$insertAfter = $root.SelectSingleNode("f:Events", $nsMgr)
-		}
-		if (-not $insertAfter) {
-			$insertAfter = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr)
-		}
-		if ($insertAfter) {
-			$refNode = $insertAfter.NextSibling
-			$ws = $xmlDoc.CreateWhitespace("`r`n`t")
-			$root.InsertBefore($ws, $refNode) | Out-Null
-			$root.InsertBefore($attrsSection, $refNode) | Out-Null
-		} else {
-			$root.AppendChild($xmlDoc.CreateWhitespace("`r`n`t")) | Out-Null
-			$root.AppendChild($attrsSection) | Out-Null
-		}
-	}
-
-	# Detect indent for attribute children
+	$attrsSection = Get-OrCreateRootSection 'Attributes'
 	$attrChildIndent = Get-ChildIndent $attrsSection
-	if (-not $attrChildIndent -or $attrChildIndent -eq "") { $attrChildIndent = "`t`t" }
 
 	# Уникальность имён реквизитов: внутри JSON-определения (+ колонки в пределах реквизита) и
 	# против уже существующих реквизитов формы.
@@ -4781,52 +6822,34 @@ if ($attrAdds.Count -gt 0) {
 			$dslColNames = @{}
 			foreach ($col in $attr.columns) { Assert-EditUnique -name "$($col.name)" -seen $dslColNames -ctx "column name of '$($attr.name)'" }
 		}
-		$existingAttr = $attrsSection.SelectSingleNode("f:Attribute[@name='$($attr.name)']", $nsMgr)
-		if ($existingAttr) {
-			Write-Host "[ERROR] Attribute '$($attr.name)' already exists in form — attribute names must be unique"
-			exit 1
-		}
-	}
-
-	# Generate attribute fragments
-	$script:xml = New-Object System.Text.StringBuilder 2048
-	X "<_F $allNsDecl>"
-	foreach ($attr in $attrAdds) {
-		$attrId = New-AttrId
-		$attrName = "$($attr.name)"
-		X "$attrChildIndent<Attribute name=`"$attrName`" id=`"$attrId`">"
-		$inner = "$attrChildIndent`t"
-
-		if ($attr.title) { Emit-MLText -tag "Title" -text "$($attr.title)" -indent $inner }
-		if ($attr.type) { Emit-Type -typeStr "$($attr.type)" -indent $inner } else { X "$inner<Type/>" }
-		if ($attr.main -eq $true) { X "$inner<MainAttribute>true</MainAttribute>" }
-		if ($attr.savedData -eq $true) { X "$inner<SavedData>true</SavedData>" }
-		if ($attr.fillChecking) { X "$inner<FillChecking>$($attr.fillChecking)</FillChecking>" }
-
-		if ($attr.columns -and $attr.columns.Count -gt 0) {
-			X "$inner<Columns>"
-			$colId = 1
-			foreach ($col in $attr.columns) {
-				X "$inner`t<Column name=`"$($col.name)`" id=`"$colId`">"
-				if ($col.title) { Emit-MLText -tag "Title" -text "$($col.title)" -indent "$inner`t`t" }
-				Emit-Type -typeStr "$($col.type)" -indent "$inner`t`t"
-				X "$inner`t</Column>"
-				$colId++
+		foreach ($a in $attrsSection.SelectNodes("f:Attribute", $nsMgr)) {
+			if ($a.GetAttribute('name') -eq "$($attr.name)") {
+				Write-Host "[ERROR] Attribute '$($attr.name)' already exists in form — attribute names must be unique"
+				exit 1
 			}
-			X "$inner</Columns>"
 		}
-
-		X "$attrChildIndent</Attribute>"
-		$typeStr = if ($attr.type) { "$($attr.type)" } else { "(no type)" }
-		$addedAttrs += "  + ${attrName}: $typeStr (id=$attrId)"
+		if ($attr.main -eq $true) {
+			foreach ($m in $attrsSection.SelectNodes("f:Attribute/f:MainAttribute", $nsMgr)) {
+				if ($m.InnerText.Trim() -eq 'true') { Fail "attributes: '$($attr.name)' — у формы уже есть основной реквизит '$($m.ParentNode.GetAttribute('name'))'" }
+			}
+		}
 	}
-	X "</_F>"
 
-	$fragDoc = Parse-Fragment $script:xml.ToString()
-	$importedAttrs = Import-ElementNodes $fragDoc
-
-	foreach ($node in $importedAttrs) {
-		Insert-IntoContainer -container $attrsSection -newNode $node -afterName $null -childIndent $attrChildIndent
+	# Реквизиты пишет эмиттер form-compile (все его ключи); id — из пулов формы
+	$wrap = @(Invoke-SectionEmit { Emit-Attributes -attrs $attrAdds -indent "`t" })[0]
+	foreach ($node in @($wrap.SelectNodes("f:Attribute", $nsMgr))) {
+		$attrId = New-AttrId
+		$node.SetAttribute('id', "$attrId")
+		$colId = 1
+		foreach ($col in $node.SelectNodes(".//f:Column", $nsMgr)) { $col.SetAttribute('id', "$colId"); $colId++ }
+		$wrap.RemoveChild($node) | Out-Null
+		# Условное оформление — последнее в Attributes: реквизит встаёт перед ним
+		$caNode = $attrsSection.SelectSingleNode("f:ConditionalAppearance", $nsMgr)
+		if ($null -ne $caNode) { Insert-NodeAt $attrsSection $node $caNode $attrChildIndent }
+		else { Insert-IntoContainer -container $attrsSection -newNode $node -afterName $null -childIndent $attrChildIndent }
+		$t = $node.SelectSingleNode("f:Type/v8:Type", $nsMgr)
+		$typeStr = if ($null -ne $t) { $t.InnerText } else { "(no type)" }
+		$addedAttrs += "  + $($node.GetAttribute('name')): $typeStr (id=$attrId)"
 	}
 }
 
@@ -4847,83 +6870,31 @@ if ($def.commands) {
 }
 
 if ($cmdAdds.Count -gt 0) {
-	$cmdsSection = $root.SelectSingleNode("f:Commands", $nsMgr)
-	if (-not $cmdsSection) {
-		# Секция команд — после Attributes (порядок платформы: Attributes, Commands, Parameters)
-		$cmdsSection = $xmlDoc.CreateElement("Commands", $formNs)
-		$insertAfter = $root.SelectSingleNode("f:Attributes", $nsMgr)
-		if (-not $insertAfter) { $insertAfter = $rootCI }
-		if (-not $insertAfter) { $insertAfter = $root.SelectSingleNode("f:Events", $nsMgr) }
-		if (-not $insertAfter) { $insertAfter = $root.SelectSingleNode("f:AutoCommandBar", $nsMgr) }
-		if ($insertAfter) {
-			$refNode = $insertAfter.NextSibling
-			$ws = $xmlDoc.CreateWhitespace("`r`n`t")
-			$root.InsertBefore($ws, $refNode) | Out-Null
-			$root.InsertBefore($cmdsSection, $refNode) | Out-Null
-		} else {
-			$root.AppendChild($xmlDoc.CreateWhitespace("`r`n`t")) | Out-Null
-			$root.AppendChild($cmdsSection) | Out-Null
-		}
-	}
-
+	$cmdsSection = Get-OrCreateRootSection 'Commands'
 	$cmdChildIndent = Get-ChildIndent $cmdsSection
-	if (-not $cmdChildIndent -or $cmdChildIndent -eq "") { $cmdChildIndent = "`t`t" }
 
 	# Уникальность имён команд: внутри JSON-определения и против существующих команд формы.
 	$dslCmdNames = @{}
 	foreach ($cmd in $cmdAdds) {
 		Assert-EditUnique -name "$($cmd.name)" -seen $dslCmdNames -ctx 'command name'
-		$existingCmd = $cmdsSection.SelectSingleNode("f:Command[@name='$($cmd.name)']", $nsMgr)
-		if ($existingCmd) {
-			Write-Host "[ERROR] Command '$($cmd.name)' already exists in form — command names must be unique"
-			exit 1
-		}
-	}
-
-	# Generate command fragments
-	$script:xml = New-Object System.Text.StringBuilder 1024
-	X "<_F $allNsDecl>"
-	foreach ($cmd in $cmdAdds) {
-		$cmdId = New-CmdId
-		$cmdName = "$($cmd.name)"
-		X "$cmdChildIndent<Command name=`"$cmdName`" id=`"$cmdId`">"
-		$inner = "$cmdChildIndent`t"
-
-		if ($cmd.title) { Emit-MLText -tag "Title" -text "$($cmd.title)" -indent $inner }
-
-		# Support single action with optional callType, or multiple actions
-		if ($cmd.actions) {
-			# Multiple actions: [{ "callType": "Before", "handler": "..." }, ...]
-			foreach ($act in $cmd.actions) {
-				$actHandler = "$($act.handler)"
-				$callTypeAttr = if ($act.callType) { " callType=`"$($act.callType)`"" } else { "" }
-				X "$inner<Action$callTypeAttr>$actHandler</Action>"
+		foreach ($c in $cmdsSection.SelectNodes("f:Command", $nsMgr)) {
+			if ($c.GetAttribute('name') -eq "$($cmd.name)") {
+				Write-Host "[ERROR] Command '$($cmd.name)' already exists in form — command names must be unique"
+				exit 1
 			}
-		} elseif ($cmd.action) {
-			$callTypeAttr = if ($cmd.callType) { " callType=`"$($cmd.callType)`"" } else { "" }
-			X "$inner<Action$callTypeAttr>$($cmd.action)</Action>"
 		}
-
-		if ($cmd.shortcut) { X "$inner<Shortcut>$($cmd.shortcut)</Shortcut>" }
-		if ($cmd.picture) {
-			X "$inner<Picture>"
-			X "$inner`t<xr:Ref>$($cmd.picture)</xr:Ref>"
-			X "$inner`t<xr:LoadTransparent>true</xr:LoadTransparent>"
-			X "$inner</Picture>"
-		}
-		if ($cmd.representation) { X "$inner<Representation>$($cmd.representation)</Representation>" }
-
-		X "$cmdChildIndent</Command>"
-		$actionStr = if ($cmd.action) { " -> $($cmd.action)" } elseif ($cmd.actions) { " -> $($cmd.actions.Count) action(s)" } else { "" }
-		$addedCmds += "  + ${cmdName}${actionStr} (id=$cmdId)"
 	}
-	X "</_F>"
 
-	$fragDoc = Parse-Fragment $script:xml.ToString()
-	$importedCmds = Import-ElementNodes $fragDoc
-
-	foreach ($node in $importedCmds) {
+	# Команды пишет эмиттер form-compile (все его ключи); id — из пула формы
+	$wrap = @(Invoke-SectionEmit { Emit-Commands -cmds $cmdAdds -indent "`t" })[0]
+	foreach ($node in @($wrap.SelectNodes("f:Command", $nsMgr))) {
+		$cmdId = New-CmdId
+		$node.SetAttribute('id', "$cmdId")
+		$wrap.RemoveChild($node) | Out-Null
 		Insert-IntoContainer -container $cmdsSection -newNode $node -afterName $null -childIndent $cmdChildIndent
+		$acts = @($node.SelectNodes("f:Action", $nsMgr))
+		$actionStr = if ($acts.Count -eq 1) { " -> $($acts[0].InnerText)" } elseif ($acts.Count -gt 1) { " -> $($acts.Count) action(s)" } else { "" }
+		$addedCmds += "  + $($node.GetAttribute('name'))${actionStr} (id=$cmdId)"
 	}
 }
 
@@ -5055,6 +7026,65 @@ if ($def.elementEvents -and $def.elementEvents.Count -gt 0) {
 	}
 }
 
+# === 12d. Форма: заголовок, свойства, события, исключённые команды, параметры, оформление, интерфейс ===
+
+$script:formLog = @()
+$script:formChanged = 0
+
+# Заголовок формы. Новый заголовок без AutoTitle в форме — AutoTitle=false (как в form-compile:
+# иначе платформа допишет к нему синоним объекта).
+$formTitleVal = $null; $hasFormTitle = $false
+$propsTitle = $def.properties -and $def.properties -is [System.Management.Automation.PSCustomObject] -and $null -ne $def.properties.PSObject.Properties['title']
+if ($null -ne $def.PSObject.Properties['title']) {
+	if ($propsTitle) { Fail "заголовок формы задан дважды — в title и в properties.title" }
+	$formTitleVal = $def.title; $hasFormTitle = $true
+}
+elseif ($propsTitle) { $formTitleVal = $def.properties.title; $hasFormTitle = $true }
+$autoGiven = $def.properties -and $def.properties -is [System.Management.Automation.PSCustomObject] -and $null -ne $def.properties.PSObject.Properties['autoTitle']
+if ($hasFormTitle) {
+	$tNode = $root.SelectSingleNode("f:Title", $nsMgr)
+	if ($null -eq $formTitleVal -or ($formTitleVal -is [string] -and $formTitleVal -eq '')) {
+		if ($null -ne $tNode) { Remove-NodeWithWs $tNode; $script:formLog += "  * заголовок убран"; $script:formChanged++ }
+		# Без своего заголовка форма берёт синоним объекта — AutoTitle=false оставил бы её без заголовка
+		$at = $root.SelectSingleNode("f:AutoTitle", $nsMgr)
+		if (-not $autoGiven -and $null -ne $at -and $at.InnerText.Trim() -eq 'false') { Set-FormProperty 'autoTitle' $null }
+	} else {
+		if ($null -eq $tNode) {
+			$tNode = $xmlDoc.CreateElement("Title", $formNs)
+			Insert-RootChild $tNode
+		}
+		Set-MLTag $root 'Title' $formTitleVal
+		$shown = if ($formTitleVal -is [string]) { $formTitleVal } else { ($formTitleVal.PSObject.Properties | ForEach-Object { "$($_.Name):$($_.Value)" }) -join ' ' }
+		$script:formLog += "  * заголовок `"$shown`""
+		$script:formChanged++
+		if (-not $autoGiven -and $null -eq $root.SelectSingleNode("f:AutoTitle", $nsMgr)) { Set-FormProperty 'autoTitle' $false }
+	}
+}
+
+if ($def.properties) {
+	if (-not ($def.properties -is [System.Management.Automation.PSCustomObject])) { Fail "properties — объект { свойство: значение }" }
+	foreach ($p in $def.properties.PSObject.Properties) {
+		if ($p.Name -eq 'title') { continue }
+		Set-FormProperty $p.Name $p.Value
+	}
+}
+
+if ($null -ne $def.PSObject.Properties['events']) { Add-FormEventsDsl $def.events }
+
+if ($null -ne $def.PSObject.Properties['excludedCommands']) { Update-ExcludedCommands $def.excludedCommands }
+
+if ($null -ne $def.PSObject.Properties['parameters']) { Update-FormParameters $def.parameters }
+
+if ($null -ne $def.PSObject.Properties['conditionalAppearance']) { Add-FormConditionalAppearance $def.conditionalAppearance }
+
+if ($null -ne $def.PSObject.Properties['commandInterface']) { Add-FormCommandInterface $def.commandInterface }
+
+# Вид вызова обработчика (callType) бывает только в форме расширения
+if (-not $script:isExtension) {
+	$ctNode = $root.SelectSingleNode("//*[@callType]")
+	if ($null -ne $ctNode) { Fail "callType '$($ctNode.GetAttribute('callType'))' у '$($ctNode.InnerText)' — вид вызова обработчика задаётся только в форме расширения" }
+}
+
 # === 13. Save ===
 
 $content = $xmlDoc.OuterXml
@@ -5116,6 +7146,12 @@ if ($script:leftHandlers.Count -gt 0) {
 	Write-Host ""
 }
 
+if ($script:formLog.Count -gt 0) {
+	Write-Host "Form:"
+	foreach ($line in $script:formLog) { Write-Host $line }
+	Write-Host ""
+}
+
 if ($addedAttrs.Count -gt 0) {
 	Write-Host "Added attributes:"
 	foreach ($line in $addedAttrs) { Write-Host $line }
@@ -5141,5 +7177,7 @@ if ($script:changedCount -gt 0) { $totalParts += "$($script:changedCount) proper
 if ($script:removedCount -gt 0) { $totalParts += "$($script:removedCount) removed" }
 if ($addedAttrs.Count -gt 0) { $totalParts += "$($addedAttrs.Count) attribute(s)" }
 if ($addedCmds.Count -gt 0) { $totalParts += "$($addedCmds.Count) command(s)" }
+if ($script:formChanged -gt 0) { $totalParts += "$($script:formChanged) form change(s)" }
+if ($totalParts.Count -eq 0) { $totalParts += "no changes" }
 Write-Host "Total: $($totalParts -join ', ')"
 Write-Host "Run /form-validate to verify."

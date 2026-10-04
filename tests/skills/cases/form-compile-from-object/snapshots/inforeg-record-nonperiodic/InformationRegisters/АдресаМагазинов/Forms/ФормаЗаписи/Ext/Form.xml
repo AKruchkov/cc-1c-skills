@@ -6,8 +6,8 @@
 			<v8:content>Адреса магазинов</v8:content>
 		</v8:item>
 	</Title>
-	<AutoTitle>false</AutoTitle>
 	<WindowOpeningMode>LockOwnerWindow</WindowOpeningMode>
+	<AutoTitle>false</AutoTitle>
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
 	<ChildItems>
 		<InputField name="Магазин" id="1">

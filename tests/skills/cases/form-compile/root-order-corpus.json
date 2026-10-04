@@ -1,0 +1,53 @@
+{
+  "name": "Корень формы в порядке корпуса: свойства не в порядке ввода, команды раньше параметров",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+    "validatePath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "title": "Порядок",
+    "properties": {
+      "customizable": false,
+      "windowOpeningMode": "LockOwnerWindow",
+      "width": 50
+    },
+    "parameters": [
+      {
+        "name": "Режим",
+        "type": "string"
+      }
+    ],
+    "commands": [
+      {
+        "name": "Выполнить",
+        "action": "ВыполнитьКоманду"
+      }
+    ],
+    "elements": [
+      {
+        "button": "КнВыполнить",
+        "command": "Выполнить"
+      }
+    ]
+  }
+}

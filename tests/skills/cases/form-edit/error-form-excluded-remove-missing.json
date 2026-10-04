@@ -1,0 +1,18 @@
+{
+  "name": "Вернуть неисключённую команду — отказ",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "excludedCommands": {
+      "remove": [
+        "Copy"
+      ]
+    }
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "команда 'Copy' не исключена"
+  }
+}

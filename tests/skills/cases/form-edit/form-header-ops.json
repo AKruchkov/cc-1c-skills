@@ -1,0 +1,38 @@
+{
+  "name": "Форма: заголовок, свойства, события, исключённые команды, параметры — на места корпуса",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "title": "Заказ (тест)",
+    "properties": {
+      "windowOpeningMode": "LockOwnerWindow",
+      "width": 80
+    },
+    "events": {
+      "OnOpen": "ПриОткрытии",
+      "BeforeWrite": "ПередЗаписью"
+    },
+    "excludedCommands": [
+      "Copy"
+    ],
+    "parameters": [
+      {
+        "name": "Режим",
+        "type": "string"
+      },
+      {
+        "name": "Основание",
+        "type": "DocumentRef.ЗаказТест",
+        "key": true
+      }
+    ]
+  },
+  "expect": {
+    "stdoutContains": [
+      "+ исключена команда Copy",
+      "+ параметр Основание"
+    ]
+  }
+}

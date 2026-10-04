@@ -1,0 +1,46 @@
+{
+  "name": "Расширение: события формы и команды с callType; новые секции — до BaseForm",
+  "setup": "fixture:move-cfe",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "events": {
+      "OnCreateAtServer": {
+        "handler": "Расш_ПриСозданииНаСервереПосле",
+        "callType": "After"
+      }
+    },
+    "commands": [
+      {
+        "name": "Расш_Команда",
+        "actions": [
+          {
+            "handler": "Расш_КомандаПеред",
+            "callType": "Before"
+          }
+        ]
+      }
+    ],
+    "parameters": [
+      {
+        "name": "Расш_Режим",
+        "type": "string"
+      }
+    ],
+    "commandInterface": {
+      "commandBar": [
+        "Form.Command.Расш_Команда"
+      ],
+      "navigationPanel": [
+        "Form.Command.Расш_Команда"
+      ]
+    }
+  },
+  "expect": {
+    "stdoutContains": [
+      "OnCreateAtServer[After]"
+    ]
+  },
+  "skipPlatformVerify": "фикстура — расширение без базовой конфигурации"
+}

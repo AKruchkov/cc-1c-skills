@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-compile v1.201 — Compile 1C managed form from JSON or object metadata
+# form-compile v1.202 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -6103,8 +6103,17 @@ def emit_commands(lines, cmds, indent):
         if cmd.get('use') is not None:
             emit_xr_flag(lines, 'Use', cmd.get('use'), inner)
 
-        if cmd.get('action'):
-            lines.append(f'{inner}<Action>{cmd["action"]}</Action>')
+        # Обработчик; в расширении — с видом вызова (callType), или несколько: actions [{handler, callType}]
+        if cmd.get('actions'):
+            acts = cmd['actions'] if isinstance(cmd['actions'], list) else [cmd['actions']]
+            for act in acts:
+                ct = normalize_call_type(act.get('callType'), str(cmd.get('name', '')), 'Action')
+                ct_attr = f' callType="{ct}"' if ct else ''
+                lines.append(f'{inner}<Action{ct_attr}>{act.get("handler") if act.get("handler") is not None else ""}</Action>')
+        elif cmd.get('action'):
+            ct = normalize_call_type(cmd.get('callType'), str(cmd.get('name', '')), 'Action')
+            ct_attr = f' callType="{ct}"' if ct else ''
+            lines.append(f'{inner}<Action{ct_attr}>{cmd["action"]}</Action>')
 
         if cmd.get('modifiesSavedData') is True:
             lines.append(f'{inner}<ModifiesSavedData>true</ModifiesSavedData>')
@@ -6155,8 +6164,9 @@ def emit_command_interface(lines, ci, indent):
         return
     inner = f'{indent}\t'
     panels = [
-        ('CommandBar', ('commandBar', 'команднаяПанель', 'КоманднаяПанель')),
+        # Порядок панелей — как в выгрузке: панель навигации раньше командной (607 из 607 форм корпуса)
         ('NavigationPanel', ('navigationPanel', 'панельНавигации', 'ПанельНавигации')),
+        ('CommandBar', ('commandBar', 'команднаяПанель', 'КоманднаяПанель')),
     ]
     present = []
     for tag, syns in panels:
@@ -6242,6 +6252,25 @@ PROP_MAP = {
 }
 
 
+# Порядок дочерних тегов корня формы — по корпусу (БП и ERP, 8.3.24, 17036 форм, противоречий нет).
+# Свойства формы пишутся в этом порядке, а не в порядке ввода, — иначе выгрузка из базы их переставит.
+FORM_ROOT_TAG_ORDER = 'Title Width Height WindowOpeningMode EnterKeyBehavior AutoSaveDataInSettings SaveDataInSettings SaveWindowSettings SettingsStorage AutoTitle AutoURL Group HorizontalAlign ChildItemsWidth VerticalAlign HorizontalSpacing VerticalSpacing AutoFillCheck Customizable Enabled ChildrenAlign CommandBarLocation VerticalScroll ScalingMode ConversationsRepresentation MobileDeviceCommandBarContent CommandSet AutoTime UsePostingMode RepostOnWrite ReportResult DetailsData ReportFormType ShowTitle ShowCloseButton GroupList CollapseItemsByImportanceVariant UseForFoldersAndItems VariantAppearance AutoShowState CustomSettingsFolder ReportResultViewMode ViewModeApplicationOnSetReportResult Scale AutoCommandBar Events ChildItems Attributes Commands Parameters CommandInterface BaseForm'
+
+
+# Ранг тега корня формы; незнакомый тег — после всех знакомых свойств (перед AutoCommandBar).
+def get_form_root_rank(tag):
+    order = FORM_ROOT_TAG_ORDER.split(' ')
+    if tag not in order:
+        return order.index('AutoCommandBar') - 0.5
+    return order.index(tag)
+
+
+# Незнакомое событие формы — предупреждение (опечатка в имени события не даёт ошибки платформы).
+def warn_unknown_form_event(name):
+    if name not in KNOWN_FORM_EVENTS:
+        print(f"[WARN] Unknown form event '{name}'. Known: {', '.join(KNOWN_FORM_EVENTS)}")
+
+
 def emit_properties(lines, props, indent):
     if not props:
         return
@@ -6260,7 +6289,7 @@ def emit_properties(lines, props, indent):
             val = 'true' if p_value else 'false'
         else:
             val = str(p_value)
-        lines.append(f'{indent}<{xml_name}>{val}</{xml_name}>')
+        lines.append(f'{indent}<{xml_name}>{esc_xml_text(val)}</{xml_name}>')
 
 
 
@@ -6733,6 +6762,10 @@ def main():
     for k, v in props_src.items():
         if k != 'title':
             props_clone[k] = v
+    # Шапка корня (свойства, CommandSet, MobileDeviceCommandBarContent) собирается блоками и пишется
+    # в порядке корпуса: свойства из ввода идут вперемешку с CommandSet
+    main_lines = lines
+    lines = []
     emit_properties(lines, props_clone, '\t')
 
     # CommandSet (excluded commands)
@@ -6758,6 +6791,18 @@ def main():
                 lines.append(f'\t\t\t<xr:Value xsi:type="xs:string">{esc_xml_text(str(nm))}</xr:Value>')
             lines.append('\t\t</xr:Item>')
         lines.append('\t</MobileDeviceCommandBarContent>')
+    hdr_blocks = []
+    for ln in '\n'.join(lines).split('\n'):
+        if ln == '':
+            continue
+        m = re.match(r'^\t<([A-Za-z]+)', ln)
+        if m:
+            hdr_blocks.append({'Tag': m.group(1), 'Lines': [ln]})
+        else:
+            hdr_blocks[-1]['Lines'].append(ln)
+    lines = main_lines
+    for b in sorted(hdr_blocks, key=lambda b: get_form_root_rank(b['Tag'])):
+        lines.extend(b['Lines'])
 
     # AutoCommandBar (always present, id=-1)
     acb_autofill = _compute_main_acb_autofill()
@@ -6793,8 +6838,7 @@ def main():
     # Events
     if defn.get('events'):
         for evt_name in defn['events']:
-            if evt_name not in KNOWN_FORM_EVENTS:
-                print(f"[WARN] Unknown form event '{evt_name}'. Known: {', '.join(KNOWN_FORM_EVENTS)}")
+            warn_unknown_form_event(evt_name)
         lines.append('\t<Events>')
         for evt_name, evt_handler in defn['events'].items():
             lines.append(f'\t\t<Event name="{evt_name}">{evt_handler}</Event>')
@@ -6810,11 +6854,11 @@ def main():
     # Attributes
     emit_attributes(lines, defn.get('attributes'), '\t', conditional_appearance=defn.get('conditionalAppearance'))
 
+    # Commands (по корпусу — раньше Parameters)
+    emit_commands(lines, defn.get('commands'), '\t')
+
     # Parameters
     emit_parameters(lines, defn.get('parameters'), '\t')
-
-    # Commands
-    emit_commands(lines, defn.get('commands'), '\t')
 
     # CommandInterface (командный интерфейс формы — последний дочерний Form)
     emit_command_interface(lines, defn.get('commandInterface'), '\t')

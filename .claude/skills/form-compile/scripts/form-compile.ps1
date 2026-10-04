@@ -1,4 +1,4 @@
-﻿# form-compile v1.201 — Compile 1C managed form from JSON or object metadata
+﻿# form-compile v1.202 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -6248,8 +6248,17 @@ function Emit-Commands {
 		# Доступность команды по ролям (после ToolTip, до Action)
 		if ($null -ne $cmd.use) { Emit-XrFlag -tag 'Use' -val $cmd.use -indent $inner }
 
-		if ($cmd.action) {
-			X "$inner<Action>$($cmd.action)</Action>"
+		# Обработчик; в расширении — с видом вызова (callType), или несколько: actions [{handler, callType}]
+		if ($cmd.actions) {
+			foreach ($act in @($cmd.actions)) {
+				$ct = Normalize-CallType "$($act.callType)" "$($cmd.name)" 'Action'
+				$ctAttr = if ($ct) { " callType=`"$ct`"" } else { "" }
+				X "$inner<Action$ctAttr>$($act.handler)</Action>"
+			}
+		} elseif ($cmd.action) {
+			$ct = Normalize-CallType "$($cmd.callType)" "$($cmd.name)" 'Action'
+			$ctAttr = if ($ct) { " callType=`"$ct`"" } else { "" }
+			X "$inner<Action$ctAttr>$($cmd.action)</Action>"
 		}
 
 		if ($cmd.modifiesSavedData -eq $true) { X "$inner<ModifiesSavedData>true</ModifiesSavedData>" }
@@ -6319,8 +6328,9 @@ function Emit-CommandInterface {
 	if (-not $ci) { return }
 	$inner = "$indent`t"
 	$panels = @(
-		@{ Tag='CommandBar';      Syns=@('commandBar','команднаяПанель','КоманднаяПанель') },
-		@{ Tag='NavigationPanel'; Syns=@('navigationPanel','панельНавигации','ПанельНавигации') }
+		# Порядок панелей — как в выгрузке: панель навигации раньше командной (607 из 607 форм корпуса)
+		@{ Tag='NavigationPanel'; Syns=@('navigationPanel','панельНавигации','ПанельНавигации') },
+		@{ Tag='CommandBar';      Syns=@('commandBar','команднаяПанель','КоманднаяПанель') }
 	)
 	$present = @()
 	foreach ($p in $panels) {
@@ -6374,6 +6384,24 @@ function Emit-CommandInterface {
 
 # --- 11. Properties emitter ---
 
+# Порядок дочерних тегов корня формы — по корпусу (БП и ERP, 8.3.24, 17036 форм, противоречий нет).
+# Свойства формы пишутся в этом порядке, а не в порядке ввода, — иначе выгрузка из базы их переставит.
+$script:formRootTagOrder = 'Title Width Height WindowOpeningMode EnterKeyBehavior AutoSaveDataInSettings SaveDataInSettings SaveWindowSettings SettingsStorage AutoTitle AutoURL Group HorizontalAlign ChildItemsWidth VerticalAlign HorizontalSpacing VerticalSpacing AutoFillCheck Customizable Enabled ChildrenAlign CommandBarLocation VerticalScroll ScalingMode ConversationsRepresentation MobileDeviceCommandBarContent CommandSet AutoTime UsePostingMode RepostOnWrite ReportResult DetailsData ReportFormType ShowTitle ShowCloseButton GroupList CollapseItemsByImportanceVariant UseForFoldersAndItems VariantAppearance AutoShowState CustomSettingsFolder ReportResultViewMode ViewModeApplicationOnSetReportResult Scale AutoCommandBar Events ChildItems Attributes Commands Parameters CommandInterface BaseForm'
+
+# Ранг тега корня формы; незнакомый тег — после всех знакомых свойств (перед AutoCommandBar).
+function Get-FormRootRank([string]$tag) {
+	$i = [array]::IndexOf(($script:formRootTagOrder -split ' '), $tag)
+	if ($i -lt 0) { return [array]::IndexOf(($script:formRootTagOrder -split ' '), 'AutoCommandBar') - 0.5 }
+	return $i
+}
+
+# Незнакомое событие формы — предупреждение (опечатка в имени события не даёт ошибки платформы).
+function Warn-UnknownFormEvent([string]$name) {
+	if ($script:knownFormEvents -notcontains $name) {
+		Write-Host "[WARN] Unknown form event '$name'. Known: $($script:knownFormEvents -join ', ')"
+	}
+}
+
 function Emit-Properties {
 	param($props, [string]$indent)
 
@@ -6417,7 +6445,7 @@ function Emit-Properties {
 		if ($val -is [bool]) {
 			$val = if ($val) { "true" } else { "false" }
 		}
-		X "$indent<$xmlName>$val</$xmlName>"
+		X "$indent<$xmlName>$(Esc-XmlText "$val")</$xmlName>"
 	}
 }
 
@@ -6675,6 +6703,10 @@ if ($def.properties) {
 		}
 	}
 }
+# Шапка корня (свойства, CommandSet, MobileDeviceCommandBarContent) собирается блоками и пишется
+# в порядке корпуса: свойства из ввода идут вперемешку с CommandSet
+$mainXml = $script:xml
+$script:xml = New-Object System.Text.StringBuilder 1024
 Emit-Properties -props $propsClone -indent "`t"
 
 # 12c. CommandSet (excluded commands)
@@ -6703,6 +6735,16 @@ if ($null -ne $def.mobileCommandBarContent -and @($def.mobileCommandBarContent).
 	}
 	X "`t</MobileDeviceCommandBarContent>"
 }
+$hdrBlocks = New-Object System.Collections.ArrayList
+foreach ($ln in ($script:xml.ToString() -split "`r?`n")) {
+	if ($ln -eq '') { continue }
+	if ($ln -match '^\t<([A-Za-z]+)') { [void]$hdrBlocks.Add(@{ Tag = $Matches[1]; Lines = @($ln) }) }
+	else { $hdrBlocks[$hdrBlocks.Count - 1].Lines += $ln }
+}
+$script:xml = $mainXml
+$i = 0
+$hdrSorted = @($hdrBlocks | ForEach-Object { $_.Pos = $i; $i++; $_ } | Sort-Object -Property @{ Expression = { Get-FormRootRank $_.Tag } }, @{ Expression = { $_.Pos } })
+foreach ($b in $hdrSorted) { foreach ($ln in $b.Lines) { X $ln } }
 
 # 12d. AutoCommandBar (always present, id=-1)
 $acbAutofill = Compute-MainAcbAutofill
@@ -6740,11 +6782,7 @@ if ($acbHasInner) {
 
 # 12e. Events
 if ($def.events) {
-	foreach ($p in $def.events.PSObject.Properties) {
-		if ($script:knownFormEvents -notcontains $p.Name) {
-			Write-Host "[WARN] Unknown form event '$($p.Name)'. Known: $($script:knownFormEvents -join ', ')"
-		}
-	}
+	foreach ($p in $def.events.PSObject.Properties) { Warn-UnknownFormEvent $p.Name }
 	X "`t<Events>"
 	foreach ($p in $def.events.PSObject.Properties) {
 		X "`t`t<Event name=`"$($p.Name)`">$($p.Value)</Event>"
@@ -6764,11 +6802,11 @@ if ($def.elements -and $def.elements.Count -gt 0) {
 # 12g. Attributes
 Emit-Attributes -attrs $def.attributes -indent "`t" -conditionalAppearance $def.conditionalAppearance
 
-# 12h. Parameters
-Emit-Parameters -params $def.parameters -indent "`t"
-
-# 12i. Commands
+# 12h. Commands (по корпусу — раньше Parameters)
 Emit-Commands -cmds $def.commands -indent "`t"
+
+# 12i. Parameters
+Emit-Parameters -params $def.parameters -indent "`t"
 
 # 12i2. CommandInterface (командный интерфейс формы — последний дочерний Form)
 Emit-CommandInterface -ci $def.commandInterface -indent "`t"

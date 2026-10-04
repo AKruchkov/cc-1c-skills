@@ -7,12 +7,12 @@
 		</v8:item>
 	</Title>
 	<AutoTitle>false</AutoTitle>
-	<ShowCloseButton>false</ShowCloseButton>
 	<HorizontalAlign>Left</HorizontalAlign>
-	<ChildrenAlign>ItemsLeftTitlesLeft</ChildrenAlign>
 	<ChildItemsWidth>Equal</ChildItemsWidth>
 	<VerticalAlign>Top</VerticalAlign>
 	<HorizontalSpacing>Double</HorizontalSpacing>
+	<ChildrenAlign>ItemsLeftTitlesLeft</ChildrenAlign>
+	<ShowCloseButton>false</ShowCloseButton>
 	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">
 		<Autofill>false</Autofill>
 	</AutoCommandBar>

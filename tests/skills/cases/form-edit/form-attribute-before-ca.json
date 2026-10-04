@@ -1,0 +1,39 @@
+{
+  "name": "Новый реквизит встаёт перед условным оформлением (оно последнее в Attributes)",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "form-edit/scripts/form-edit",
+      "input": {
+        "conditionalAppearance": [
+          {
+            "selection": [
+              "Номер"
+            ],
+            "filter": [
+              "Объект.Приоритет > 1"
+            ],
+            "appearance": {
+              "ЦветТекста": "style:SpecialTextColor"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-FormPath": "{workDir}/Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml",
+        "-JsonPath": "{inputFile}"
+      }
+    }
+  ],
+  "input": {
+    "attributes": [
+      {
+        "name": "Итого",
+        "type": "decimal(15,2)"
+      }
+    ]
+  }
+}
