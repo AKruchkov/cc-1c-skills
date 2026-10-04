@@ -1,0 +1,25 @@
+{
+  "name": "set: команда кнопки — привязка, через set не меняется",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "button": "Кн",
+        "stdCommand": "Close",
+        "title": "Мой",
+        "into": "ФормаКоманднаяПанель"
+      },
+      {
+        "set": "Кн",
+        "stdCommand": "Write"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "привязка и тип элемента через set не меняются"
+  }
+}

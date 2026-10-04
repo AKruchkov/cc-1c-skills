@@ -1,0 +1,19 @@
+{
+  "name": "set: ключ другого типа элемента — отказ, тип не меняется",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Склад",
+        "page": "x"
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "ключ типа элемента"
+  }
+}

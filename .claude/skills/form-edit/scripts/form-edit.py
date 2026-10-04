@@ -1,6 +1,9 @@
-# form-edit v1.22 — Edit 1C managed form elements (Python port)
+# form-edit v1.23 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
+import contextlib
+import copy
+import io
 import json
 import os
 import re
@@ -4115,6 +4118,7 @@ def set_ml_tag(node, tag, value):
 
 
 def add_element_events(node, on, handlers, ctx):
+    global changed_count
     nt = local_name(node)
     name = node.get('name')
     if get_child_rank(nt, 'Events') < 0:
@@ -4129,7 +4133,7 @@ def add_element_events(node, on, handlers, ctx):
             handler = str(handlers.get(evt_name)) if handlers and handlers.get(evt_name) else get_handler_name(name, evt_name)
         else:
             evt_name = str(evt.get("event"))
-            call_type = str(evt.get("callType")) if evt.get("callType") else ""
+            call_type = normalize_call_type(evt.get("callType"), name, evt_name)
             if evt.get("handler"):
                 handler = str(evt.get("handler"))
             elif handlers and handlers.get(evt_name):
@@ -4163,6 +4167,7 @@ def add_element_events(node, on, handlers, ctx):
         ev.text = handler
         insert_node_at(events, ev, None, get_child_indent(events))
         op_log.append(f"  * {name}: событие {evt_name}{ct_str} -> {handler}")
+        changed_count += 1
 
 
 def _is_num(v):
@@ -4185,6 +4190,7 @@ def invoke_set(op, idx):
             fail(f"{ctx}: элемент '{n}' не найден в форме")
         nt = local_name(node)
         c = f"{ctx} '{n}'"
+        probe_props = {}
         for key, v in props:
             kl = key.lower()
             if kl == 'handlers':
@@ -4194,14 +4200,24 @@ def invoke_set(op, idx):
             if kl == 'on':
                 add_element_events(node, v, op.get("handlers"), c)
                 continue
-            if kl in forbidden or (kl in DSL_TAG_MAP_LC and kl != 'group'):
+            if kl == 'events':
+                if not isinstance(v, dict):
+                    fail(f"{c}: events — объект {{ Событие: обработчик }}")
+                on = [{'event': e, 'handler': h, 'callType': ct} for e, h, ct in get_event_pairs(op, n)]
+                add_element_events(node, on, None, c)
+                continue
+            if kl in forbidden or (kl == (XML_TAG_TO_DSL.get(nt) or '').lower() and kl != 'group'):
                 fail(f"{c}: '{key}' через set не меняется (имя и привязку не трогаем — на них ссылаются модуль и расширения; состав — через move)")
+            if kl in ('into', 'after', 'before', 'first'):
+                fail(f"{c}: '{key}' — место элемента меняет move, не set")
             if kl not in SET_PROPS_LC:
-                fail(f"{c}: неизвестное свойство '{key}'; у {nt} доступно: {', '.join(get_applicable_set_keys(nt))}")
+                # Остальные ключи элемента — как в form-compile, через общий эмиттер
+                probe_props[key] = v
+                continue
             spec = SET_PROPS_LC[kl]
             tag = get_prop_tag(spec, nt)
             if tag is None:
-                fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))}")
+                fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))} и остальные ключи элемента из form-compile")
             if v is None:
                 existing = node.find(f"f:{tag}", NS)
                 if existing is not None:
@@ -4239,13 +4255,290 @@ def invoke_set(op, idx):
             elif kind == 'repr':
                 rmap = REPR_MAPS.get(nt)
                 if rmap is None:
-                    fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))}")
+                    fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))} и остальные ключи элемента из form-compile")
                 text = rmap.get(str(v).lower())
                 if not text:
                     fail(f"{c}: representation='{v}' — допустимо: {', '.join(sorted(rmap.keys()))}")
                 set_value_tag(node, tag, text)
                 op_log.append(f"  * {n}: {tag}={text}")
             changed_count += 1
+        if probe_props:
+            # Контекст пробы — все свойства операции: от них зависит, как эмиттер пишет остальные
+            pp_lc = {k.lower() for k in probe_props}
+            context = {k: v for k, v in props
+                       if k.lower() not in ('on', 'handlers', 'events') and v is not None and k.lower() not in pp_lc}
+            invoke_set_by_emitter(node, probe_props, context, op, c)
+
+
+# --- set: ключи элемента вне таблицы выше — через общий эмиттер form-compile ---
+# Элемент эмитится без свойства и с ним; что различается, то свойство и пишет в XML. Так set знает
+# все ключи form-compile и пишет их ровно так же, как при создании формы.
+
+PROBE_TYPE_VALUES = {'group': 'vertical', 'columnGroup': 'vertical'}
+
+
+def invoke_set_probe(node, props):
+    global next_elem_id
+    nt = local_name(node)
+    dsl = XML_TAG_TO_DSL[nt]
+    name = node.get('name')
+    h = {dsl: PROBE_TYPE_VALUES.get(dsl, name), 'name': name}
+    dp = node.find("f:DataPath", NS)
+    if dp is not None:
+        h['path'] = dp.text or ''
+    for k, v in props.items():
+        h[k] = v
+    el = ci_json(json.loads(json.dumps(h, ensure_ascii=False)))
+    _normalize_synonyms(el)
+    for a in root.findall("f:Attributes/f:Attribute", NS):
+        t = a.find("f:Type/v8:Type", NS)
+        if t is not None and (t.text or "").strip() == 'cfg:DynamicList':
+            _apply_dlist_table_heuristic(el, a.get('name'), True)
+    save_id = next_elem_id
+    _seen_element_names.clear()
+    tbl = get_nearest_table(node, False)
+    _current_table_name['name'] = tbl.get('name') if tbl is not None else None
+    in_bar = False
+    cur = node.getparent()
+    while cur is not None:
+        if _is_el(cur) and local_name(cur) in BAR_TAGS:
+            in_bar = True
+            break
+        cur = cur.getparent()
+    xml_lines.clear()
+    X(f"<_F {ALL_NS_DECL}>")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        emit_element(xml_lines, el, get_node_indent(node), in_bar)
+    X("</_F>")
+    next_elem_id = save_id
+    frag = parse_fragment("\n".join(xml_lines))
+    pe = next((ch for ch in frag if isinstance(ch.tag, str)), None)
+    return {'El': pe, 'Messages': [l for l in buf.getvalue().splitlines() if l.strip()]}
+
+
+def _probe_text(ch):
+    t = etree.tostring(ch, encoding='unicode', with_tail=False)
+    return re.sub(r'\s+', ' ', re.sub(r' id="-?\d+"', '', t))
+
+
+# Свойства узла: дочерние теги (без состава и событий) и атрибуты; спутники (меню, подсказка,
+# панель) — отдельно, их свойства сравниваются так же.
+def get_probe_parts(e):
+    tags, comps, attrs = {}, {}, {}
+    for ch in e:
+        if not _is_el(ch):
+            continue
+        ln = local_name(ch)
+        if ln == 'Events':
+            continue
+        if ln == 'ChildItems':
+            comps['#items'] = _probe_text(ch)
+            continue
+        if ln in COMPANION_TAGS and ch.get('name') is not None:
+            comps[ln] = ch
+            continue
+        tags[ln] = tags.get(ln, '') + _probe_text(ch)
+    for a, v in e.attrib.items():
+        if a not in ('name', 'id'):
+            attrs[a] = v
+    return {'Tags': tags, 'Comps': comps, 'Attrs': attrs}
+
+
+def get_probe_diff(b, p):
+    pb, pp = get_probe_parts(b), get_probe_parts(p)
+    d = {'Tags': [], 'Attrs': [], 'Comps': [], 'Items': False}
+    for t in list(dict.fromkeys(list(pb['Tags']) + list(pp['Tags']))):
+        if pb['Tags'].get(t) != pp['Tags'].get(t):
+            d['Tags'].append(t)
+    for a in sorted(set(pb['Attrs']) | set(pp['Attrs'])):
+        if pb['Attrs'].get(a) != pp['Attrs'].get(a):
+            d['Attrs'].append(a)
+    if pb['Comps'].get('#items') != pp['Comps'].get('#items'):
+        d['Items'] = True
+    for cn in sorted(k for k in pp['Comps'] if k != '#items'):
+        if pb['Comps'].get(cn) is None:
+            continue
+        sub = get_probe_diff(pb['Comps'][cn], pp['Comps'][cn])
+        # Состав спутника (кнопки меню, панели) — тоже состав
+        if sub['Items']:
+            d['Items'] = True
+        if test_probe_diff(sub):
+            d['Comps'].append({'Tag': cn, 'Diff': sub})
+    return d
+
+
+def test_probe_diff(d):
+    return (len(d['Tags']) + len(d['Attrs']) + len(d['Comps'])) > 0 or d['Items']
+
+
+# Есть ли в узле хоть что-то из того, что описывает разница (для сброса к умолчанию).
+def test_probe_diff_present(target, d):
+    for t in d['Tags']:
+        if target.find(f"f:{t}", NS) is not None:
+            return True
+    for a in d['Attrs']:
+        if target.get(a) is not None:
+            return True
+    for cd in d['Comps']:
+        tc = target.find(f"f:{cd['Tag']}", NS)
+        if tc is not None and test_probe_diff_present(tc, cd['Diff']):
+            return True
+    return False
+
+
+def get_probe_diff_label(d):
+    parts = list(d['Tags']) + [f"@{a}" for a in d['Attrs']]
+    for cd in d['Comps']:
+        parts += [f"{cd['Tag']}/{x}" for x in get_probe_diff_label(cd['Diff'])]
+    return parts
+
+
+# Перенести в узел то, что различается: теги пробы заменяют свои (нет в пробе — тег убирается).
+def apply_probe_diff(target, probe_el, d, remove_only):
+    for t in d['Tags']:
+        for x in target.findall(f"f:{t}", NS):
+            remove_node_with_ws(x)
+        if remove_only:
+            continue
+        for pn in probe_el.findall(f"f:{t}", NS):
+            imp = copy.deepcopy(pn)
+            imp.tail = None
+            if get_child_rank(local_name(target), t) >= 0:
+                insert_child_canonical(target, imp)
+                continue
+            # Тега нет в корпусном порядке — встаёт перед первым следующим за ним в пробе тегом узла
+            ref = None
+            sib = pn.getnext()
+            while sib is not None and ref is None:
+                if _is_el(sib):
+                    ref = target.find(f"f:{local_name(sib)}", NS)
+                sib = sib.getnext()
+            insert_node_at(target, imp, ref, get_child_indent(target))
+    for a in d['Attrs']:
+        if not remove_only and probe_el.get(a) is not None:
+            target.set(a, probe_el.get(a))
+        elif a in target.attrib:
+            del target.attrib[a]
+    for cd in d['Comps']:
+        tc = target.find(f"f:{cd['Tag']}", NS)
+        pc = probe_el.find(f"f:{cd['Tag']}", NS) if probe_el is not None else None
+        if tc is not None:
+            apply_probe_diff(tc, pc, cd['Diff'], remove_only)
+        elif not remove_only:
+            fail(f"у '{target.get('name')}' нет {cd['Tag']} — свойство некуда записать")
+
+
+def get_probe_owner_tags(key):
+    for tag, k, _kind in GENERIC_SCALARS:
+        if k.lower() == key.lower():
+            return [tag]
+    for k, spec in APPEARANCE_SPEC.items():
+        if k.lower() == key.lower():
+            return [spec[0]]
+    return []
+
+
+# Теги, которые set через эмиттер не трогает: привязка и тип. Теги ручной таблицы (Title, ToolTip…)
+# проба переписывает, только если их ключ задан в той же операции, — иначе эмиттер, не зная их
+# значения, затёр бы его своим.
+PROBE_LOCKED_TAGS = ['DataPath', 'CommandName', 'Type']
+
+
+def assert_probe_tags(d, k, op, c):
+    for t in d['Tags']:
+        if t in PROBE_LOCKED_TAGS:
+            fail(f"{c}: '{k}' меняет {t} — привязка и тип элемента через set не меняются")
+    for t in d['Tags']:
+        owners = [sk for sk, spec in SET_PROPS.items() if t in spec['Tags']]
+        if owners and not any(o in op for o in owners):
+            fail(f"{c}: '{k}' меняет и {t} — укажите в той же операции {' или '.join(owners)}")
+
+
+def invoke_set_by_emitter(node, props, context, op, c):
+    global changed_count
+    n = node.get('name')
+    nt = local_name(node)
+    if nt not in XML_TAG_TO_DSL:
+        fail(f"{c}: у {nt} меняются только: {', '.join(get_applicable_set_keys(nt))}")
+    st = dict(context)
+    for k, v in props.items():
+        if v is not None:
+            st[k] = v
+    full = invoke_set_probe(node, st)
+    if local_name(full['El']) != nt:
+        tk = [k for k in props if k.lower() in DSL_TAG_MAP_LC]
+        fail(f"{c}: '{', '.join(tk)}' — ключ типа элемента; тип через set не меняется")
+    removals, applies = [], []
+    for k, v in props.items():
+        rest = {k2: v2 for k2, v2 in st.items() if k2 != k}
+        without = invoke_set_probe(node, rest)
+        if v is None:
+            # Сброс: убрать то, что ключ пишет при любом значении
+            owned = get_probe_owner_tags(k)
+            d = {'Tags': owned, 'Attrs': [], 'Comps': [], 'Items': False}
+            if not owned:
+                for alt in (True, False):
+                    wa = dict(rest)
+                    wa[k] = alt
+                    pa = invoke_set_probe(node, wa)
+                    if any("unknown key '" in m for m in pa['Messages']):
+                        break
+                    da = get_probe_diff(without['El'], pa['El'])
+                    if test_probe_diff(da):
+                        d = da
+                        break
+            if not test_probe_diff(d):
+                fail(f"{c}: '{k}' сбросить нельзя — неизвестное свойство или у него нет значения по умолчанию; укажите значение")
+            assert_probe_tags(d, k, op, c)
+            if test_probe_diff_present(node, d):
+                removals.append(d)
+                op_log.append(f"  * {n}: {k} сброшено")
+                changed_count += 1
+            else:
+                op_log.append(f"  = {n}: {k} — уже по умолчанию")
+            continue
+        d = get_probe_diff(without['El'], full['El'])
+        if test_probe_diff(d):
+            if d['Items']:
+                fail(f"{c}: '{k}' меняет состав '{n}' — элементы добавляются отдельными операциями")
+            assert_probe_tags(d, k, op, c)
+            applies.append(d)
+            if isinstance(v, bool):
+                shown = f"={'true' if v else 'false'}"
+            elif isinstance(v, (str, int)):
+                shown = f"={v}"
+            else:
+                shown = ""
+            op_log.append(f"  * {n}: {k}{shown} → {', '.join(get_probe_diff_label(d))}")
+            changed_count += 1
+            continue
+        # Разницы нет: ключ неизвестен, значение не распознано или совпадает с умолчанием платформы
+        msgs = full['Messages']
+        if any(re.search(r"unknown key '" + re.escape(k) + "'", m, re.I) for m in msgs):
+            fail(f"{c}: неизвестное свойство '{k}' — ключи те же, что у элемента в form-compile")
+        vv = [m2.group(1) for m2 in (re.search(r'Valid values: (.*?)\. Value ignored', m) for m in msgs) if m2]
+        if vv:
+            fail(f"{c}: {k}='{v}' — значение не распознано; допустимо: {vv[0]}")
+        if isinstance(v, bool):
+            wa = dict(rest)
+            wa[k] = not v
+            pa = invoke_set_probe(node, wa)
+            da = get_probe_diff(without['El'], pa['El'])
+            if test_probe_diff(da):
+                assert_probe_tags(da, k, op, c)
+                if test_probe_diff_present(node, da):
+                    removals.append(da)
+                    op_log.append(f"  * {n}: {k}={'true' if v else 'false'} — умолчание платформы, {', '.join(get_probe_diff_label(da))} не пишется")
+                    changed_count += 1
+                else:
+                    op_log.append(f"  = {n}: {k}={'true' if v else 'false'} — уже по умолчанию")
+                continue
+        fail(f"{c}: '{k}' к {nt} не применимо или значение совпадает с умолчанием (чтобы вернуть умолчание — null)")
+    for r in removals:
+        apply_probe_diff(node, None, r, True)
+    for a in applies:
+        apply_probe_diff(node, full['El'], a, False)
 
 
 # --- Удаление ---

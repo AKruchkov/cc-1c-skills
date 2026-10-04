@@ -1,0 +1,24 @@
+{
+  "name": "set: formatted без title — отказ, текст надписи не затирается",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "label": "Надпись1",
+        "title": "Важный текст",
+        "into": "ГруппаПраво"
+      },
+      {
+        "set": "Надпись1",
+        "formatted": true
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "укажите в той же операции title"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "Расширение: set с events — обработчик После на заимствованном элементе",
+  "setup": "fixture:move-cfe",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Приоритет",
+        "events": {
+          "OnChange": {
+            "handler": "Расш_ПриоритетПослеИзменения",
+            "callType": "After"
+          }
+        }
+      }
+    ]
+  },
+  "expect": {
+    "stdoutContains": "OnChange[After]"
+  },
+  "skipPlatformVerify": "фикстура — расширение без базовой конфигурации"
+}

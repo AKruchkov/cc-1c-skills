@@ -1,4 +1,4 @@
-﻿# form-edit v1.22 — Edit 1C managed form elements
+﻿# form-edit v1.23 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -3871,7 +3871,7 @@ function Add-ElementEvents($node, $on, $handlers, [string]$ctx) {
 			$evtName = "$evt"; $callType = ""
 			$handler = if ($handlers -and $handlers.$evtName) { "$($handlers.$evtName)" } else { Get-HandlerName -elementName $name -eventName $evtName }
 		} else {
-			$evtName = "$($evt.event)"; $callType = if ($evt.callType) { "$($evt.callType)" } else { "" }
+			$evtName = "$($evt.event)"; $callType = Normalize-CallType "$($evt.callType)" $name $evtName
 			$handler = if ($evt.handler) { "$($evt.handler)" } elseif ($handlers -and $handlers.$evtName) { "$($handlers.$evtName)" } else { Get-HandlerName -elementName $name -eventName $evtName }
 		}
 		# Заимствованный элемент в расширении: событие без callType платформа читает как Before и так и пишет
@@ -3900,6 +3900,7 @@ function Add-ElementEvents($node, $on, $handlers, [string]$ctx) {
 		$ev.InnerText = $handler
 		Insert-NodeAt $events $ev $null (Get-ChildIndent $events)
 		$script:opLog += "  * ${name}: событие $evtName$ctStr -> $handler"
+		$script:changedCount++
 	}
 }
 
@@ -3915,19 +3916,29 @@ function Invoke-Set($op, [int]$idx) {
 		if ($null -eq $node) { Fail "${ctx}: элемент '$n' не найден в форме" }
 		$nt = $node.LocalName
 		$c = "$ctx '$n'"
+		$probeProps = [ordered]@{}
 		foreach ($p in $props) {
 			$key = $p.Name
 			if ($key -eq 'handlers') { if (-not $op.on) { Fail "${c}: handlers задаются вместе с on" }; continue }
 			if ($key -eq 'on') { Add-ElementEvents $node $p.Value $op.handlers $c; continue }
-			if ($forbidden -contains $key -or ($script:dslTagMap.ContainsKey($key) -and $key -ne 'group')) {
+			if ($key -eq 'events') {
+				if (-not ($p.Value -is [System.Management.Automation.PSCustomObject])) { Fail "${c}: events — объект { Событие: обработчик }" }
+				$on = @(Get-EventPairs -el $op -elementName $n | ForEach-Object { [pscustomobject]@{ event = $_.name; handler = $_.handler; callType = $_.callType } })
+				Add-ElementEvents $node $on $null $c
+				continue
+			}
+			if ($forbidden -contains $key -or ($key -eq $script:xmlTagToDsl[$nt] -and $key -ne 'group')) {
 				Fail "${c}: '$key' через set не меняется (имя и привязку не трогаем — на них ссылаются модуль и расширения; состав — через move)"
 			}
+			if (@('into','after','before','first') -contains $key) { Fail "${c}: '$key' — место элемента меняет move, не set" }
 			if (-not $script:setProps.Contains($key)) {
-				Fail "${c}: неизвестное свойство '$key'; у $nt доступно: $((Get-ApplicableSetKeys $nt) -join ', ')"
+				# Остальные ключи элемента — как в form-compile, через общий эмиттер
+				$probeProps[$key] = $p.Value
+				continue
 			}
 			$spec = $script:setProps[$key]
 			$tag = Get-PropTag $spec $nt
-			if ($null -eq $tag) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ')" }
+			if ($null -eq $tag) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ') и остальные ключи элемента из form-compile" }
 			$v = $p.Value
 			if ($null -eq $v) {
 				$existing = $node.SelectSingleNode("f:$tag", $nsMgr)
@@ -3964,7 +3975,7 @@ function Invoke-Set($op, [int]$idx) {
 				}
 				'repr' {
 					$rmap = $script:reprMaps[$nt]
-					if ($null -eq $rmap) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ')" }
+					if ($null -eq $rmap) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ') и остальные ключи элемента из form-compile" }
 					$text = $rmap["$v".ToLower()]
 					if (-not $text) { Fail "${c}: representation='$v' — допустимо: $(($rmap.Keys | Sort-Object) -join ', ')" }
 					Set-ValueTag $node $tag $text
@@ -3973,7 +3984,255 @@ function Invoke-Set($op, [int]$idx) {
 			}
 			$script:changedCount++
 		}
+		if ($probeProps.Count -gt 0) {
+			# Контекст пробы — все свойства операции: от них зависит, как эмиттер пишет остальные
+			$context = [ordered]@{}
+			foreach ($p in $props) {
+				if (@('on','handlers','events') -notcontains $p.Name -and $null -ne $p.Value -and -not $probeProps.Contains($p.Name)) { $context[$p.Name] = $p.Value }
+			}
+			Invoke-SetByEmitter $node $probeProps $context $op $c
+		}
 	}
+}
+
+# --- set: ключи элемента вне таблицы выше — через общий эмиттер form-compile ---
+# Элемент эмитится без свойства и с ним; что различается, то свойство и пишет в XML. Так set знает
+# все ключи form-compile и пишет их ровно так же, как при создании формы.
+
+$script:probeTypeValues = @{ 'group'='vertical'; 'columnGroup'='vertical' }
+
+function Invoke-SetProbe($node, $props) {
+	$nt = $node.LocalName
+	$dsl = $script:xmlTagToDsl[$nt]
+	$name = $node.GetAttribute('name')
+	$h = [ordered]@{}
+	$h[$dsl] = if ($script:probeTypeValues.ContainsKey($dsl)) { $script:probeTypeValues[$dsl] } else { $name }
+	$h['name'] = $name
+	$dp = $node.SelectSingleNode("f:DataPath", $nsMgr)
+	if ($null -ne $dp) { $h['path'] = $dp.InnerText }
+	foreach ($k in $props.Keys) { $h[$k] = $props[$k] }
+	$el = [pscustomobject]$h | ConvertTo-Json -Depth 100 -Compress | ConvertFrom-Json
+	Normalize-ElementSynonyms $el
+	foreach ($a in $root.SelectNodes("f:Attributes/f:Attribute", $nsMgr)) {
+		$t = $a.SelectSingleNode("f:Type/v8:Type", $nsMgr)
+		if ($null -ne $t -and $t.InnerText.Trim() -eq 'cfg:DynamicList') { ApplyDynamicListTableHeuristic $el $a.GetAttribute('name') $true }
+	}
+	$saveId = $script:nextElemId
+	$script:seenElementNames = @{}
+	$tbl = Get-NearestTable $node $false
+	$script:currentTableName = if ($null -ne $tbl) { $tbl.GetAttribute('name') } else { $null }
+	$inBar = $false
+	$cur = $node.ParentNode
+	while ($null -ne $cur -and $cur.NodeType -eq 'Element') {
+		if ($script:barTags -contains $cur.LocalName) { $inBar = $true; break }
+		$cur = $cur.ParentNode
+	}
+	$script:xml = New-Object System.Text.StringBuilder 4096
+	X "<_F $allNsDecl>"
+	$msgs = @(& { Emit-Element -el $el -indent (Get-NodeIndent $node) -inCmdBar $inBar } 3>&1 6>&1 |
+		Where-Object { $_ -is [System.Management.Automation.WarningRecord] -or $_ -is [System.Management.Automation.InformationRecord] } |
+		ForEach-Object { "$_" })
+	X "</_F>"
+	$script:nextElemId = $saveId
+	$frag = Parse-Fragment $script:xml.ToString()
+	$pe = $null
+	foreach ($ch in $frag.DocumentElement.ChildNodes) { if ($ch.NodeType -eq 'Element') { $pe = $ch; break } }
+	return @{ El = $pe; Messages = $msgs }
+}
+
+# Свойства узла: дочерние теги (без состава и событий) и атрибуты; спутники (меню, подсказка,
+# панель) — отдельно, их свойства сравниваются так же.
+function Get-ProbeParts($e) {
+	$tags = [ordered]@{}; $comps = @{}; $attrs = @{}
+	foreach ($ch in $e.ChildNodes) {
+		if ($ch.NodeType -ne 'Element') { continue }
+		$ln = $ch.LocalName
+		if ($ln -eq 'Events') { continue }
+		if ($ln -eq 'ChildItems') { $comps['#items'] = ($ch.OuterXml -replace ' id="-?\d+"', '') -replace '\s+', ' '; continue }
+		if ($script:companionTags -contains $ln -and $ch.HasAttribute('name')) { $comps[$ln] = $ch; continue }
+		$t = ($ch.OuterXml -replace ' id="-?\d+"', '') -replace '\s+', ' '
+		if ($tags.Contains($ln)) { $tags[$ln] += $t } else { $tags[$ln] = $t }
+	}
+	foreach ($a in $e.Attributes) {
+		if ($a.Name -ne 'name' -and $a.Name -ne 'id' -and -not $a.Name.StartsWith('xmlns')) { $attrs[$a.Name] = $a.Value }
+	}
+	return @{ Tags = $tags; Comps = $comps; Attrs = $attrs }
+}
+
+function Get-ProbeDiff($b, $p) {
+	$pb = Get-ProbeParts $b; $pp = Get-ProbeParts $p
+	$d = @{ Tags = @(); Attrs = @(); Comps = @(); Items = $false }
+	foreach ($t in @($pb.Tags.Keys) + @($pp.Tags.Keys) | Select-Object -Unique) {
+		if ($pb.Tags[$t] -cne $pp.Tags[$t]) { $d.Tags += $t }
+	}
+	foreach ($a in @($pb.Attrs.Keys) + @($pp.Attrs.Keys) | Sort-Object -Unique) {
+		if ($pb.Attrs[$a] -cne $pp.Attrs[$a]) { $d.Attrs += $a }
+	}
+	if ($pb.Comps['#items'] -cne $pp.Comps['#items']) { $d.Items = $true }
+	foreach ($cn in @($pp.Comps.Keys | Where-Object { $_ -ne '#items' } | Sort-Object)) {
+		if ($null -eq $pb.Comps[$cn]) { continue }
+		$sub = Get-ProbeDiff $pb.Comps[$cn] $pp.Comps[$cn]
+		# Состав спутника (кнопки меню, панели) — тоже состав
+		if ($sub.Items) { $d.Items = $true }
+		if (Test-ProbeDiff $sub) { $d.Comps += @{ Tag = $cn; Diff = $sub } }
+	}
+	return $d
+}
+
+function Test-ProbeDiff($d) {
+	return ($d.Tags.Count + $d.Attrs.Count + $d.Comps.Count) -gt 0 -or $d.Items
+}
+
+# Есть ли в узле хоть что-то из того, что описывает разница (для сброса к умолчанию).
+function Test-ProbeDiffPresent($target, $d) {
+	foreach ($t in $d.Tags) { if ($null -ne $target.SelectSingleNode("f:$t", $nsMgr)) { return $true } }
+	foreach ($a in $d.Attrs) { if ($target.HasAttribute($a)) { return $true } }
+	foreach ($cd in $d.Comps) {
+		$tc = $target.SelectSingleNode("f:$($cd.Tag)", $nsMgr)
+		if ($null -ne $tc -and (Test-ProbeDiffPresent $tc $cd.Diff)) { return $true }
+	}
+	return $false
+}
+
+function Get-ProbeDiffLabel($d) {
+	$parts = @($d.Tags) + @($d.Attrs | ForEach-Object { "@$_" })
+	foreach ($cd in $d.Comps) { $parts += @(Get-ProbeDiffLabel $cd.Diff | ForEach-Object { "$($cd.Tag)/$_" }) }
+	return $parts
+}
+
+# Перенести в узел то, что различается: теги пробы заменяют свои (нет в пробе — тег убирается).
+function Apply-ProbeDiff($target, $probeEl, $d, [bool]$removeOnly) {
+	foreach ($t in $d.Tags) {
+		foreach ($x in @($target.SelectNodes("f:$t", $nsMgr))) { Remove-NodeWithWs $x }
+		if ($removeOnly) { continue }
+		foreach ($pn in @($probeEl.SelectNodes("f:$t", $nsMgr))) {
+			$imp = $xmlDoc.ImportNode($pn, $true)
+			if ((Get-ChildRank $target.LocalName $t) -ge 0) { Insert-ChildCanonical $target $imp; continue }
+			# Тега нет в корпусном порядке — встаёт перед первым следующим за ним в пробе тегом узла
+			$ref = $null
+			$sib = $pn.NextSibling
+			while ($null -ne $sib -and $null -eq $ref) {
+				if ($sib.NodeType -eq 'Element') { $ref = $target.SelectSingleNode("f:$($sib.LocalName)", $nsMgr) }
+				$sib = $sib.NextSibling
+			}
+			Insert-NodeAt $target $imp $ref (Get-ChildIndent $target)
+		}
+	}
+	foreach ($a in $d.Attrs) {
+		if (-not $removeOnly -and $probeEl.HasAttribute($a)) { $target.SetAttribute($a, $probeEl.GetAttribute($a)) }
+		else { $target.RemoveAttribute($a) }
+	}
+	foreach ($cd in $d.Comps) {
+		$tc = $target.SelectSingleNode("f:$($cd.Tag)", $nsMgr)
+		$pc = if ($null -ne $probeEl) { $probeEl.SelectSingleNode("f:$($cd.Tag)", $nsMgr) } else { $null }
+		if ($null -ne $tc) { Apply-ProbeDiff $tc $pc $cd.Diff $removeOnly }
+		elseif (-not $removeOnly) { Fail "у '$($target.GetAttribute('name'))' нет $($cd.Tag) — свойство некуда записать" }
+	}
+}
+
+function Get-ProbeOwnerTags([string]$key) {
+	foreach ($g in $script:genericScalars) { if ($g.Key -eq $key) { return @($g.Tag) } }
+	if ($script:appearanceSpec.ContainsKey($key)) { return @($script:appearanceSpec[$key].tag) }
+	return @()
+}
+
+# Теги, которые set через эмиттер не трогает: привязка и тип. Теги ручной таблицы (Title, ToolTip…)
+# проба переписывает, только если их ключ задан в той же операции, — иначе эмиттер, не зная их
+# значения, затёр бы его своим.
+$script:probeLockedTags = @('DataPath','CommandName','Type')
+
+function Assert-ProbeTags($d, [string]$k, $op, [string]$c) {
+	foreach ($t in $d.Tags) {
+		if ($script:probeLockedTags -contains $t) { Fail "${c}: '$k' меняет $t — привязка и тип элемента через set не меняются" }
+	}
+	foreach ($t in $d.Tags) {
+		$owners = @($script:setProps.Keys | Where-Object { $script:setProps[$_].Tags -contains $t })
+		if ($owners.Count -gt 0 -and -not ($owners | Where-Object { $null -ne $op.PSObject.Properties[$_] })) {
+			Fail "${c}: '$k' меняет и $t — укажите в той же операции $($owners -join ' или ')"
+		}
+	}
+}
+
+function Invoke-SetByEmitter($node, $props, $context, $op, [string]$c) {
+	$n = $node.GetAttribute('name')
+	$nt = $node.LocalName
+	if (-not $script:xmlTagToDsl.ContainsKey($nt)) { Fail "${c}: у $nt меняются только: $((Get-ApplicableSetKeys $nt) -join ', ')" }
+	$set = [ordered]@{}
+	foreach ($k in $context.Keys) { $set[$k] = $context[$k] }
+	foreach ($k in $props.Keys) { if ($null -ne $props[$k]) { $set[$k] = $props[$k] } }
+	$full = Invoke-SetProbe $node $set
+	if ($full.El.LocalName -ne $nt) {
+		$tk = @($props.Keys | Where-Object { $script:dslTagMap.ContainsKey($_) })
+		Fail "${c}: '$($tk -join ', ')' — ключ типа элемента; тип через set не меняется"
+	}
+	$removals = @()
+	$applies = @()
+	foreach ($k in $props.Keys) {
+		$v = $props[$k]
+		$rest = [ordered]@{}
+		foreach ($k2 in $set.Keys) { if ($k2 -ne $k) { $rest[$k2] = $set[$k2] } }
+		$without = Invoke-SetProbe $node $rest
+		if ($null -eq $v) {
+			# Сброс: убрать то, что ключ пишет при любом значении
+			$owned = @(Get-ProbeOwnerTags $k)
+			$d = @{ Tags = $owned; Attrs = @(); Comps = @(); Items = $false }
+			if ($owned.Count -eq 0) {
+				foreach ($alt in @($true, $false)) {
+					$wa = [ordered]@{}; foreach ($k2 in $rest.Keys) { $wa[$k2] = $rest[$k2] }; $wa[$k] = $alt
+					$pa = Invoke-SetProbe $node $wa
+					if (@($pa.Messages | Where-Object { $_ -match "unknown key '" }).Count -gt 0) { break }
+					$da = Get-ProbeDiff $without.El $pa.El
+					if (Test-ProbeDiff $da) { $d = $da; break }
+				}
+			}
+			if (-not (Test-ProbeDiff $d)) { Fail "${c}: '$k' сбросить нельзя — неизвестное свойство или у него нет значения по умолчанию; укажите значение" }
+			Assert-ProbeTags $d $k $op $c
+			if (Test-ProbeDiffPresent $node $d) {
+				$removals += $d
+				$script:opLog += "  * ${n}: $k сброшено"
+				$script:changedCount++
+			} else {
+				$script:opLog += "  = ${n}: $k — уже по умолчанию"
+			}
+			continue
+		}
+		$d = Get-ProbeDiff $without.El $full.El
+		if (Test-ProbeDiff $d) {
+			if ($d.Items) { Fail "${c}: '$k' меняет состав '$n' — элементы добавляются отдельными операциями" }
+			Assert-ProbeTags $d $k $op $c
+			$applies += $d
+			$shown = if ($v -is [bool]) { "=$("$v".ToLower())" } elseif ($v -is [string] -or $v -is [int] -or $v -is [long]) { "=$v" } else { "" }
+			$script:opLog += "  * ${n}: $k$shown → $((Get-ProbeDiffLabel $d) -join ', ')"
+			$script:changedCount++
+			continue
+		}
+		# Разницы нет: ключ неизвестен, значение не распознано или совпадает с умолчанием платформы
+		$msgs = @($full.Messages)
+		if (@($msgs | Where-Object { $_ -match "unknown key '$([regex]::Escape($k))'" }).Count -gt 0) {
+			Fail "${c}: неизвестное свойство '$k' — ключи те же, что у элемента в form-compile"
+		}
+		$vv = @($msgs | ForEach-Object { if ($_ -match 'Valid values: (.*?)\. Value ignored') { $Matches[1] } })
+		if ($vv.Count -gt 0) { Fail "${c}: $k='$v' — значение не распознано; допустимо: $($vv[0])" }
+		if ($v -is [bool]) {
+			$wa = [ordered]@{}; foreach ($k2 in $rest.Keys) { $wa[$k2] = $rest[$k2] }; $wa[$k] = -not $v
+			$pa = Invoke-SetProbe $node $wa
+			$da = Get-ProbeDiff $without.El $pa.El
+			if (Test-ProbeDiff $da) {
+				Assert-ProbeTags $da $k $op $c
+				if (Test-ProbeDiffPresent $node $da) {
+					$removals += $da
+					$script:opLog += "  * ${n}: $k=$("$v".ToLower()) — умолчание платформы, $((Get-ProbeDiffLabel $da) -join ', ') не пишется"
+					$script:changedCount++
+				} else {
+					$script:opLog += "  = ${n}: $k=$("$v".ToLower()) — уже по умолчанию"
+				}
+				continue
+			}
+		}
+		Fail "${c}: '$k' к $nt не применимо или значение совпадает с умолчанием (чтобы вернуть умолчание — null)"
+	}
+	foreach ($r in $removals) { Apply-ProbeDiff $node $null $r $true }
+	foreach ($a in $applies) { Apply-ProbeDiff $node $full.El $a $false }
 }
 
 # --- Удаление ---

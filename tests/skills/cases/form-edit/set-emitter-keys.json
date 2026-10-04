@@ -1,0 +1,47 @@
+{
+  "name": "set: ключи элемента из form-compile — цвет, шрифт, параметры выбора, маска; сброс через null",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Склад",
+        "textColor": "style:SpecialTextColor",
+        "font": {
+          "bold": true
+        },
+        "choiceParameters": [
+          "Отбор.Активен=true"
+        ],
+        "mask": "999"
+      },
+      {
+        "set": "Организация",
+        "mask": "999"
+      },
+      {
+        "set": "Организация",
+        "mask": null
+      },
+      {
+        "set": "Товары",
+        "footer": true
+      },
+      {
+        "button": "КнЗакрыть",
+        "stdCommand": "Close",
+        "into": "ФормаКоманднаяПанель"
+      },
+      {
+        "set": "КнЗакрыть",
+        "picture": "StdPicture.Close",
+        "representation": "picture"
+      }
+    ]
+  },
+  "expect": {
+    "stdoutContains": "Организация: mask сброшено"
+  }
+}

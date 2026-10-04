@@ -1,0 +1,20 @@
+{
+  "name": "set: неизвестный ключ — отказ, форма не тронута",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "elements": [
+      {
+        "set": "Склад",
+        "textColor": "#FF0000",
+        "bogus": 1
+      }
+    ]
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": "неизвестное свойство 'bogus'"
+  }
+}
