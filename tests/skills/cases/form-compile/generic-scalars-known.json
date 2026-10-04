@@ -1,0 +1,76 @@
+{
+  "name": "Простые скаляры (markNegatives, threeState, shape…) выводятся без предупреждения о неизвестном ключе",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+    "validatePath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "input": "Сумма",
+        "path": "Сумма",
+        "markNegatives": true,
+        "choiceListHeight": 5
+      },
+      {
+        "check": "Флаг",
+        "path": "Флаг",
+        "threeState": true
+      },
+      {
+        "button": "Кнопка",
+        "stdCommand": "Close",
+        "type": "usual",
+        "shape": "Oval",
+        "pictureLocation": "Right"
+      }
+    ],
+    "attributes": [
+      {
+        "name": "Объект",
+        "type": "DataProcessorObject.Тест",
+        "main": true
+      },
+      {
+        "name": "Сумма",
+        "type": "decimal(15,2)"
+      },
+      {
+        "name": "Флаг",
+        "type": "boolean"
+      }
+    ]
+  },
+  "expect": {
+    "stdoutNotContains": "unknown key",
+    "stderrNotContains": "unknown key",
+    "fileContains": {
+      "file": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+      "text": [
+        "<MarkNegatives>true</MarkNegatives>",
+        "<ThreeState>true</ThreeState>",
+        "<Shape>Oval</Shape>"
+      ]
+    }
+  }
+}

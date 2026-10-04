@@ -1,4 +1,4 @@
-﻿# form-edit v1.20 — Edit 1C managed form elements
+﻿# form-edit v1.21 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -513,7 +513,7 @@ $script:eventSuffixMap = @{
 	"AutoComplete" = "АвтоПодбор"; "Clearing" = "Очистка"; "Opening" = "Открытие"; "Click" = "Нажатие"
 	"OnActivateRow" = "ПриАктивизацииСтроки"; "BeforeAddRow" = "ПередНачаломДобавления"
 	"BeforeDeleteRow" = "ПередУдалением"; "BeforeRowChange" = "ПередНачаломИзменения"
-	"OnStartEdit" = "ПриНачалеРедактирования"; "OnEndEdit" = "ПриОкончанииРедактирования"
+	"OnStartEdit" = "ПриНачалеРедактирования"; "OnEditEnd" = "ПриОкончанииРедактирования"
 	"Selection" = "ВыборСтроки"; "OnCurrentPageChange" = "ПриСменеСтраницы"
 	"TextEditEnd" = "ОкончаниеВводаТекста"; "URLProcessing" = "ОбработкаНавигационнойСсылки"
 	"DragStart" = "НачалоПеретаскивания"; "Drag" = "Перетаскивание"

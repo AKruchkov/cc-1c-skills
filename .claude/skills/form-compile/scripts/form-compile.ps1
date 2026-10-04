@@ -1,4 +1,4 @@
-﻿# form-compile v1.199 — Compile 1C managed form from JSON or object metadata
+﻿# form-compile v1.200 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2729,7 +2729,7 @@ $script:eventSuffixMap = @{
 	"BeforeDeleteRow"      = "ПередУдалением"
 	"BeforeRowChange"      = "ПередНачаломИзменения"
 	"OnStartEdit"          = "ПриНачалеРедактирования"
-	"OnEndEdit"            = "ПриОкончанииРедактирования"
+	"OnEditEnd"            = "ПриОкончанииРедактирования"
 	"Selection"            = "ВыборСтроки"
 	"OnCurrentPageChange"  = "ПриСменеСтраницы"
 	"TextEditEnd"          = "ОкончаниеВводаТекста"
@@ -3240,6 +3240,8 @@ function Emit-Element {
 	foreach ($k in $script:appearanceSpec.Keys)     { $knownKeys[$k] = 1 }
 	foreach ($k in $script:appearanceSynonyms.Keys) { $knownKeys[$k] = 1 }
 	foreach ($k in $script:propSynonyms.Keys)       { $knownKeys[$k] = 1 }
+	# Простые скаляры (pass-through) — тоже из своей таблицы: компилятор их выводит, значит, они известны
+	foreach ($g in $script:genericScalars)          { $knownKeys[$g.Key] = 1 }
 	foreach ($p in $el.PSObject.Properties) {
 		if ($p.Name -like '_*') { continue }  # внутренние маркеры (напр. _dynList)
 		if (-not $knownKeys.ContainsKey($p.Name)) {

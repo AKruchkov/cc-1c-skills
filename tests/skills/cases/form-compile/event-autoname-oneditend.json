@@ -1,0 +1,71 @@
+{
+  "name": "Автоимя обработчика OnEditEnd таблицы: <Таблица>ПриОкончанииРедактирования",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+    "validatePath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "table": "Товары",
+        "path": "Товары",
+        "events": {
+          "OnEditEnd": null,
+          "OnStartEdit": null
+        },
+        "columns": [
+          {
+            "input": "ТоварыКоличество",
+            "path": "Товары.Количество"
+          }
+        ]
+      }
+    ],
+    "attributes": [
+      {
+        "name": "Объект",
+        "type": "DataProcessorObject.Тест",
+        "main": true
+      },
+      {
+        "name": "Товары",
+        "type": "ValueTable",
+        "columns": [
+          {
+            "name": "Количество",
+            "type": "decimal(10,3)"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "fileContains": {
+      "file": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+      "text": [
+        "<Event name=\"OnEditEnd\">ТоварыПриОкончанииРедактирования</Event>",
+        "<Event name=\"OnStartEdit\">ТоварыПриНачалеРедактирования</Event>"
+      ]
+    }
+  }
+}
