@@ -1088,6 +1088,31 @@ for (const family of DRIFTED) {
   }
 }
 
+// ─── Копии документации ─────────────────────────────────────────────────────
+// Справочники навыка, который пользуется тем же DSL, что и другой, — копии каталога эталона:
+// документация меняется вместе с кодом, а код у них общий (семьи выше). Сверка — файл в файл,
+// без BOM и с LF; лишний файл у потребителя — тоже расхождение (он не попадёт в эталон).
+const FILE_FAMILIES = [
+  { name: 'справочники DSL формы', dir: 'references', authority: 'form-compile', consumers: ['form-edit'] },
+];
+
+const normDoc = (p) => readFileSync(p, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+for (const ff of FILE_FAMILIES) {
+  const src = join(SKILLS, ff.authority, ff.dir);
+  const files = readdirSync(src).filter((f) => f.endsWith('.md')).sort();
+  for (const c of ff.consumers) {
+    const dst = join(SKILLS, c, ff.dir);
+    if (!existsSync(dst)) { errors.push(`${ff.name}: у ${c} нет каталога ${ff.dir}/`); continue; }
+    for (const f of files) {
+      if (!existsSync(join(dst, f))) errors.push(`${ff.name}: у ${c} нет ${ff.dir}/${f} (есть у эталона ${ff.authority})`);
+      else if (normDoc(join(src, f)) !== normDoc(join(dst, f))) errors.push(`${ff.name}: ${c}/${ff.dir}/${f} разошёлся с эталоном ${ff.authority}`);
+    }
+    for (const f of readdirSync(dst).filter((x) => x.endsWith('.md'))) {
+      if (!files.includes(f)) errors.push(`${ff.name}: ${c}/${ff.dir}/${f} — нет у эталона ${ff.authority} (правку вносим в эталон и копируем)`);
+    }
+  }
+}
+
 // ─── Вывод ──────────────────────────────────────────────────────────────────
 
 if (process.argv.includes('--list')) {
