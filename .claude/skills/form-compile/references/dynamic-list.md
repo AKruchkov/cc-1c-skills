@@ -72,7 +72,7 @@
 ```json
 "fields": [
   { "field": "Сумма", "title": "Сумма, руб", "appearance": { "Формат": "ЧДЦ=2" } },
-  { "field": "Остаток", "valueType": "number(15,2)" }
+  { "field": "Остаток", "valueType": "decimal(15,2)" }
 ]
 ```
 
@@ -85,7 +85,7 @@
 ```json
 "calculatedFields": [
   "Метка = Code + \" \" + Description",
-  "Маржа [Маржа, руб]: number(15,2) = Цена - Закупка"
+  "Маржа [Маржа, руб]: decimal(15,2) = Цена - Закупка"
 ]
 ```
 
@@ -109,10 +109,7 @@ Shorthand `"Поле оператор значение @флаги"` или об
 ]
 ```
 
-- **Операторы:** `=` `<>` `>` `>=` `<` `<=`, `in` / `notIn`, `inHierarchy`, `contains` / `notContains`, `beginsWith` / `notBeginsWith`, `like` / `notLike` (`%`-шаблон), `filled` / `notFilled`.
-- **Флаги:** `@off` (отключён), `@user` (в пользовательских настройках), `@quickAccess`; `_` = пустое значение.
-- **Группа:** `{ group: "And"|"Or"|"Not", items: [...] }`.
-- **Дата-значение:** ISO-дата `"2024-01-01T00:00:00"` — фиксированная дата. Именованный относительный период — строкой с типом: `{ "value": "BeginningOfThisWeek", "valueType": "v8:StandardBeginningDate" }` (варианты `BeginningOfThisDay`/`BeginningOfThisWeek`/`BeginningOfThisMonth`/`BeginningOfThisYear`/…).
+Операторы, флаги (`@off`, `@user`, `@quickAccess`), группы и значения-даты — как в условном оформлении: `references/appearance.md`, раздел «filter». Здесь поля — поля списка (`Сумма`, `Организация`).
 
 ## Сортировка (`order`)
 
@@ -141,4 +138,27 @@ Shorthand `"Поле оператор значение @флаги"` или об
 ]
 ```
 
-`filter` — та же грамматика, что выше. `appearance` — словарь «параметр платформы: значение» (`ЦветТекста`, `ЦветФона`, `Шрифт`, `Текст`, `Формат`, …). Значение `Текст`/`Заголовок`/`Формат`: голая строка — нелокализованный литерал; `{ru,en}` — локализуемая строка; `{ field: "путь" }` — ссылка на поле. Подробнее об оформлении — `references/appearance.md`.
+Без `selection` правило оформляет всю строку списка. `filter` и `appearance` — как в условном оформлении формы: `references/appearance.md`.
+
+## Таблица динамического списка
+
+Таблица, у которой `path` — реквизит динамического списка, сразу получает поведение списка: автообновление, корень, значок строки, своя командная панель скрыта. Вид (`representation: "HierarchicalList"`, `initialTreeView`) — `references/table-advanced.md`. Указывайте **только отличия**:
+
+| Ключ | Умолчание | Назначение |
+|------|-----------|-----------|
+| `initialListView` | — | `Beginning` / `End` — куда прокрутить при открытии |
+| `rowPictureDataPath` | `<Список>.DefaultPicture` | Значок строки; `""` — без значка |
+| `choiceFoldersAndItems` | `Items` | Что выбирать: `Items` / `Folders` / `FoldersAndItems` |
+| `allowRootChoice` | `false` | Разрешить выбор корня |
+| `showRoot` | `true` | Показывать корень |
+| `autoRefresh` / `autoRefreshPeriod` | `false` / `60` | Автообновление и период, сек |
+| `updateOnDataChange` | `Auto` | `DontUpdate` — не обновлять при изменении данных |
+| `restoreCurrentRow` | `false` | Восстанавливать текущую строку при обновлении |
+| `userSettingsGroup` | — | Группа пользовательских настроек списка |
+| `allowGettingCurrentRowURL` | `true` | `false` — запретить получение ссылки на текущую строку |
+| `commandBar` | скрыта | `{ "autofill": true }` — показать свою панель таблицы |
+
+```json
+{ "table": "Список", "path": "Список", "representation": "HierarchicalList",
+  "initialTreeView": "ExpandTopLevel", "choiceFoldersAndItems": "FoldersAndItems", "allowRootChoice": true }
+```

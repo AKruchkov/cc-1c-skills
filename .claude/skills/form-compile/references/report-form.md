@@ -67,8 +67,8 @@
     "customSettingsFolder": "ГруппаПользовательскихНастроек"
   },
   "attributes": [
-    { "name": "РезультатОтчета", "type": "SpreadsheetDocument" },
-    { "name": "ДанныеРасшифровки", "type": "DataCompositionDetailsData" }
+    { "name": "РезультатОтчета", "type": "mxl:SpreadsheetDocument" },
+    { "name": "ДанныеРасшифровки", "type": "string" }
   ],
   "elements": [
     { "group": "vertical", "name": "ГруппаПользовательскихНастроек" },

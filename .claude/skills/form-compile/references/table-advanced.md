@@ -1,132 +1,104 @@
-# Таблица — продвинутые возможности
+# Таблица: вид, выделение, подвал и колонки, поиск, перетаскивание
 
-Базовый элемент таблицы (`type: "table"`, колонки, основные свойства) описан в основной инструкции, раздел «Таблица (table)». Здесь — продвинутые возможности: дополнения командной панели, специфика таблицы динамического списка и неочевидные свойства/режимы.
+Основное о таблице (`path`, `columns`, `changeRowSet`, `changeRowOrder`, `header`, `commandBarLocation`, `searchStringLocation`, `choiceMode`, `heightInTableRows`) — на главной странице. Таблица динамического списка — `references/dynamic-list.md`. Все ключи ниже необязательны.
 
-## Представление (`representation`)
+## Вид
 
-Как таблица рисует строки:
-
-```json
-{ "table": "Список", "path": "Список", "representation": "Tree" }
-```
-
-`List` — плоский список (по умолчанию), `Tree` — дерево, `HierarchicalList` — иерархический список (группы + элементы на одном уровне).
-
-Для дерева/иерархии управляйте раскрытием уровней через `initialTreeView` (`ExpandTopLevel` / `ExpandAllLevels` / `NoExpand`).
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `representation` | `List` / `Tree` / `HierarchicalList` | Плоский список, дерево, иерархический список |
+| `initialTreeView` | `ExpandTopLevel` / `ExpandAllLevels` / `NoExpand` | Раскрытие дерева при открытии |
+| `useAlternationRowColor` | bool | Чередование цвета строк |
+| `verticalLines` / `horizontalLines` | `false` | Скрыть линии сетки |
+| `headerHeight` / `footerHeight` | число | Высота шапки / подвала, в строках |
+| `heightControlVariant` | `UseHeightInTableRows` / `UseContentHeight` / `UseHeightInFormRows` | Как определять высоту таблицы |
+| `maxRowsCount` / `autoMaxRowsCount` | число / bool | Ограничение высоты по числу строк |
 
 ## Выделение и текущая строка
 
 | Ключ | Значения | Назначение |
 |------|----------|-----------|
-| `selectionMode` | `SingleRow` / `MultiRow` | Режим выделения строк |
-| `multipleChoice` | bool | Разрешить множественный выбор (для форм выбора) |
-| `currentRowUse` | `DontUse` / `Use` / `SelectionPresentation` / `SelectionPresentationAndChoice` / `Choice` | Использование текущей строки таблицы |
+| `selectionMode` | `SingleRow` / `MultiRow` | Одна или несколько строк |
+| `rowSelectionMode` | `Row` / … | Выделять строку целиком |
+| `multipleChoice` | bool | Множественный выбор (в форме выбора) |
+| `currentRowUse` | `DontUse` / `Use` / `SelectionPresentation` / `SelectionPresentationAndChoice` / `Choice` | Использование текущей строки |
 
 ```json
 { "table": "Список", "path": "Список", "selectionMode": "MultiRow", "multipleChoice": true }
 ```
 
-## Поиск при вводе (`searchOnInput`)
+## Ввод строк
 
-Поведение встроенного поиска при наборе текста в таблице:
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `autoInsertNewRow` | bool | Новая строка при вводе в последнюю |
+| `rowInputMode` | `AfterCurrentRow` / … | Куда добавлять новую строку |
+| `markIncomplete` | bool | Отмечать незаполненные ячейки |
+| `editMode` (на колонке) | `EnterOnInput` / `Directly` | Ввод в ячейку сразу или по Enter |
 
-```json
-{ "table": "Список", "path": "Список", "searchOnInput": "Use" }
-```
+## Подвал и колонки
 
-`Auto` (по умолчанию) / `Use` (искать) / `DontUse` (не искать).
+Подвал таблицы включается `footer: true`; итоги задаются на колонках.
 
-Где располагать сами элементы поиска — управляется `searchStringLocation` / `viewStatusLocation` / `searchControlLocation` (`None` / `Top` / `Bottom` / `CommandBar` / `Auto`).
+| Ключ (на колонке) | Значения | Назначение |
+|------|----------|-----------|
+| `showInFooter` | bool | Показать колонку в подвале |
+| `footerDataPath` | путь данных | Значение подвала, напр. `"Объект.Товары.TotalСумма"` |
+| `footerText` | строка или `{ru, en}` | Постоянный текст подвала, напр. «Итого:» |
+| `footerHorizontalAlign` | `Left` / `Center` / `Right` | Выравнивание в подвале |
+| `showInHeader` | bool | Показать колонку в шапке |
+| `headerHorizontalAlign` | `Left` / `Center` / `Right` / `Auto` | Выравнивание в шапке |
+| `autoCellHeight` | bool | Высота ячейки по содержимому (перенос) |
+| `fixingInTable` | `Left` / `Right` / `None` | Закрепить колонку при горизонтальной прокрутке |
+| `cellHyperlink` | bool | Значение ячейки — ссылка |
 
-## Прочие свойства таблицы
-
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `useAlternationRowColor` | bool | Чередование цвета строк |
-| `verticalLines` / `horizontalLines` | bool | Линии сетки (укажите `false`, чтобы скрыть) |
-| `markIncomplete` | bool | Автоотметка незаполненных ячеек |
-| `heightInTableRows` | int | Высота элемента в строках (отдельно от `height`) |
-| `autoInsertNewRow` | bool | Автодобавление новой строки при вводе в последнюю |
-| `rowsPicture` | string \| object | Картинка строк. Ссылка (`"CommonPicture.X"`, `"abs:..."`) либо объект `{ src, loadTransparent?, transparentPixel? }` |
-| `tooltipRepresentation` | string | Режим показа подсказки таблицы: `None`, `Button`, `ShowBottom`, `ShowTop`, `ShowLeft`, `ShowRight`, `ShowAuto`, `Balloon` |
-
-## Фиксация колонки (`fixingInTable`)
-
-Свойство **колонки** (на `input` / `labelField` / `check` / `picField` внутри `columns`), а не самой таблицы. Закрепляет колонку у края при горизонтальной прокрутке:
-
-```json
-{ "table": "Товары", "path": "Объект.Товары", "columns": [
-  { "input": "Номенклатура", "path": "Объект.Товары.Номенклатура", "fixingInTable": "Left" },
-  { "input": "Количество", "path": "Объект.Товары.Количество" }
-]}
-```
-
-`Left` / `Right` / `None`.
-
-## Исключённые команды (`excludedCommands`)
-
-Убрать стандартные команды редактора таблицы (кнопки добавления/перемещения/сортировки):
+У `columnGroup` в шапке можно показывать значение из данных: `headerDataPath` (путь) и `headerFormat` (формат).
 
 ```json
-{ "table": "Товары", "path": "Объект.Товары",
-  "excludedCommands": [ "Add", "Delete", "MoveUp", "SortListAsc" ] }
+{ "table": "Товары", "path": "Объект.Товары", "footer": true, "columns": [
+    { "input": "Номенклатура", "path": "Объект.Товары.Номенклатура", "fixingInTable": "Left",
+      "footerText": "Итого:" },
+    { "input": "Сумма", "path": "Объект.Товары.Сумма", "headerHorizontalAlign": "Right",
+      "showInFooter": true, "footerDataPath": "Объект.Товары.TotalСумма", "footerHorizontalAlign": "Right" } ] }
 ```
 
-Свойство работает на любом поле и на уровне формы; для таблицы значимы команды вида `Add` / `Delete` / `MoveUp` / `MoveDown` / `SortListAsc` / `SortListDesc`.
+## Поиск
 
-## Дополнения командной панели (`additions`)
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `searchOnInput` | `Auto` / `Use` / `DontUse` | Поиск при наборе текста в таблице (где строка поиска — `searchStringLocation` на главной) |
+| `viewStatusLocation` / `searchControlLocation` | `None` / `Top` / `Bottom` / `Auto` | Где состояние просмотра и управление поиском |
 
-Дополнения — это «представления» встроенного поиска таблицы:
-
-- `searchString` — отображение строки поиска,
-- `viewStatus` — состояние просмотра,
-- `searchControl` — управление поиском.
-
-Каждое дополнение — полноценный элемент (полный набор свойств поля). Размещать их можно двумя способами.
-
-**(1) Стандартные дополнения** генерирует платформа на уровне таблицы. В DSL указывайте **только отклонения** от стандартного вида — через карту `additions` (ключ = тип дополнения):
-
-```json
-{ "table": "Список", "path": "Список",
-  "additions": { "viewStatus": { "horizontalLocation": "left" } } }
-```
-
-**(2) Кастомное дополнение**, размещённое прямо в командной панели — обычный элемент в `commandBar` с ключом-типом:
+Своя строка поиска, размещённая в командной панели таблицы — элемент `searchString` (также `viewStatus`, `searchControl`):
 
 ```json
 { "table": "Список", "path": "Список", "commandBar": [
-  { "searchString": "ПоискСписка", "source": "Список", "width": 15, "horizontalStretch": true }
-]}
+    { "searchString": "ПоискСписка", "width": 15, "horizontalStretch": true } ] }
 ```
 
-- Тип-ключ: `searchString` / `viewStatus` / `searchControl`.
-- `source` — имя таблицы-источника; необязательно, по умолчанию = имя родительской таблицы.
-- `horizontalLocation`: `auto` (по умолчанию) / `left` / `right`. Применимо и к обычным элементам командных панелей.
-- Прочие свойства как у поля: `title`, `visible`, `userVisible`, `enabled`, `tooltip`, оформление, `width` / `maxWidth` / `autoMaxWidth` / `horizontalStretch` / `groupHorizontalAlign` и др.
+`source` — таблица, по которой ищет элемент (по умолчанию — таблица, в панели которой он стоит).
 
-## Таблица динамического списка
-
-Когда `path` таблицы указывает на реквизит `type: "DynamicList"` (см. `references/dynamic-list.md`), доступен блок специфичных свойств. Указывайте **только отличия** от умолчания.
-
-| Ключ | Тип | Умолчание | Назначение |
-|------|-----|-----------|-----------|
-| `rowPictureDataPath` | string | картинка осн. таблицы | Путь к картинке строки. `""` — подавить картинку |
-| `rowsPicture` | string | — | Картинка строк (`"CommonPicture.X"`) |
-| `autoRefresh` | bool | `false` | Автообновление списка |
-| `autoRefreshPeriod` | int | `60` | Период автообновления, сек |
-| `updateOnDataChange` | string | `Auto` | Обновлять при изменении данных: `Auto` / `DontUpdate` |
-| `choiceFoldersAndItems` | string | `Items` | Что выбирать: `Items` / `Folders` / `FoldersAndItems` |
-| `restoreCurrentRow` | bool | `false` | Восстанавливать текущую строку при обновлении |
-| `showRoot` | bool | `true` | Показывать корень |
-| `allowRootChoice` | bool | `false` | Разрешить выбор корня |
-| `allowGettingCurrentRowURL` | bool | `true` | Разрешить получение URL текущей строки |
-| `userSettingsGroup` | string | — | Группа пользовательских настроек (привязка к одноимённой группе настроек) |
+Изменить только положение стандартного элемента поиска — карта `additions`:
 
 ```json
-{ "table": "Список", "path": "Список",
-  "representation": "Tree",
-  "rowPictureDataPath": "Список.DefaultPicture",
-  "choiceFoldersAndItems": "FoldersAndItems",
-  "allowRootChoice": true,
-  "updateOnDataChange": "DontUpdate" }
+{ "table": "Список", "path": "Список", "additions": { "viewStatus": { "horizontalLocation": "left" } } }
 ```
+
+## Перетаскивание
+
+| Ключ | Значения | Назначение |
+|------|----------|-----------|
+| `enableDrag` | bool | Принимать перетаскивание в таблицу |
+| `enableStartDrag` | bool | Перетаскивать строки из таблицы |
+
+События: `DragStart`, `DragCheck`, `Drag`, `DragEnd`.
+
+## Команды таблицы
+
+Убрать стандартные команды (добавление, перемещение, сортировку):
+
+```json
+{ "table": "Товары", "path": "Объект.Товары", "excludedCommands": [ "Add", "Delete", "MoveUp", "SortListAsc" ] }
+```
+
+Своя командная панель и контекстное меню таблицы — `references/buttons-commands.md`.

@@ -1,109 +1,62 @@
-# Спец-поля «документ/датчик»
+# Особые поля: HTML, текстовый документ, индикатор, ползунок, календарь, период
 
-Поля для отображения специальных данных: табличный документ, HTML, текст, форматированный документ, индикатор, ползунок. Каждое привязывается к реквизиту своего платформенного типа.
-
-Структурно это обычные поля — поддерживают общий скелет поля (`path`, `title`, `titleLocation`, флаги `readOnly`/`enabled`/`visible`, `layout`, оформление, события). Ниже — только ключ `type` (имя элемента задаётся значением ключа) и собственные скаляры каждого семейства. Все скаляры необязательны.
+Поля для особых данных. У каждого — общие свойства поля (`path`, `title`, `titleLocation`, `readOnly`, размеры, события) и свои ключи ниже. Табличный документ — `references/spreadsheet.md`, диаграммы и планировщик — `references/charts.md`.
 
 | Ключ типа | Тип реквизита |
 |-----------|---------------|
-| `spreadsheet` | `mxl:SpreadsheetDocument` (ТабличныйДокумент) |
-| `html` | `string` |
-| `textDoc` | `d5p1:TextDocument` (ТекстовыйДокумент) |
-| `formattedDoc` | `fd:FormattedDocument` (ФорматированныйДокумент) |
+| `html` | `string` (HTML-текст или адрес) |
+| `textDoc` | `d5p1:TextDocument` |
+| `formattedDoc` | `fd:FormattedDocument` |
 | `progressBar` | число |
 | `trackBar` | число |
+| `calendar` | `date` |
+| `periodField` | `v8:StandardPeriod` |
 
-## spreadsheet — поле табличного документа
-
-Просмотр/редактирование табличного документа (отчёт, печатная форма).
-
-```json
-{ "spreadsheet": "ТаблицаОтчета", "path": "ТаблицаОтчета",
-  "titleLocation": "none", "readOnly": true,
-  "output": "Disable", "protection": true }
-```
-
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `output` | string | Использование вывода: `Enable` / `Disable` |
-| `protection` | bool | Защита от изменений |
-| `edit` | bool | Разрешить редактирование |
-| `showGrid` | bool | Показывать сетку |
-| `showHeaders` | bool | Показывать заголовки строк/колонок |
-| `showGroups` | bool | Показывать группировки |
-| `showRowAndColumnNames` | bool | Показывать имена строк и колонок |
-| `showCellNames` | bool | Показывать имена ячеек |
-| `verticalScrollBar` / `horizontalScrollBar` | string | Режим полос прокрутки |
-| `viewScalingMode` | string | Режим масштабирования просмотра |
-| `selectionShowMode` | string | Режим отображения выделения |
-| `pointerType` | string | Тип указателя |
-| `enableDrag` / `enableStartDrag` | bool | Разрешить перетаскивание / начало перетаскивания |
-
-## html — поле HTML-документа
-
-Просмотр HTML. Реквизит — строка (содержит HTML-текст или адрес).
+## html — HTML-документ
 
 ```json
-{ "html": "Просмотр", "path": "СодержимоеHTML", "titleLocation": "none",
-  "output": "Enable", "warningOnEditRepresentation": false }
+{ "html": "Просмотр", "path": "СодержимоеHTML", "titleLocation": "none" }
 ```
 
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `output` | string | Использование вывода: `Enable` / `Disable` |
-| `warningOnEditRepresentation` | bool | Предупреждать при изменении представления |
+`output` (`Enable` / `Disable`) — разрешить печать и сохранение.
 
-## textDoc — поле текстового документа
-
-Просмотр/редактирование текстового документа.
-
-```json
-{ "textDoc": "Текст", "path": "ТекстДокумента", "editMode": "Edit" }
-```
-
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `editMode` | string | Режим редактирования (напр. `Edit` / `View`) |
-
-## formattedDoc — поле форматированного документа
-
-Просмотр/редактирование форматированного документа.
+## textDoc, formattedDoc — текстовый и форматированный документ
 
 ```json
 { "formattedDoc": "Описание", "path": "ФорматированноеОписание", "editMode": "Edit" }
 ```
 
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `editMode` | string | Режим редактирования (напр. `Edit` / `View`) |
+`editMode` — `Edit` / `View`.
 
-## progressBar — поле индикатора
-
-Индикатор прогресса. Реквизит — числовой.
+## progressBar — индикатор
 
 ```json
-{ "progressBar": "Прогресс", "path": "Прогресс",
-  "minValue": 0, "maxValue": 100, "showPercent": true }
+{ "progressBar": "Прогресс", "path": "Прогресс", "minValue": 0, "maxValue": 100, "showPercent": true }
 ```
 
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `minValue` / `maxValue` | число | Минимальное / максимальное значение |
-| `showPercent` | bool | Показывать проценты |
-
-## trackBar — поле ползунка
-
-Регулятор-ползунок. Реквизит — числовой.
+## trackBar — ползунок
 
 ```json
-{ "trackBar": "Масштаб", "path": "Масштаб",
-  "minValue": 20, "maxValue": 400, "markingStep": 20 }
+{ "trackBar": "Масштаб", "path": "Масштаб", "minValue": 20, "maxValue": 400, "step": 10, "markingStep": 20 }
 ```
 
-| Ключ | Тип | Назначение |
-|------|-----|-----------|
-| `minValue` / `maxValue` | число | Минимальное / максимальное значение |
-| `step` | число | Шаг изменения |
-| `largeStep` | число | Крупный шаг |
-| `markingStep` | число | Шаг разметки |
-| `markingAppearance` | string | Оформление разметки |
+`step`, `largeStep`, `markingStep` — шаги; `markingAppearance` — вид разметки.
+
+## calendar — календарь
+
+```json
+{ "calendar": "ДатаОтчета", "path": "ДатаОтчета", "selectionMode": "Interval", "widthInMonths": 2 }
+```
+
+| Ключ | Значения |
+|------|----------|
+| `selectionMode` | `Single` / `Multiple` / `Interval` |
+| `showCurrentDate` | bool |
+| `widthInMonths` / `heightInMonths` | число месяцев |
+| `showMonthsPanel` | bool |
+
+## periodField — поле периода
+
+```json
+{ "periodField": "Период", "path": "Период" }
+```

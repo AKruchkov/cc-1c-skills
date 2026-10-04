@@ -35,16 +35,15 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/form-compile.ps1" -
 powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/form-compile.ps1" -FromObject -OutputPath "<.../TypePlural/ObjectName/Forms/FormName/Ext/Form.xml>"
 ```
 
-## JSON DSL — справка
+## JSON DSL
 
-### Структура верхнего уровня
+### Структура
 
 ```json
 {
   "title": "Заголовок формы",
-  "properties": { "autoTitle": false, ... },
+  "properties": { "windowOpeningMode": "LockOwnerWindow" },
   "events": { "OnCreateAtServer": "ПриСозданииНаСервере" },
-  "excludedCommands": ["Reread"],
   "elements": [ ... ],
   "attributes": [ ... ],
   "commands": [ ... ],
@@ -52,403 +51,273 @@ powershell.exe -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/form-compile.ps1" -
 }
 ```
 
-- `title` — заголовок формы (multilingual). Можно указать и в `properties`, но лучше на верхнем уровне
-- `properties` — свойства формы: `autoTitle`, `windowOpeningMode`, `commandBarLocation`, `saveDataInSettings`, `width`, `height` и др.
-- `events` — обработчики событий формы (ключ: имя события 1С, значение: имя процедуры)
-- `excludedCommands` — исключённые стандартные команды
+- `title` — заголовок формы (строка или `{ru, en}`)
+- `properties` — свойства формы: `windowOpeningMode`, `commandBarLocation`, `width`, `height` и др. (полный список — `references/form-properties.md`)
+- `events` — обработчики событий формы: `{ "ИмяСобытия": "ИмяПроцедуры" }`
+- `excludedCommands` — убрать стандартные команды формы: `["Reread", "Copy"]`
 
 ### Элементы (ключ определяет тип)
 
-| DSL ключ     | XML элемент       | Значение ключа                                    |
-|--------------|-------------------|---------------------------------------------------|
-| `"group"`    | UsualGroup        | ориентация: `"vertical"` / `"horizontalIfPossible"` / `"alwaysHorizontal"` (поведение — отдельный ключ `behavior`) |
-| `"columnGroup"` | ColumnGroup    | `"horizontal"` / `"vertical"` / `"inCell"` — только внутри `columns` таблицы |
-| `"input"`    | InputField        | имя элемента                                      |
-| `"check"`    | CheckBoxField     | имя                                               |
-| `"radio"`    | RadioButtonField  | имя                                               |
-| `"label"`    | LabelDecoration   | имя (текст задаётся через `title`)                |
-| `"labelField"` | LabelField      | имя                                               |
-| `"table"`    | Table             | имя                                               |
-| `"pages"`    | Pages             | имя                                               |
-| `"page"`     | Page              | имя                                               |
-| `"button"`   | Button            | имя                                               |
-| `"picture"`  | PictureDecoration | имя                                               |
-| `"picField"` | PictureField      | имя                                               |
-| `"calendar"` | CalendarField     | имя                                               |
-| `"cmdBar"`   | CommandBar        | имя                                               |
-| `"autoCmdBar"` | AutoCommandBar формы | имя — наполняет главную АКП формы (id=-1), не попадает в `<ChildItems>` |
-| `"popup"`    | Popup             | имя                                               |
+| Ключ | Элемент | Значение ключа |
+|------|---------|----------------|
+| `group` | Обычная группа | ориентация: `vertical` / `horizontalIfPossible` / `alwaysHorizontal` |
+| `input` | Поле ввода | имя |
+| `check` | Флажок | имя |
+| `radio` | Переключатель | имя |
+| `label` | Надпись | имя (текст — в `title`) |
+| `labelField` | Поле-надпись (значение без редактирования) | имя |
+| `table` | Таблица | имя |
+| `columnGroup` | Группа колонок (внутри `columns` таблицы) | `horizontal` / `vertical` / `inCell` |
+| `pages` / `page` | Страницы / страница | имя |
+| `button` | Кнопка | имя |
+| `buttonGroup` | Группа кнопок (в командной панели или подменю) | имя |
+| `popup` | Подменю | имя |
+| `cmdBar` | Командная панель в раскладке формы | имя |
+| `autoCmdBar` | Командная панель самой формы | имя (обычно `ФормаКоманднаяПанель`) |
+| `picture` | Картинка | имя |
+| `picField` | Поле-картинка | имя |
 
-### Общие свойства (все типы элементов)
+Табличный документ, HTML, календарь, диаграммы и другие особые поля — по индексу ниже.
+
+### Общие свойства элементов
 
 | Ключ | Описание |
 |------|----------|
-| `name` | Переопределить имя (по умолчанию = значение ключа типа). Имена уникальны во всех коллекциях формы (элементы, реквизиты, команды, колонки) |
-| `title` | Заголовок элемента |
-| `tooltip` | Всплывающая подсказка элемента (строка или `{ru,en}`) |
-| `visible: false` | Скрыть (синоним: `hidden: true`) |
-| `enabled: false` | Сделать недоступным (синоним: `disabled: true`) |
-| `readOnly: true` | Только чтение |
-| `events: {...}` | Обработчики событий: `{ "OnChange": "ИмяОбработчика" }`. Тот же формат, что у событий формы. Значение `null` → имя обработчика сгенерируется автоматически |
+| `name` | Имя элемента, если отличается от значения ключа типа. Имена в форме уникальны |
+| `title` | Заголовок (строка или `{ru, en}`); `""` — без заголовка |
+| `tooltip` | Всплывающая подсказка |
+| `visible: false` / `enabled: false` / `readOnly: true` | Скрыть / сделать недоступным / только чтение |
+| `titleLocation` | `none` / `left` / `right` / `top` / `bottom` / `auto` |
+| `width` / `height` | Размер |
+| `horizontalStretch` / `verticalStretch` | Растягивать |
+| `autoMaxWidth: false` | Снять предел ширины (поле тянется на всю доступную ширину) |
+| `events` | Обработчики: `{ "OnChange": "ИмяОбработчика" }`; `null` вместо имени — имя по шаблону `<Элемент><Событие>` |
 
-### Допустимые имена событий (`events`)
+### События
 
-Компилятор предупреждает о неизвестных событиях. Имена регистрозависимы — используйте точно как указано.
+Имена регистрозависимы.
 
-**Форма** (`events`): `OnCreateAtServer`, `OnOpen`, `BeforeClose`, `OnClose`, `NotificationProcessing`, `ChoiceProcessing`, `OnReadAtServer`, `BeforeWriteAtServer`, `OnWriteAtServer`, `AfterWriteAtServer`, `BeforeWrite`, `AfterWrite`, `FillCheckProcessingAtServer`, `BeforeLoadDataFromSettingsAtServer`, `OnLoadDataFromSettingsAtServer`, `ExternalEvent`, `Opening`
+**Форма:** `OnCreateAtServer`, `OnOpen`, `BeforeClose`, `OnClose`, `NotificationProcessing`, `ChoiceProcessing`, `OnReadAtServer`, `BeforeWriteAtServer`, `OnWriteAtServer`, `AfterWriteAtServer`, `BeforeWrite`, `AfterWrite`, `FillCheckProcessingAtServer`, `BeforeLoadDataFromSettingsAtServer`, `OnLoadDataFromSettingsAtServer`, `ExternalEvent`, `Opening`
 
-**input / picField**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `AutoComplete`, `TextEditEnd`, `Clearing`, `Creating`, `EditTextChange`
-
-**check / radio**: `OnChange`
-
-**table**: `OnStartEdit`, `OnEditEnd`, `OnChange`, `Selection`, `ValueChoice`, `BeforeAddRow`, `BeforeDeleteRow`, `AfterDeleteRow`, `BeforeRowChange`, `BeforeEditEnd`, `OnActivateRow`, `OnActivateCell`, `Drag`, `DragStart`, `DragCheck`, `DragEnd`
-
-**label / picture**: `Click`, `URLProcessing`
-
-**labelField**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `Click`, `URLProcessing`, `Clearing`
-
-**button**: `Click`
-
-**pages**: `OnCurrentPageChange`
+**input:** `OnChange`, `StartChoice`, `ChoiceProcessing`, `AutoComplete`, `TextEditEnd`, `Clearing`, `Creating`, `EditTextChange`
+**picField:** `OnChange`, `StartChoice`, `ChoiceProcessing`, `Click`, `Clearing`
+**check / radio:** `OnChange`
+**table:** `OnStartEdit`, `OnEditEnd`, `OnChange`, `Selection`, `ValueChoice`, `BeforeAddRow`, `BeforeDeleteRow`, `AfterDeleteRow`, `BeforeRowChange`, `BeforeEditEnd`, `OnActivateRow`, `OnActivateCell`, `Drag`, `DragStart`, `DragCheck`, `DragEnd`
+**label:** `Click`, `URLProcessing`
+**picture:** `Click`
+**labelField:** `OnChange`, `StartChoice`, `ChoiceProcessing`, `Click`, `URLProcessing`, `Clearing`
+**button:** `Click`
+**pages:** `OnCurrentPageChange`
 
 ### Поле ввода (input)
 
-| Ключ | Описание | Пример |
-|------|----------|--------|
-| `path` | DataPath — привязка к данным | `"Объект.Организация"` |
-| `titleLocation` | Размещение заголовка | `"none"`, `"left"`, `"right"`, `"top"`, `"bottom"`, `"auto"` |
-| `multiLine: true` | Многострочное поле | текстовое поле, комментарий |
-| `passwordMode: true` | Режим пароля (звёздочки) | поле ввода пароля |
-| `choiceButton: true` | Кнопка выбора ("...") | ссылочное поле |
-| `clearButton: true` | Кнопка очистки ("X") | |
-| `spinButton: true` | Кнопка прокрутки | числовые поля |
-| `dropListButton: true` | Кнопка выпадающего списка | |
-| `markIncomplete: true` | Пометка незаполненного | обязательные поля |
-| `skipOnInput: true` | Пропускать при обходе Tab | |
-| `inputHint` | Подсказка в пустом поле | `"Введите наименование..."` |
-| `width` / `height` | Размер | числа |
-| `autoMaxWidth: false` | Снять авто-ограничение ширины (поле растянется) | |
-| `maxWidth` / `maxHeight` | Жёсткое ограничение размера | числа; обычно вместе с `autoMaxWidth: false` |
-| `horizontalStretch: true` | Растягивать по ширине | |
-
-### Чекбокс (check)
-
 | Ключ | Описание |
 |------|----------|
-| `path` | DataPath |
-| `titleLocation` | Размещение заголовка |
+| `path` | Путь к данным: `"Объект.Организация"`, `"ИмяРеквизита"` |
+| `multiLine: true` | Многострочное (комментарий) |
+| `choiceButton` / `clearButton` / `dropListButton` | Кнопки выбора, очистки, выпадающего списка |
+| `markIncomplete: true` | Подсвечивать незаполненное |
+| `inputHint` | Подсказка в пустом поле |
+| `skipOnInput: true` | Пропускать при переходе по Enter/Tab |
+| `maxWidth` | Предел ширины |
 
-### Поле переключателя (radio)
+Список выбора, маска, формат, пароль и другие кнопки — `references/input-fields.md`.
 
-Радиокнопки или тумблер для выбора одного значения из списка.
+### Флажок (check) и переключатель (radio)
 
-| Ключ | Описание | Пример |
-|------|----------|--------|
-| `path` | DataPath — привязка к реквизиту | `"СпособКурса"` |
-| `radioButtonType` | Вид переключателя | `"Auto"` (по умолчанию), `"RadioButtons"`, `"Tumbler"` |
-| `columnsCount` | Число колонок раскладки | `1`, `2`, ... |
-| `titleLocation` | Размещение заголовка | по умолчанию `"none"` |
-| `choiceList` | Список вариантов: массив `{value, presentation}` | см. ниже |
+`check`: `path`, `titleLocation` (по умолчанию заголовок справа). Вид «выключатель» или «тумблер» — `references/input-fields.md`.
 
-`choiceList[*]`:
-
-| Ключ | Описание |
-|------|----------|
-| `value` | Значение варианта. Строка/число/булево; для перечисления — `"Enum.ИмяТипа.EnumValue.ИмяЗначения"` |
-| `presentation` | Текст рядом с переключателем. Строка (русский) либо объект `{ru, en, ...}` для мультиязычности |
+`radio`: `path`, `radioButtonType` (`Auto` / `RadioButtons` / `Tumbler`), `columnsCount`, `choiceList`:
 
 ```json
-{
-  "radio": "СпособКурса",
-  "path": "Объект.СпособУстановкиКурса",
-  "radioButtonType": "Auto",
+{ "radio": "СпособКурса", "path": "Объект.СпособУстановкиКурса", "radioButtonType": "Tumbler",
   "choiceList": [
-    { "value": "Enum.СпособыКурса.EnumValue.Авто",   "presentation": { "ru": "Автоматически", "en": "Automatic" } },
-    { "value": "Enum.СпособыКурса.EnumValue.Ручной", "presentation": "вручную" }
-  ]
-}
+    { "value": "Enum.СпособыКурса.EnumValue.Авто",   "presentation": "Автоматически" },
+    { "value": "Enum.СпособыКурса.EnumValue.Ручной", "presentation": { "ru": "Вручную", "en": "Manual" } }
+  ] }
 ```
 
-### Надпись-декорация (label)
+`value` — строка, число, булево или значение перечисления `"Enum.Тип.EnumValue.Значение"`; `presentation` — текст варианта.
 
-| Ключ | Описание |
-|------|----------|
-| `title` | Текст надписи (обязательно) |
-| `hyperlink: true` | Сделать ссылкой |
-| `width` / `height` | Размер |
+### Надпись (label) и поле-надпись (labelField)
+
+`label`: `title` — текст (поддерживает разметку, см. `references/tooltips-text.md`), `hyperlink: true` — ссылка.
+`labelField`: `path`, `hyperlink: true` — значение как ссылка.
 
 ### Группа (group)
 
-Значение ключа задаёт **ориентацию**: `"vertical"`, `"horizontalIfPossible"`, `"alwaysHorizontal"`.
-
 | Ключ | Описание |
 |------|----------|
-| `behavior` | Поведение группы: `"collapsible"` (сворачиваемая) / `"popup"` (всплывающая). Опустить = обычная |
-| `showTitle: true` | Показывать заголовок группы |
-| `united: false` | Левый край полей ввода выравнивается только в пределах этой группы (по умолчанию `true` — сквозное выравнивание по самому длинному заголовку, в т.ч. с соседними группами) |
-| `collapsed: true` | Для `behavior: "collapsible"` / `"popup"` — группа создаётся свёрнутой |
-| `controlRepresentation` | Отображение управления свёрткой (`behavior: "collapsible"`): `"TitleHyperlink"` (гиперссылка заголовка, по умолчанию) / `"Picture"` (картинка) |
-| `representation` | `"none"`, `"normal"`, `"weak"`, `"strong"` |
-| `children: [...]` | Вложенные элементы |
+| `behavior` | `collapsible` — сворачиваемая, `popup` — всплывающая; не указан — обычная |
+| `showTitle: true` | Показывать заголовок |
+| `representation` | `none` / `normal` / `weak` / `strong` — рамка группы |
+| `united: false` | Выравнивать поля только внутри группы, а не вместе с соседними |
+| `children` | Вложенные элементы |
+
+Свёрнутая при открытии группа, интервалы, заголовок из данных — `references/groups-pages.md`.
 
 ### Таблица (table)
 
-**Важно**: таблица требует связанный реквизит формы типа `ValueTable` с колонками (см. раздел "Связки").
+Таблица привязывается к реквизиту-таблице (`ValueTable`, табличная часть объекта, динамический список) — см. «Связка элемент + реквизит».
 
 | Ключ | Описание |
 |------|----------|
-| `path` | DataPath (привязка к реквизиту-таблице) |
-| `columns: [...]` | Колонки — массив элементов (обычно `input`) |
-| `changeRowSet: true` | Разрешить добавление/удаление строк |
-| `changeRowOrder: true` | Разрешить перемещение строк |
-| `height` | Высота в строках таблицы |
-| `header: false` | Скрыть шапку |
-| `footer: true` | Показать подвал |
-| `commandBarLocation` | `"None"`, `"Top"`, `"Bottom"`, `"Auto"` |
-| `searchStringLocation` | `"None"`, `"Top"`, `"Bottom"`, `"CommandBar"`, `"PullFromTop"`, `"Auto"` |
-| `choiceMode: true` | Режим выбора (для форм выбора) |
-| `initialTreeView` | `"ExpandTopLevel"` и др. (иерархические списки) |
-| `enableDrag: true` | Разрешить перетаскивание |
-| `enableStartDrag: true` | Разрешить начало перетаскивания |
-| `rowPictureDataPath` | Путь к картинке строки (напр. `"Список.DefaultPicture"`) |
-| `tableAutofill: false` | Управление Autofill внутреннего AutoCommandBar |
+| `path` | Путь к реквизиту-таблице |
+| `columns` | Колонки — элементы (`input`, `check`, `labelField`, `picField`, `columnGroup`); путь колонки — путь таблицы плюс имя колонки: `Объект.Товары.Сумма`, `Данные.Сумма` |
+| `changeRowSet: true` / `changeRowOrder: true` | Разрешить добавлять/удалять / перемещать строки |
+| `header: false` | Без шапки |
+| `heightInTableRows` | Высота в строках |
+| `commandBarLocation` | `None` / `Top` / `Bottom` / `Auto` |
+| `searchStringLocation` | `None` / `Top` / `Bottom` / `CommandBar` / `Auto` |
+| `choiceMode: true` | Таблица выбора (форма выбора) |
 
-Колонки можно группировать через `columnGroup` (см. ниже).
+Подвал с итогами, дерево, выделение, закрепление колонок, перетаскивание — `references/table-advanced.md`.
 
-### Группа колонок (columnGroup)
-
-Используется только внутри `columns` таблицы. Значение ключа задаёт ориентацию: `"horizontal"`, `"vertical"`, `"inCell"` (склеивает колонки в одну ячейку шапки). Допускается вложение `columnGroup` в `columnGroup`.
-
-| Ключ | Описание |
-|------|----------|
-| `name` | Имя элемента (рекомендуется задавать явно) |
-| `title` | Заголовок группы |
-| `showTitle: false` | Скрыть заголовок |
-| `showInHeader: true/false` | Показывать ли группу в шапке таблицы |
-| `width` | Ширина |
-| `horizontalStretch: false` | Растягивание |
-| `children: [...]` | Колонки внутри группы (`input`, `labelField`, `picField`, вложенный `columnGroup` …) |
+`columnGroup` группирует колонки: `title`, `showInHeader`, `children`; `inCell` — несколько колонок в одной ячейке:
 
 ```json
 { "table": "Список", "path": "Список", "columns": [
-    { "columnGroup": "horizontal", "name": "ГруппаДата", "title": "Срок", "children": [
-        { "input": "СрокИсполнения", "path": "Список.СрокИсполнения" },
-        { "labelField": "Просрочено", "path": "Список.Просрочено" }
-    ]},
-    { "columnGroup": "inCell", "name": "ГруппаИсполнитель", "showInHeader": true, "children": [
-        { "input": "Исполнитель", "path": "Список.Исполнитель" }
-    ]},
+    { "columnGroup": "horizontal", "name": "ГруппаСрок", "title": "Срок", "children": [
+        { "input": "ДатаНачала", "path": "Список.ДатаНачала" },
+        { "input": "ДатаОкончания", "path": "Список.ДатаОкончания" } ] },
     { "input": "Комментарий", "path": "Список.Комментарий" }
-]}
+] }
 ```
-
-### Картинка-поле (picField)
-
-PictureField, привязанный к булеву/числу, рисует иконку только при заданном `valuesPicture`:
-
-| Ключ | Описание |
-|------|----------|
-| `valuesPicture` | Ref картинки значения: `"StdPicture.Favorites"`, `"CommonPicture.X"` |
-| `loadTransparent: true` | Скрыть кадр «нет значения» |
 
 ### Страницы (pages + page)
 
-| Ключ (pages) | Описание |
-|------|----------|
-| `pagesRepresentation` | `"None"`, `"TabsOnTop"`, `"TabsOnBottom"` и др. |
-| `children: [...]` | Массив `page` |
+`pages`: `pagesRepresentation` (`TabsOnTop` / `TabsOnBottom` / `None` — без закладок), `children` — массив `page`.
+`page`: `title`, `group` (ориентация содержимого), `children`.
 
-| Ключ (page) | Описание |
-|------|----------|
-| `title` | Заголовок вкладки |
-| `group` | Ориентация внутри страницы |
-| `children: [...]` | Содержимое страницы |
+### Кнопки и командные панели
 
-### Кнопка (button)
-
-| Ключ | Описание |
-|------|----------|
-| `command` | Имя команды формы → `Form.Command.Имя` |
-| `stdCommand` | Стандартная команда: `"Close"` → `Form.StandardCommand.Close`; с точкой: `"Товары.Add"` → `Form.Item.Товары.StandardCommand.Add` |
+| Ключ (button) | Описание |
+|---------------|----------|
+| `command` | Команда формы → `Form.Command.Имя` |
+| `stdCommand` | Стандартная: `"Close"`; с точкой — команда элемента: `"Товары.Add"` |
 | `defaultButton: true` | Кнопка по умолчанию |
-| `type` | `"usual"`, `"hyperlink"`. По умолчанию `"usual"`. Конкретный XML-вид (UsualButton/Hyperlink/CommandBarButton/CommandBarHyperlink) подставляется автоматически по контексту |
-| `picture` | Картинка кнопки |
-| `representation` | `"Auto"`, `"Text"`, `"Picture"`, `"PictureAndText"` |
-| `locationInCommandBar` | `"Auto"`, `"InCommandBar"`, `"InAdditionalSubmenu"` |
+| `type` | `usual` / `hyperlink` |
+| `representation` | `Auto` / `Text` / `Picture` / `PictureAndText` |
+| `locationInCommandBar` | `InCommandBar` / `InAdditionalSubmenu` |
 
-### Командная панель (cmdBar)
-
-Дополнительная пользовательская панель команд, размещается как обычный элемент в layout формы.
-
-| Ключ | Описание |
-|------|----------|
-| `autofill: true` | Автозаполнение стандартными командами |
-| `children: [...]` | Кнопки панели |
-
-### Главная автокомандная панель формы (autoCmdBar)
-
-Наполняет встроенную AutoCommandBar формы (id=-1) кастомными кнопками. Указывать только если нужно добавить свои кнопки на главную панель или явно управлять автозаполнением.
-
-| Ключ | Описание |
-|------|----------|
-| `autofill: true/false` | Автозаполнение стандартными командами |
-| `horizontalAlign` | `"Left"` / `"Center"` / `"Right"` |
-| `children: [...]` | Кнопки/popup |
+`autoCmdBar` — командная панель формы, сюда помещают основные действия:
 
 ```json
-{ "autoCmdBar": "ФормаКоманднаяПанель", "autofill": true, "children": [
-   { "button": "ИзменитьВыделенные", "command": "ИзменитьВыделенные",
-     "locationInCommandBar": "InAdditionalSubmenu" }
-]}
+{ "autoCmdBar": "ФормаКоманднаяПанель", "children": [
+    { "button": "Загрузить", "command": "Загрузить", "defaultButton": true },
+    { "popup": "Печать", "title": "Печать", "children": [
+        { "button": "ПечатьСчета", "command": "ПечатьСчета" } ] },
+    { "buttonGroup": "ГруппаПеремещение", "children": [
+        { "button": "Вверх", "command": "Вверх" },
+        { "button": "Вниз", "command": "Вниз" } ] }
+] }
 ```
 
-Кнопки основных действий формы и подменю размещают здесь, а не в отдельной группе на форме. Отдельной кнопкой в layout — только если она логически привязана к конкретному полю или группе.
+- `popup` — подменю: `title`, `children`.
+- `buttonGroup` — кнопки, объединённые в группу: `title`, `children`.
+- `cmdBar` — отдельная панель в раскладке формы: `autofill`, `children`.
+- `autoCmdBar`: `autofill: false` — без стандартных команд, `horizontalAlign` — выравнивание.
 
-### Выпадающее меню (popup)
+Картинки кнопок, кнопки-переключатели, команды таблицы в группе кнопок, своё контекстное меню у элемента — `references/buttons-commands.md`.
 
-| Ключ | Описание |
-|------|----------|
-| `title` | Заголовок подменю |
-| `children: [...]` | Кнопки подменю |
+### Картинка (picture) и поле-картинка (picField)
 
-Используется внутри `cmdBar` для группировки кнопок в подменю:
-```json
-{ "cmdBar": "Панель", "children": [
-  { "popup": "Добавить", "title": "Добавить", "children": [
-    { "button": "ДобавитьСтроку", "stdCommand": "Товары.Add" },
-    { "button": "ДобавитьИзДокумента", "command": "ДобавитьИзДокумента", "title": "Из документа" }
-  ]}
-]}
-```
+`picture`: `src` — `"StdPicture.X"` / `"CommonPicture.X"`, `width`, `height`.
+`picField`: `path`; для булева или числа — `valuesPicture` (иначе значок не рисуется). Подробнее — `references/pictures.md`.
 
 ### Реквизиты (attributes)
 
 ```json
 { "name": "Объект", "type": "DataProcessorObject.Загрузка", "main": true }
-{ "name": "Список", "type": "DynamicList", "main": true, "settings": {
-    "mainTable": "Catalog.Номенклатура", "dynamicDataRead": true
-}}
-{ "name": "Итого", "type": "decimal(15,2)" }
+{ "name": "Итого", "type": "decimal(15,2)", "title": "Итого" }
 { "name": "Таблица", "type": "ValueTable", "columns": [
     { "name": "Номенклатура", "type": "CatalogRef.Номенклатура" },
-    { "name": "Количество", "type": "decimal(10,3)" }
-]}
+    { "name": "Количество", "type": "decimal(10,3)" } ] }
+{ "name": "Список", "type": "DynamicList", "main": true,
+  "settings": { "mainTable": "Catalog.Номенклатура" } }
 ```
 
-- `savedData: true` — сохраняемые данные
-- `main: true` — главный реквизит формы (например, основной `*Object.*`, `DynamicList`, `*RecordSet.*`)
+- `main: true` — основной реквизит формы (объект, набор записей, динамический список)
+- `savedData: true` — сохраняемые данные (у основного реквизита-объекта ставится само)
+- `columns` — колонки `ValueTable` / `ValueTree`
+- `settings` — настройки динамического списка (`references/dynamic-list.md`)
 
-### Команды (commands)
+Сохранение в настройках, проверка заполнения, функциональные опции — `references/attributes-advanced.md`.
+
+### Команды (commands) и параметры (parameters)
 
 ```json
-{ "name": "Загрузить", "action": "ЗагрузитьОбработка", "shortcut": "Ctrl+Enter" }
+"commands": [ { "name": "Загрузить", "action": "ЗагрузитьОбработка", "title": "Загрузить", "shortcut": "Ctrl+Enter", "picture": "StdPicture.Refresh" } ]
+"parameters": [ { "name": "Основание", "type": "DocumentRef.Заказ" } ]
 ```
 
-- `title` — заголовок (если отличается от name)
-- `picture` — картинка команды
+Команды: `name`, `action` (процедура-обработчик), `title`, `shortcut`, `picture`. Параметры: `name`, `type`, `key: true` — ключевой.
 
 ### Система типов
 
-**Примитивные:**
-
-| DSL                    | XML                                    |
-|------------------------|----------------------------------------|
-| `"string"` / `"string(100)"` | `xs:string` + StringQualifiers  |
-| `"decimal(15,2)"`     | `xs:decimal` + NumberQualifiers        |
-| `"decimal(10,0,nonneg)"` | с AllowedSign=Nonnegative           |
-| `"boolean"`            | `xs:boolean`                          |
-| `"date"` / `"dateTime"` / `"time"` | `xs:dateTime` + DateFractions |
-
-**Ссылочные и объектные (`cfg:Prefix.Name`):**
-
-| DSL | Описание |
-|-----|----------|
-| `"CatalogRef.XXX"` / `"CatalogObject.XXX"` | Справочник |
-| `"DocumentRef.XXX"` / `"DocumentObject.XXX"` | Документ |
-| `"EnumRef.XXX"` | Перечисление |
-| `"DataProcessorObject.XXX"` / `"ReportObject.XXX"` | Обработка / Отчёт |
-| `"InformationRegisterRecordSet.XXX"` | Набор записей регистра сведений |
-| `"AccumulationRegisterRecordSet.XXX"` | Набор записей регистра накопления |
-| `"DynamicList"` | Динамический список |
-
-Также допустимы: `ChartOfAccountsRef/Object`, `ChartOfCharacteristicTypesRef/Object`, `ChartOfCalculationTypesRef/Object`, `ExchangePlanRef/Object`, `BusinessProcessRef/Object`, `TaskRef/Object`, `AccountingRegisterRecordSet`, `InformationRegisterRecordManager`, `ConstantsSet`.
-
-**Платформенные:**
-
-| DSL | XML |
+| DSL | Тип |
 |-----|-----|
-| `"ValueTable"` | `v8:ValueTable` |
-| `"ValueTree"` | `v8:ValueTree` |
-| `"ValueList"` | `v8:ValueListType` |
-| `"TypeDescription"` | `v8:TypeDescription` |
-| `"UUID"` | `v8:UUID` |
-| `"FormattedString"` | `v8ui:FormattedString` |
-| `"Picture"` / `"Color"` / `"Font"` | `v8ui:*` |
-| `"DataCompositionSettings"` | `dcsset:DataCompositionSettings` |
-| `"Type1 \| Type2"` | составной тип (несколько `<v8:Type>`) |
+| `string` / `string(100)` | Строка (неограниченная / длины 100) |
+| `decimal(15,2)` / `decimal(10,0,nonneg)` | Число / неотрицательное |
+| `boolean` | Булево |
+| `date` / `dateTime` / `time` | Дата / дата и время / время |
+| `CatalogRef.X` / `DocumentRef.X` / `EnumRef.X` / … | Ссылки |
+| `CatalogObject.X` / `DocumentObject.X` / `DataProcessorObject.X` / `ReportObject.X` | Объекты (основной реквизит) |
+| `InformationRegisterRecordSet.X` / `AccumulationRegisterRecordSet.X` | Наборы записей |
+| `ValueTable` / `ValueTree` / `ValueList` | Таблица / дерево / список значений |
+| `DynamicList` | Динамический список |
+| `TypeDescription`, `UUID`, `FormattedString`, `Picture`, `Color`, `Font`, `DataCompositionSettings`, `StandardPeriod`, `mxl:SpreadsheetDocument` | Платформенные |
+| `Тип1 \| Тип2` | Составной |
 
-**Недопустимые типы (XDTO-ошибка при загрузке):**
+Также `ChartOfAccountsRef/Object`, `ChartOfCharacteristicTypesRef/Object`, `ChartOfCalculationTypesRef/Object`, `ExchangePlanRef/Object`, `BusinessProcessRef/Object`, `TaskRef/Object`, `AccountingRegisterRecordSet`, `InformationRegisterRecordManager`, `ConstantsSet`. Наборы типов — `references/type-system-advanced.md`.
 
-> `FormDataStructure`, `FormDataCollection`, `FormDataTree` — runtime-типы 1С, не существуют в XML-схеме. Вместо них используйте `CatalogObject.XXX`, `DocumentObject.XXX`, `DataProcessorObject.XXX`, `ValueTable`, `ValueTree`.
+> `FormDataStructure`, `FormDataCollection`, `FormDataTree` — не типы реквизита (ошибка при загрузке). Вместо них — объектный тип (`DocumentObject.X`…), `ValueTable`, `ValueTree`.
 
-## Связки: элемент + реквизит
+## Связка элемент + реквизит
 
-Таблица и некоторые поля требуют связанный реквизит. Элемент ссылается на реквизит через `path`.
+Элемент показывает данные реквизита через `path`.
 
-**Таблица** — элемент `table` + реквизит `ValueTable`:
+Табличная часть основного реквизита — путь `Объект.<ТЧ>`, колонки — `Объект.<ТЧ>.<Реквизит>`:
+
+```json
+{ "table": "Товары", "path": "Объект.Товары", "columns": [
+    { "input": "ТоварыНоменклатура", "path": "Объект.Товары.Номенклатура" },
+    { "input": "ТоварыКоличество", "path": "Объект.Товары.Количество" } ] }
+```
+
+Таблица на реквизите формы — реквизит `ValueTable` с колонками:
+
 ```json
 {
   "elements": [
-    { "table": "Товары", "path": "Объект.Товары", "columns": [
-      { "input": "Номенклатура", "path": "Объект.Товары.Номенклатура" }
-    ]}
+    { "table": "Данные", "path": "Данные", "changeRowSet": true, "columns": [
+        { "input": "ДанныеДата", "path": "Данные.Дата" },
+        { "input": "ДанныеСумма", "path": "Данные.Сумма" } ] }
   ],
   "attributes": [
-    { "name": "Объект", "type": "DataProcessorObject.Загрузка", "main": true,
-      "columns": [
-        { "name": "Товары", "type": "ValueTable", "columns": [
-          { "name": "Номенклатура", "type": "CatalogRef.Номенклатура" }
-        ]}
-      ]
-    }
+    { "name": "Данные", "type": "ValueTable", "columns": [
+        { "name": "Дата", "type": "date" },
+        { "name": "Сумма", "type": "decimal(15,2)" } ] }
   ]
 }
 ```
 
-Или, если таблица привязана к реквизиту формы (не к Объект):
-```json
-{
-  "elements": [
-    { "table": "ТаблицаДанных", "path": "ТаблицаДанных", "columns": [
-      { "input": "Наименование", "path": "ТаблицаДанных.Наименование" }
-    ]}
-  ],
-  "attributes": [
-    { "name": "ТаблицаДанных", "type": "ValueTable", "columns": [
-      { "name": "Наименование", "type": "string(150)" }
-    ]}
-  ]
-}
-```
-
-## Паттерны
-
-### Диалог загрузки файла
+## Пример: диалог загрузки
 
 ```json
 {
   "title": "Загрузка из файла",
-  "properties": { "autoTitle": false },
   "events": { "OnCreateAtServer": "ПриСозданииНаСервере" },
   "elements": [
     { "group": "horizontal", "name": "ГруппаФайл", "children": [
-      { "input": "ИмяФайла", "path": "ИмяФайла", "title": "Файл", "inputHint": "Выберите файл...", "choiceButton": true, "events": { "StartChoice": "ИмяФайлаНачалоВыбора" } },
+      { "input": "ИмяФайла", "path": "ИмяФайла", "title": "Файл", "inputHint": "Выберите файл...",
+        "choiceButton": true, "events": { "StartChoice": "ИмяФайлаНачалоВыбора" } },
       { "check": "ПерваяСтрокаЗаголовок", "path": "ПерваяСтрокаЗаголовок" }
     ]},
     { "input": "Результат", "path": "Результат", "multiLine": true, "height": 8, "readOnly": true, "title": "Лог" },
     { "autoCmdBar": "ФормаКоманднаяПанель", "children": [
       { "button": "Загрузить", "command": "Загрузить", "defaultButton": true },
-      { "button": "Закрыть",   "stdCommand": "Close" }
+      { "button": "Закрыть", "stdCommand": "Close" }
     ]}
   ],
   "attributes": [
@@ -463,106 +332,42 @@ PictureField, привязанный к булеву/числу, рисует и
 }
 ```
 
-### Мастер (wizard) с шагами
+Служебные узлы элементов (контекстное меню, расширенная подсказка, панели таблицы) и идентификаторы создаются сами. Неизвестный ключ — предупреждение в выводе.
 
-```json
-{
-  "title": "Мастер настройки",
-  "properties": { "autoTitle": false },
-  "elements": [
-    { "pages": "СтраницыМастера", "pagesRepresentation": "None", "children": [
-      { "page": "Шаг1", "title": "Параметры", "children": [
-        { "input": "Параметр1", "path": "Параметр1" }
-      ]},
-      { "page": "Шаг2", "title": "Результат", "children": [
-        { "input": "Итог", "path": "Итог", "readOnly": true }
-      ]}
-    ]},
-    { "group": "horizontal", "name": "Навигация", "children": [
-      { "button": "Назад", "command": "Назад", "title": "< Назад" },
-      { "button": "Далее", "command": "Далее", "title": "Далее >" }
-    ]}
-  ],
-  "attributes": [
-    { "name": "Объект", "type": "ExternalDataProcessorObject.Мастер", "main": true },
-    { "name": "Параметр1", "type": "string" },
-    { "name": "Итог", "type": "string" }
-  ],
-  "commands": [
-    { "name": "Назад", "action": "НазадОбработка" },
-    { "name": "Далее", "action": "ДалееОбработка" }
-  ]
-}
-```
+## Задача → справочник
 
-### Список с фильтром и таблицей
+Описанного выше хватает для большинства форм. Под задачу подгрузите файл из `references/`:
 
-```json
-{
-  "title": "Просмотр данных",
-  "elements": [
-    { "group": "horizontal", "name": "Фильтр", "children": [
-      { "input": "Период", "path": "Период", "events": { "OnChange": "ПериодПриИзменении" } },
-      { "input": "Организация", "path": "Организация", "events": { "OnChange": "ОрганизацияПриИзменении" } }
-    ]},
-    { "table": "Данные", "path": "Данные", "changeRowSet": true, "columns": [
-      { "input": "Дата", "path": "Данные.Дата" },
-      { "input": "Сумма", "path": "Данные.Сумма" },
-      { "input": "Комментарий", "path": "Данные.Комментарий" }
-    ]}
-  ],
-  "attributes": [
-    { "name": "Объект", "type": "ExternalDataProcessorObject.Просмотр", "main": true },
-    { "name": "Период", "type": "date" },
-    { "name": "Организация", "type": "string" },
-    { "name": "Данные", "type": "ValueTable", "columns": [
-      { "name": "Дата", "type": "date" },
-      { "name": "Сумма", "type": "decimal(15,2)" },
-      { "name": "Комментарий", "type": "string(200)" }
-    ]}
-  ]
-}
-```
-
-## Продвинутые конструкции (по необходимости)
-
-Описанного выше хватает для большинства форм. Под конкретную задачу подгрузите файл из `references/`:
-
-- `dynamic-list.md` — форма списка: источник, отбор, сортировка, группировки, параметры запроса
-- `appearance.md` — условное и статическое оформление элементов (цвета/шрифты/рамки)
-- `choice-params.md` — параметры и связи выбора у полей ввода
-- `command-interface.md` — командный интерфейс формы
-- `roles-access.md` — пользовательская видимость и доступ по ролям
-- `companion-panels.md` — контент расширенной подсказки и контекстного меню
-- `special-fields.md` — поля документа/датчика (HTML, текст, индикатор, ползунок)
-- `charts.md` — диаграммы и планировщик
-- `report-form.md` — свойства формы отчёта
-- `type-system-advanced.md` — наборы и составные типы
-- `table-advanced.md` — расширенные свойства таблиц
-- `layout-advanced.md` — тонкая компоновка и геометрия
-
-## Автогенерация
-
-- **Companion-элементы**: ContextMenu, ExtendedTooltip и др. создаются автоматически
-- **Namespace**: все 17 namespace-деклараций
-- **ID**: последовательная нумерация, AutoCommandBar = id="-1"
-- **Unknown keys**: выводится предупреждение о нераспознанных ключах
+| Задача | Справочник |
+|--------|-----------|
+| Список выбора, быстрый выбор, своя форма выбора, маска, формат числа, пароль, выключатель/тумблер, кнопки открытия и создания, поле составного типа | `input-fields.md` |
+| Ограничить выбор отбором, связать поле с другим полем, связь по типу | `choice-params.md` |
+| Свёрнутая группа, интервалы и ширины колонок в группе, заголовок группы или страницы из данных, значок закладки, мастер по шагам (страницы без закладок) | `groups-pages.md` |
+| Итоги в подвале таблицы, дерево, выделение нескольких строк, закрепление колонок, поиск, перетаскивание, убрать стандартные команды таблицы | `table-advanced.md` |
+| Форма списка: источник данных, запрос, отбор, сортировка, группировка, иерархия | `dynamic-list.md` |
+| Кнопка с картинкой, переключатель в панели, команды таблицы в группе кнопок, своё контекстное меню или панель у поля, команда для текущей строки таблицы | `buttons-commands.md` |
+| Подсветить цветом, шрифт, рамка, условное оформление (в форме списка — `dynamic-list.md`) | `appearance.md` |
+| Расширенная подсказка под полем, текст с выделением или ссылкой | `tooltips-text.md` |
+| Картинка, значок в колонке, иконка по значению | `pictures.md` |
+| Печатная форма или отчёт на форме (табличный документ) | `spreadsheet.md` |
+| HTML, текстовый документ, индикатор, ползунок, календарь, период | `special-fields.md` |
+| Диаграмма, диаграмма Ганта, планировщик | `charts.md` |
+| Модальность, размер, прокрутка, Enter, свойства формы документа (время, проведение) | `form-properties.md` |
+| Форма отчёта (СКД) | `report-form.md` |
+| Сохранить значение в настройках, проверка заполнения, функциональные опции, тип элементов списка значений | `attributes-advanced.md` |
+| Видимость и доступ по ролям | `roles-access.md` |
+| Командный интерфейс формы (переходы, важные команды) | `command-interface.md` |
+| Выравнивание, предел размера, фокус по умолчанию, узкие экраны | `layout-advanced.md` |
+| Наборы и составные типы | `type-system-advanced.md` |
 
 ## Workflow
 
-1. **Каркас**: `/form-add` создаёт метаданные формы (`ФормаСписка.xml`), `Module.bsl` и регистрирует форму у объекта.
-2. **Компиляция**: `/form-compile` наполняет `Form.xml` элементами.
+1. **Каркас**: `/form-add` создаёт метаданные формы, `Module.bsl` и регистрирует форму у объекта.
+2. **Компиляция**: `/form-compile` наполняет `Form.xml`.
 3. **Проверка**: `/form-validate`, `/form-info`.
 
-## Верификация
+## Внешние обработки (EPF)
 
-```
-/form-validate <OutputPath>    — проверка корректности XML
-/form-info <OutputPath>        — визуальная сводка структуры
-```
-
-## Особенности для внешних обработок (EPF)
-
-- **Тип главного реквизита**: `ExternalDataProcessorObject.ИмяОбработки` (не `DataProcessorObject`)
-- **DataPath**: используйте реквизиты формы (`ИмяРеквизита`), а не `Объект.ИмяРеквизита` — у внешних обработок нет реквизитов объекта в метаданных
-- **Ссылочные типы**: `CatalogRef.XXX`, `DocumentRef.XXX` допустимы в XML, но для сборки EPF потребуется база с целевой конфигурацией (см. `/epf-build`)
+- **Основной реквизит**: `ExternalDataProcessorObject.ИмяОбработки` (не `DataProcessorObject`)
+- **Пути данных**: реквизиты формы (`ИмяРеквизита`), а не `Объект.ИмяРеквизита` — у внешней обработки нет реквизитов объекта в метаданных
+- **Ссылочные типы** (`CatalogRef.XXX` и т.п.) допустимы, но для сборки EPF нужна база с целевой конфигурацией (см. `/epf-build`)
