@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Form xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.17">
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+	<ChildItems>
+		<Table name="Данные" id="1">
+			<DataPath>Данные</DataPath>
+			<ContextMenu name="ДанныеКонтекстноеМеню" id="2"/>
+			<AutoCommandBar name="ДанныеКоманднаяПанель" id="3">
+				<ChildItems>
+					<Button name="Заполнить" id="4">
+						<Type>CommandBarButton</Type>
+						<CommandName>Form.Item.Данные.StandardCommand.Add</CommandName>
+						<ExtendedTooltip name="ЗаполнитьРасширеннаяПодсказка" id="5"/>
+					</Button>
+				</ChildItems>
+			</AutoCommandBar>
+			<ExtendedTooltip name="ДанныеРасширеннаяПодсказка" id="6"/>
+			<SearchStringAddition name="ДанныеСтрокаПоиска" id="7">
+				<AdditionSource>
+					<Item>Данные</Item>
+					<Type>SearchStringRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ДанныеСтрокаПоискаКонтекстноеМеню" id="8"/>
+				<ExtendedTooltip name="ДанныеСтрокаПоискаРасширеннаяПодсказка" id="9"/>
+			</SearchStringAddition>
+			<ViewStatusAddition name="ДанныеСостояниеПросмотра" id="10">
+				<AdditionSource>
+					<Item>Данные</Item>
+					<Type>ViewStatusRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ДанныеСостояниеПросмотраКонтекстноеМеню" id="11"/>
+				<ExtendedTooltip name="ДанныеСостояниеПросмотраРасширеннаяПодсказка" id="12"/>
+			</ViewStatusAddition>
+			<SearchControlAddition name="ДанныеУправлениеПоиском" id="13">
+				<AdditionSource>
+					<Item>Данные</Item>
+					<Type>SearchControl</Type>
+				</AdditionSource>
+				<ContextMenu name="ДанныеУправлениеПоискомКонтекстноеМеню" id="14"/>
+				<ExtendedTooltip name="ДанныеУправлениеПоискомРасширеннаяПодсказка" id="15"/>
+			</SearchControlAddition>
+			<ChildItems>
+				<InputField name="ДанныеИмя" id="16">
+					<DataPath>Данные.Имя</DataPath>
+					<ContextMenu name="ДанныеИмяКонтекстноеМеню" id="17"/>
+					<ExtendedTooltip name="ДанныеИмяРасширеннаяПодсказка" id="18"/>
+				</InputField>
+				<ColumnGroup name="ГруппаДеньги" id="19">
+					<Title>
+						<v8:item>
+							<v8:lang>ru</v8:lang>
+							<v8:content>Деньги</v8:content>
+						</v8:item>
+					</Title>
+					<Group>Horizontal</Group>
+					<ExtendedTooltip name="ГруппаДеньгиРасширеннаяПодсказка" id="20"/>
+					<ChildItems>
+						<InputField name="ДанныеЦена" id="21">
+							<DataPath>Данные.Цена</DataPath>
+							<ContextMenu name="ДанныеЦенаКонтекстноеМеню" id="22"/>
+							<ExtendedTooltip name="ДанныеЦенаРасширеннаяПодсказка" id="23"/>
+						</InputField>
+						<InputField name="ДанныеСумма" id="24">
+							<DataPath>Данные.Сумма</DataPath>
+							<ContextMenu name="ДанныеСуммаКонтекстноеМеню" id="25"/>
+							<ExtendedTooltip name="ДанныеСуммаРасширеннаяПодсказка" id="26"/>
+						</InputField>
+					</ChildItems>
+				</ColumnGroup>
+			</ChildItems>
+		</Table>
+		<Table name="Итоги" id="27">
+			<DataPath>Итоги</DataPath>
+			<ContextMenu name="ИтогиКонтекстноеМеню" id="28">
+				<Autofill>false</Autofill>
+			</ContextMenu>
+			<AutoCommandBar name="ИтогиКоманднаяПанель" id="29"/>
+			<ExtendedTooltip name="ИтогиРасширеннаяПодсказка" id="30"/>
+			<SearchStringAddition name="ИтогиСтрокаПоиска" id="31">
+				<AdditionSource>
+					<Item>Итоги</Item>
+					<Type>SearchStringRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ИтогиСтрокаПоискаКонтекстноеМеню" id="32"/>
+				<ExtendedTooltip name="ИтогиСтрокаПоискаРасширеннаяПодсказка" id="33"/>
+			</SearchStringAddition>
+			<ViewStatusAddition name="ИтогиСостояниеПросмотра" id="34">
+				<AdditionSource>
+					<Item>Итоги</Item>
+					<Type>ViewStatusRepresentation</Type>
+				</AdditionSource>
+				<ContextMenu name="ИтогиСостояниеПросмотраКонтекстноеМеню" id="35"/>
+				<ExtendedTooltip name="ИтогиСостояниеПросмотраРасширеннаяПодсказка" id="36"/>
+			</ViewStatusAddition>
+			<SearchControlAddition name="ИтогиУправлениеПоиском" id="37">
+				<AdditionSource>
+					<Item>Итоги</Item>
+					<Type>SearchControl</Type>
+				</AdditionSource>
+				<ContextMenu name="ИтогиУправлениеПоискомКонтекстноеМеню" id="38"/>
+				<ExtendedTooltip name="ИтогиУправлениеПоискомРасширеннаяПодсказка" id="39"/>
+			</SearchControlAddition>
+			<ChildItems>
+				<InputField name="ИтогиСумма" id="40">
+					<DataPath>Итоги.Сумма</DataPath>
+					<ContextMenu name="ИтогиСуммаКонтекстноеМеню" id="41"/>
+					<ExtendedTooltip name="ИтогиСуммаРасширеннаяПодсказка" id="42"/>
+				</InputField>
+			</ChildItems>
+		</Table>
+	</ChildItems>
+	<Attributes>
+		<Attribute name="Объект" id="43">
+			<Type>
+				<v8:Type>cfg:DataProcessorObject.Инфо</v8:Type>
+			</Type>
+			<MainAttribute>true</MainAttribute>
+		</Attribute>
+		<Attribute name="Данные" id="44">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Данные</v8:content>
+				</v8:item>
+			</Title>
+			<Type>
+				<v8:Type>v8:ValueTable</v8:Type>
+			</Type>
+			<Columns>
+				<Column name="Имя" id="45">
+					<Type>
+						<v8:Type>xs:string</v8:Type>
+						<v8:StringQualifiers>
+							<v8:Length>0</v8:Length>
+							<v8:AllowedLength>Variable</v8:AllowedLength>
+						</v8:StringQualifiers>
+					</Type>
+				</Column>
+				<Column name="Цена" id="46">
+					<Type>
+						<v8:Type>xs:decimal</v8:Type>
+						<v8:NumberQualifiers>
+							<v8:Digits>15</v8:Digits>
+							<v8:FractionDigits>2</v8:FractionDigits>
+							<v8:AllowedSign>Any</v8:AllowedSign>
+						</v8:NumberQualifiers>
+					</Type>
+				</Column>
+				<Column name="Сумма" id="47">
+					<Type>
+						<v8:Type>xs:decimal</v8:Type>
+						<v8:NumberQualifiers>
+							<v8:Digits>15</v8:Digits>
+							<v8:FractionDigits>2</v8:FractionDigits>
+							<v8:AllowedSign>Any</v8:AllowedSign>
+						</v8:NumberQualifiers>
+					</Type>
+				</Column>
+			</Columns>
+		</Attribute>
+		<Attribute name="Итоги" id="48">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Итоги</v8:content>
+				</v8:item>
+			</Title>
+			<Type>
+				<v8:Type>v8:ValueTable</v8:Type>
+			</Type>
+			<Columns>
+				<Column name="Сумма" id="49">
+					<Type>
+						<v8:Type>xs:decimal</v8:Type>
+						<v8:NumberQualifiers>
+							<v8:Digits>15</v8:Digits>
+							<v8:FractionDigits>2</v8:FractionDigits>
+							<v8:AllowedSign>Any</v8:AllowedSign>
+						</v8:NumberQualifiers>
+					</Type>
+				</Column>
+			</Columns>
+		</Attribute>
+	</Attributes>
+</Form>

@@ -1,0 +1,128 @@
+{
+  "name": "Своё в панелях таблиц и группы колонок видны в дереве; у панели формы — имя",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Инфо"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Инфо.xml",
+        "-FormName": "Форма"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Данные",
+            "path": "Данные",
+            "commandBar": {
+              "children": [
+                {
+                  "button": "Заполнить",
+                  "stdCommand": "Данные.Add"
+                }
+              ]
+            },
+            "columns": [
+              {
+                "input": "ДанныеИмя",
+                "path": "Данные.Имя"
+              },
+              {
+                "columnGroup": "horizontal",
+                "name": "ГруппаДеньги",
+                "title": "Деньги",
+                "children": [
+                  {
+                    "input": "ДанныеЦена",
+                    "path": "Данные.Цена"
+                  },
+                  {
+                    "input": "ДанныеСумма",
+                    "path": "Данные.Сумма"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "table": "Итоги",
+            "path": "Итоги",
+            "contextMenu": {
+              "autofill": false
+            },
+            "columns": [
+              {
+                "input": "ИтогиСумма",
+                "path": "Итоги.Сумма"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Объект",
+            "type": "DataProcessorObject.Инфо",
+            "main": true
+          },
+          {
+            "name": "Данные",
+            "type": "ValueTable",
+            "columns": [
+              {
+                "name": "Имя",
+                "type": "string"
+              },
+              {
+                "name": "Цена",
+                "type": "decimal(15,2)"
+              },
+              {
+                "name": "Сумма",
+                "type": "decimal(15,2)"
+              }
+            ]
+          },
+          {
+            "name": "Итоги",
+            "type": "ValueTable",
+            "columns": [
+              {
+                "name": "Сумма",
+                "type": "decimal(15,2)"
+              }
+            ]
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/DataProcessors/Инфо/Forms/Форма/Ext/Form.xml"
+      }
+    }
+  ],
+  "params": {
+    "formPath": "DataProcessors/Инфо/Forms/Форма/Ext/Form.xml"
+  },
+  "expect": {
+    "stdoutContains": [
+      "AutoCommandBar ФормаКоманднаяПанель [autofill]",
+      "[CmdBar] ДанныеКоманднаяПанель",
+      "[Button] Заполнить -> Данные.Add [std]",
+      "[ColGroup] ГруппаДеньги [title:Деньги]",
+      "[Input] ДанныеСумма -> Данные.Сумма",
+      "[ContextMenu] ИтогиКонтекстноеМеню [autofill:false]"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-info v1.9 — Analyze 1C managed form structure
+# form-info v1.10 — Analyze 1C managed form structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -52,7 +52,6 @@ SKIP_ELEMENTS = {
     "SearchStringAddition",
     "ViewStatusAddition",
     "SearchControlAddition",
-    "ColumnGroup",
 }
 
 
@@ -264,6 +263,12 @@ def get_element_tag(node):
         return "[Popup]"
     elif local_name == "ButtonGroup":
         return "[BtnGroup]"
+    elif local_name == "ColumnGroup":
+        return "[ColGroup]"
+    elif local_name == "AutoCommandBar":
+        return "[CmdBar]"
+    elif local_name == "ContextMenu":
+        return "[ContextMenu]"
     else:
         return f"[{local_name}]"
 
@@ -286,20 +291,43 @@ def count_significant_children(child_items_node):
 
 # --- Build element tree recursively ---
 
-def build_tree(child_items_node, prefix, tree_lines, expand="", state=None):
-    if child_items_node is None:
-        return
+# Командная панель и контекстное меню элемента — в дереве, только если в них есть своё:
+# кнопки, подменю или отключённое автозаполнение. Стандартные пустые не шумят.
+def get_own_panels(node):
+    out = []
+    for c in node:
+        if not isinstance(c.tag, str):
+            continue
+        ln = etree.QName(c.tag).localname
+        if ln not in ("ContextMenu", "AutoCommandBar"):
+            continue
+        ci = c.find("d:ChildItems", NSMAP)
+        af = c.find("d:Autofill", NSMAP)
+        if count_significant_children(ci) > 0 or (af is not None and af.text == "false"):
+            out.append(c)
+    return out
 
-    # Collect significant children
-    children = []
+
+def get_significant_children(child_items_node):
+    out = []
+    if child_items_node is None:
+        return out
     for child in child_items_node:
         if not isinstance(child.tag, str):
             continue
-        ln = etree.QName(child.tag).localname
-        if ln in SKIP_ELEMENTS:
+        if etree.QName(child.tag).localname in SKIP_ELEMENTS:
             continue
-        children.append(child)
+        out.append(child)
+    return out
 
+
+def build_tree(child_items_node, prefix, tree_lines, expand="", state=None):
+    if child_items_node is None:
+        return
+    build_tree_nodes(get_significant_children(child_items_node), prefix, tree_lines, expand, state)
+
+
+def build_tree_nodes(children, prefix, tree_lines, expand="", state=None):
     for i, child in enumerate(children):
         last = (i == len(children) - 1)
         connector = "\u2514\u2500" if last else "\u251C\u2500"
@@ -309,6 +337,11 @@ def build_tree(child_items_node, prefix, tree_lines, expand="", state=None):
         name = child.get("name", "")
         flags = get_flags(child)
         events = get_events_str(child)
+        local_name = etree.QName(child.tag).localname
+        if local_name in ("AutoCommandBar", "ContextMenu"):
+            af = child.find("d:Autofill", NSMAP)
+            if af is not None and af.text == "false":
+                flags += " [autofill:false]"
 
         # DataPath or CommandName
         binding = ""
@@ -320,8 +353,11 @@ def build_tree(child_items_node, prefix, tree_lines, expand="", state=None):
             if cn is not None and cn.text:
                 cn_val = cn.text
                 m = re.match(r'^Form\.StandardCommand\.(.+)$', cn_val)
+                m_item = re.match(r'^Form\.Item\.(.+)\.StandardCommand\.(.+)$', cn_val)
                 if m:
                     binding = f" -> {m.group(1)} [std]"
+                elif m_item:
+                    binding = f" -> {m_item.group(1)}.{m_item.group(2)} [std]"
                 else:
                     m = re.match(r'^Form\.Command\.(.+)$', cn_val)
                     if m:
@@ -335,11 +371,19 @@ def build_tree(child_items_node, prefix, tree_lines, expand="", state=None):
         if diff_title:
             title_str = f" [title:{diff_title}]"
 
-        line = f"{prefix}{connector} {tag} {name}{binding}{flags}{title_str}{events}"
+        panels = get_own_panels(child)
+        # Панель таблицы с нестандартным именем — имя в строке таблицы (нужно для правки формы)
+        panel_str = ""
+        if local_name == "Table":
+            acb = child.find("d:AutoCommandBar", NSMAP)
+            if acb is not None and acb.get("name", "").lower() != (name + "\u041a\u043e\u043c\u0430\u043d\u0434\u043d\u0430\u044f\u041f\u0430\u043d\u0435\u043b\u044c").lower() \
+                    and not any(etree.QName(p.tag).localname == "AutoCommandBar" for p in panels):
+                panel_str = f" [cmdBar:{acb.get('name', '')}]"
+
+        line = f"{prefix}{connector} {tag} {name}{binding}{flags}{title_str}{panel_str}{events}"
         tree_lines.append(line)
 
         # Recurse into containers (but not Page -- show summary unless expanded)
-        local_name = etree.QName(child.tag).localname
         if local_name == "Page":
             ci = child.find("d:ChildItems", NSMAP)
             page_name = child.get("name", "")
@@ -352,10 +396,12 @@ def build_tree(child_items_node, prefix, tree_lines, expand="", state=None):
                 tree_lines[-1] = tree_lines[-1] + f" ({cnt} items)"
                 if state is not None:
                     state["has_collapsed"] = True
-        elif local_name in ("UsualGroup", "Pages", "Table", "CommandBar", "ButtonGroup", "Popup"):
-            ci = child.find("d:ChildItems", NSMAP)
-            if ci is not None:
-                build_tree(ci, prefix + continuation, tree_lines, expand, state)
+        else:
+            sub = list(panels)
+            if local_name in ("UsualGroup", "Pages", "Table", "CommandBar", "ButtonGroup", "Popup", "ColumnGroup", "AutoCommandBar", "ContextMenu"):
+                sub += get_significant_children(child.find("d:ChildItems", NSMAP))
+            if sub:
+                build_tree_nodes(sub, prefix + continuation, tree_lines, expand, state)
 
 
 # --- Support status (Ext/ParentConfigurations.bin) ---
@@ -625,9 +671,10 @@ def main():
                     buttons.append(f"  {tag} {b_name} -> {cmd_ref}{loc_str}")
                 else:
                     buttons.append(f"  {tag} {b_name}{loc_str}")
+        acb_name = acb_node.get("name", "")
         if not buttons and autofill and halign_node is None:
-            return ["AutoCommandBar [autofill]"]
-        return [f"AutoCommandBar [{', '.join(flags)}]"] + buttons
+            return [f"AutoCommandBar {acb_name} [autofill]"]
+        return [f"AutoCommandBar {acb_name} [{', '.join(flags)}]"] + buttons
 
     cb_loc_node = root.find("d:CommandBarLocation", NSMAP)
     cb_loc = cb_loc_node.text if cb_loc_node is not None and cb_loc_node.text else "Auto"

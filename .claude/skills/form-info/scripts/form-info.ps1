@@ -1,4 +1,4 @@
-﻿# form-info v1.9 — Analyze 1C managed form structure
+﻿# form-info v1.10 — Analyze 1C managed form structure
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -201,7 +201,6 @@ $skipElements = @{
 	"SearchStringAddition" = $true
 	"ViewStatusAddition" = $true
 	"SearchControlAddition" = $true
-	"ColumnGroup" = $true
 }
 
 function Get-ElementTag($node) {
@@ -237,6 +236,9 @@ function Get-ElementTag($node) {
 		"Page" { return "[Page]" }
 		"Popup" { return "[Popup]" }
 		"ButtonGroup" { return "[BtnGroup]" }
+		"ColumnGroup" { return "[ColGroup]" }
+		"AutoCommandBar" { return "[CmdBar]" }
+		"ContextMenu" { return "[ContextMenu]" }
 		default { return "[$localName]" }
 	}
 }
@@ -259,17 +261,37 @@ function Count-SignificantChildren($childItemsNode) {
 $treeLines = [System.Collections.Generic.List[string]]::new()
 $script:hasCollapsed = $false
 
-function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
-	if (-not $childItemsNode) { return }
+# Командная панель и контекстное меню элемента — в дереве, только если в них есть своё:
+# кнопки, подменю или отключённое автозаполнение. Стандартные пустые не шумят.
+function Get-OwnPanels($node) {
+	$out = @()
+	foreach ($c in $node.ChildNodes) {
+		if ($c.NodeType -ne "Element" -or ($c.LocalName -ne "ContextMenu" -and $c.LocalName -ne "AutoCommandBar")) { continue }
+		$ci = $c.SelectSingleNode("d:ChildItems", $ns)
+		$af = $c.SelectSingleNode("d:Autofill", $ns)
+		if (((Count-SignificantChildren $ci) -gt 0) -or ($af -and $af.InnerText -eq "false")) { $out += $c }
+	}
+	return $out
+}
 
-	# Collect significant children
-	$children = @()
+function Get-SignificantChildren($childItemsNode) {
+	$out = @()
+	if (-not $childItemsNode) { return $out }
 	foreach ($child in $childItemsNode.ChildNodes) {
 		if ($child.NodeType -ne "Element") { continue }
 		if ($skipElements.ContainsKey($child.LocalName)) { continue }
-		$children += $child
+		$out += $child
 	}
+	return $out
+}
 
+function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
+	if (-not $childItemsNode) { return }
+	Build-TreeNodes @(Get-SignificantChildren $childItemsNode) $prefix
+}
+
+function Build-TreeNodes($children, [string]$prefix) {
+	$children = @($children)
 	for ($i = 0; $i -lt $children.Count; $i++) {
 		$child = $children[$i]
 		$last = ($i -eq $children.Count - 1)
@@ -280,6 +302,11 @@ function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
 		$name = $child.GetAttribute("name")
 		$flags = Get-Flags $child
 		$events = Get-EventsStr $child
+		$localName = $child.LocalName
+		if ($localName -eq "AutoCommandBar" -or $localName -eq "ContextMenu") {
+			$af = $child.SelectSingleNode("d:Autofill", $ns)
+			if ($af -and $af.InnerText -eq "false") { $flags += " [autofill:false]" }
+		}
 
 		# DataPath or CommandName
 		$binding = ""
@@ -292,6 +319,8 @@ function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
 				$cnVal = $cn.InnerText
 				if ($cnVal -match '^Form\.StandardCommand\.(.+)$') {
 					$binding = " -> $($Matches[1]) [std]"
+				} elseif ($cnVal -match '^Form\.Item\.(.+)\.StandardCommand\.(.+)$') {
+					$binding = " -> $($Matches[1]).$($Matches[2]) [std]"
 				} elseif ($cnVal -match '^Form\.Command\.(.+)$') {
 					$binding = " -> $($Matches[1]) [cmd]"
 				} else {
@@ -305,11 +334,20 @@ function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
 		$diffTitle = Test-TitleDiffers $child $name
 		if ($diffTitle) { $titleStr = " [title:$diffTitle]" }
 
-		$line = "$prefix$connector $tag $name$binding$flags$titleStr$events"
+		$panels = @(Get-OwnPanels $child)
+		# Панель таблицы с нестандартным именем — имя в строке таблицы (нужно для правки формы)
+		$panelStr = ""
+		if ($localName -eq "Table") {
+			$acb = $child.SelectSingleNode("d:AutoCommandBar", $ns)
+			if ($acb -and $acb.GetAttribute("name") -ne "${name}КоманднаяПанель" -and -not ($panels | Where-Object { $_.LocalName -eq "AutoCommandBar" })) {
+				$panelStr = " [cmdBar:$($acb.GetAttribute('name'))]"
+			}
+		}
+
+		$line = "$prefix$connector $tag $name$binding$flags$titleStr$panelStr$events"
 		$treeLines.Add($line)
 
 		# Recurse into containers (but not Page — show summary unless expanded)
-		$localName = $child.LocalName
 		if ($localName -eq "Page") {
 			$ci = $child.SelectSingleNode("d:ChildItems", $ns)
 			$pageName = $child.GetAttribute("name")
@@ -323,11 +361,12 @@ function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
 				$treeLines[$idx] = $treeLines[$idx] + " ($cnt items)"
 				$script:hasCollapsed = $true
 			}
-		} elseif ($localName -in @("UsualGroup", "Pages", "Table", "CommandBar", "ButtonGroup", "Popup")) {
-			$ci = $child.SelectSingleNode("d:ChildItems", $ns)
-			if ($ci) {
-				Build-Tree $ci "$prefix$continuation" $last
+		} else {
+			$sub = @($panels)
+			if ($localName -in @("UsualGroup", "Pages", "Table", "CommandBar", "ButtonGroup", "Popup", "ColumnGroup", "AutoCommandBar", "ContextMenu")) {
+				$sub += @(Get-SignificantChildren ($child.SelectSingleNode("d:ChildItems", $ns)))
 			}
+			if ($sub.Count -gt 0) { Build-TreeNodes $sub "$prefix$continuation" }
 		}
 	}
 }
@@ -526,7 +565,8 @@ function Format-MainAcb($acbNode) {
 	$flags = @()
 	$flags += if ($autofill) { "autofill" } else { "no-autofill" }
 	if ($halignNode) { $flags += "align=$($halignNode.InnerText)" }
-	$header = "AutoCommandBar [$($flags -join ', ')]"
+	$acbName = $acbNode.GetAttribute("name")
+	$header = "AutoCommandBar $acbName [$($flags -join ', ')]"
 	$childItemsNode = $acbNode.SelectSingleNode("d:ChildItems", $ns)
 	$buttons = @()
 	if ($childItemsNode) {
@@ -548,7 +588,7 @@ function Format-MainAcb($acbNode) {
 	}
 	if ($buttons.Count -eq 0 -and $autofill -and -not $halignNode) {
 		# Default empty panel — terse one-liner
-		return @("AutoCommandBar [autofill]")
+		return @("AutoCommandBar $acbName [autofill]")
 	}
 	$result += $header
 	$result += $buttons
