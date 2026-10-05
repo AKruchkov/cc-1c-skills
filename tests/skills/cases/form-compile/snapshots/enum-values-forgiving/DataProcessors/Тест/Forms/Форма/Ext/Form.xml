@@ -6,7 +6,6 @@
 	<ChildItems>
 		<InputField name="Поле" id="1">
 			<DataPath>Строка</DataPath>
-			<TitleLocation>Auto</TitleLocation>
 			<HorizontalAlign>Right</HorizontalAlign>
 			<ChoiceButtonRepresentation>ShowInDropList</ChoiceButtonRepresentation>
 			<ContextMenu name="ПолеКонтекстноеМеню" id="2"/>
@@ -33,7 +32,6 @@
 		</UsualGroup>
 		<Table name="Таблица" id="9">
 			<CommandBarLocation>None</CommandBarLocation>
-			<SelectionMode>MultiRow</SelectionMode>
 			<DataPath>Таблица</DataPath>
 			<ContextMenu name="ТаблицаКонтекстноеМеню" id="10"/>
 			<AutoCommandBar name="ТаблицаКоманднаяПанель" id="11"/>

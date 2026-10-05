@@ -26,7 +26,6 @@
 						</InputField>
 						<InputField name="ПолеНовое" id="67">
 							<DataPath>Объект.Номер</DataPath>
-							<TitleLocation>Auto</TitleLocation>
 							<HorizontalAlign>Right</HorizontalAlign>
 							<ContextMenu name="ПолеНовоеКонтекстноеМеню" id="68"/>
 							<ExtendedTooltip name="ПолеНовоеРасширеннаяПодсказка" id="69"/>

@@ -70,7 +70,6 @@
 			</ChildItems>
 		</Pages>
 		<UsualGroup name="Навигация" id="13">
-			<Group>HorizontalIfPossible</Group>
 			<ExtendedTooltip name="НавигацияРасширеннаяПодсказка" id="14"/>
 			<ChildItems>
 				<Button name="Назад" id="15">

@@ -44,7 +44,6 @@
 			<Group>Vertical</Group>
 			<Behavior>Collapsible</Behavior>
 			<Collapsed>true</Collapsed>
-			<ControlRepresentation>TitleHyperlink</ControlRepresentation>
 			<ExtendedTooltip name="ГруппаГиперссылкаРасширеннаяПодсказка" id="7"/>
 			<ChildItems>
 				<InputField name="Поле2" id="8">

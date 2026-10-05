@@ -94,7 +94,7 @@ for (const f of FORM_COPIES) {
       drift++;
     }
   }
-  for (const v of ['$script:enumValueAliases = @{', '$script:childTagOrder = @{']) {
+  for (const v of ['$script:enumValueAliases = @{', '$script:enumDefaultValues = @{', '$script:childTagOrder = @{']) {
     if (ps1Block(f, v) !== ps1Block(FORM_AUTH, v)) {
       console.log(`DRIFT  ${name}: ${v.split(' ')[0]} отличается от form-compile`);
       drift++;
@@ -110,7 +110,7 @@ function pyBlock(file, start) {
 }
 const FORM_AUTH_PY = '.claude/skills/form-compile/scripts/form-compile.py';
 for (const f of ['.claude/skills/form-edit/scripts/form-edit.py', '.claude/skills/form-validate/scripts/form-validate.py']) {
-  for (const v of ['valid_enum_values = {', 'enum_value_aliases = {', 'CHILD_TAG_ORDER = {']) {
+  for (const v of ['valid_enum_values = {', 'enum_value_aliases = {', 'enum_default_values = {', 'CHILD_TAG_ORDER = {']) {
     if (pyBlock(f, v) !== pyBlock(FORM_AUTH_PY, v)) {
       console.log(`DRIFT  ${f.split('/')[2]} (py): ${v.split(' ')[0]} отличается от form-compile.py`);
       drift++;
