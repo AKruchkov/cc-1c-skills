@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-edit v1.64 — Edit existing 1C metadata object XML
+# meta-edit v1.65 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -514,8 +514,9 @@ def normalize_enum_value(prop_name, value):
     valid = valid_enum_values.get(f"{obj_type}.{prop_name}") or valid_enum_values.get(prop_name)
     # 1. Check alias dictionary — silent auto-correct. Словарь общий для всех свойств: у свойства со
     # списком алиас берётся, только если его результат в списке (иначе «None» дало бы Nonperiodical везде)
-    if value in enum_value_aliases:
-        aliased = enum_value_aliases[value]
+    alias_key = next((k for k in enum_value_aliases if k.lower() == value.lower()), None)
+    if alias_key is not None:
+        aliased = enum_value_aliases[alias_key]
         if not valid or aliased in valid:
             return aliased
     # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.

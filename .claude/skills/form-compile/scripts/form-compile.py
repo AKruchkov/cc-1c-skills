@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-compile v1.204 — Compile 1C managed form from JSON or object metadata
+# form-compile v1.205 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import copy
@@ -4117,6 +4117,287 @@ def normalize_element_type_synonyms(el):
             el[dst] = el.pop(src)
 
 
+# --- Перечисления свойств формы (генерируется) ---
+# Значения свойств-перечислений элементов формы и корня (ключ «Тип.Свойство» или общий «Свойство»).
+# Источник — XSD xcf-logform 2.10–2.21, сверено с корпусом БП/ERP 8.3.24 (17036 форм, расхождений нет)
+# и загрузкой в 8.3.24. Перегенерировать: python debug/form-dsl-revision/gen_enum_table.py
+valid_enum_values = {
+    "AppearanceInCard": ["Auto", "Extended"],
+    "AppearanceMode": ["Auto", "CommandBar", "UsualGroup"],
+    "AutoAddIncomplete": ["true", "false", "auto"],
+    "AutoCapitalizationOnTextInput": ["Auto", "None", "Words", "Sentences", "AllCharacters"],
+    "AutoChoiceIncomplete": ["true", "false", "auto"],
+    "AutoCorrectionOnTextInput": ["Auto", "Use", "DontUse"],
+    "AutoMarkIncomplete": ["true", "false", "auto"],
+    "AutoSaveDataInSettings": ["DontUse", "Use"],
+    "AutoShowClearButtonMode": ["Auto", "Always", "FilledOnly"],
+    "AutoShowOpenButtonMode": ["Auto", "Always", "FilledOnly"],
+    "AutoShowState": ["Auto", "DontShow", "Show", "ShowOnComposition"],
+    "AutoTime": ["DontUse", "Last", "First", "CurrentOrLast", "CurrentOrFirst"],
+    "AutoWidthInTable": ["Auto", "ByData", "None", "ByDataAndTitle"],
+    "AutofillHint": ["DontUse", "FullName", "GivenName", "FamilyName", "MiddleName", "NamePrefix", "NameSuffix", "Street", "City", "Region", "Country", "PostalCode", "UserName", "Password", "NewPassword", "OneTimeCode", "Email", "PhoneNumber", "CreditCardNumber"],
+    "BackPictureEffect": ["Auto", "None", "Semitransparency", "SemitransparencyAndBlur"],
+    "BackgroundShowMode": ["Auto", "DontShow", "ShowAndIncreaseSize", "ShowAndDontIncreaseSize"],
+    "Behavior": ["Usual", "Collapsible", "PopUp", "Auto"],
+    "BehaviorOnHorizontalCompression": ["Auto", "HideItemsByImportance", "MoveItemsByImportance"],
+    "ButtonImportance": ["Main", "Normal", "Supplementary"],
+    "CardBehaviorOnVerticalCompression": ["Auto", "MoveItemsToSwipeablePages", "HideItems"],
+    "CardPictureAndTitleAlign": ["Auto", "LeftHorizontallySidesVertically", "CenterHorizontallySidesVertically", "CenterHorizontallyCenterVertically"],
+    "CardRepresentationType": ["Usual", "Group"],
+    "CellActionsButtonViewMode": ["Auto", "DontShow", "ShowOnHover"],
+    "CellHyperlinkDisplayVariant": ["Auto", "Always", "OnRowHover"],
+    "CellHyperlinkRepresentation": ["Auto", "Show", "DontShow"],
+    "CellHyperlinksRepresentation": ["Auto", "AutoForSingle", "ForAll", "DontShow"],
+    "CellMark": ["None", "ShapeUnderTextOval", "IconCircle"],
+    "CheckBoxType": ["Auto", "CheckBox", "Tumbler", "Switcher"],
+    "ChildItemsTitleLocation": ["Auto", "Left", "LeftIfPossible", "Top"],
+    "ChildItemsWidth": ["Auto", "Equal", "LeftWide", "LeftWidest", "LeftNarrow", "LeftNarrowest"],
+    "ChildrenAlign": ["Auto", "None", "ItemsLeftTitlesLeft", "ItemsRightTitlesLeft", "ItemsLeftTitlesRight", "ItemsRightTitlesRight", "TitlesLeftDataLeft", "TitlesLeftDataRight", "TitlesRightDataLeft", "TitlesRightDataRight", "TitlesLeftDataAuto"],
+    "ChoiceButton": ["true", "false", "auto"],
+    "ChoiceButtonRepresentation": ["Auto", "ShowInDropList", "ShowInDropListAndInInputField", "ShowInInputField"],
+    "InputField.ChoiceFoldersAndItems": ["Items", "Folders", "FoldersAndItems", "Auto"],
+    "Table.ChoiceFoldersAndItems": ["Items", "Folders", "FoldersAndItems"],
+    "ChoiceHistoryOnInput": ["Auto", "DontUse"],
+    "ChoiceListButton": ["true", "false", "auto"],
+    "ClearButton": ["true", "false", "auto"],
+    "CollapseItemsByImportanceVariant": ["Auto", "Use", "DontUse"],
+    "CommandBarLocation": ["None", "Auto", "Top", "Bottom"],
+    "ComplexSettingsViewMode": ["Show", "DontShow"],
+    "ControlRepresentation": ["TitleHyperlink", "Picture", "Button", "ButtonInParentElement"],
+    "ConversationsRepresentation": ["Auto", "Show", "DontShow"],
+    "CreateButton": ["true", "false", "auto"],
+    "Pages.CurrentRowUse": ["Use", "DontUse", "Auto"],
+    "Table.CurrentRowUse": ["Auto", "Choice", "SelectionPresentation", "SelectionPresentationAndChoice"],
+    "UsualGroup.CurrentRowUse": ["Use", "DontUse", "Auto"],
+    "DisplayImportance": ["Auto", "VeryHigh", "High", "Usual", "Low", "VeryLow"],
+    "DrawingSelectionShowMode": ["Show", "DontShow", "Auto"],
+    "DropListButton": ["true", "false", "auto"],
+    "EditMode": ["Directly", "Enter", "EnterOnInput", "Auto"],
+    "EditTextUpdate": ["Auto", "DontUse", "OnValueChange", "Always"],
+    "EnterKeyBehavior": ["ControlNavigation", "DefaultButton"],
+    "EqualColumnsWidth": ["true", "false", "auto"],
+    "EqualItemsWidth": ["true", "false", "auto"],
+    "ExtendedEdit": ["true", "false", "auto"],
+    "FileDragMode": ["AsFile", "AsFileRef"],
+    "FixInCard": ["true", "false", "auto"],
+    "FixingInTable": ["None", "Left", "Right"],
+    "FooterHorizontalAlign": ["Left", "Center", "Right", "Auto"],
+    "ColumnGroup.Group": ["Horizontal", "Vertical", "InCell"],
+    "Form.Group": ["Horizontal", "Vertical", "HorizontalIfPossible", "AlwaysHorizontal", "Auto", "AutoScreenTypeSensitive"],
+    "Page.Group": ["Horizontal", "Vertical", "HorizontalIfPossible", "AlwaysHorizontal", "Auto", "AutoScreenTypeSensitive"],
+    "UsualGroup.Group": ["Horizontal", "Vertical", "HorizontalIfPossible", "AlwaysHorizontal", "Auto", "AutoScreenTypeSensitive"],
+    "GroupHorizontalAlign": ["Left", "Center", "Right", "Auto"],
+    "GroupVerticalAlign": ["Top", "Center", "Bottom", "Auto"],
+    "HeaderHorizontalAlign": ["Left", "Center", "Right", "Auto"],
+    "InputField.HeightControlVariant": ["Auto", "UseHeightInFormRows", "UseContentHeight"],
+    "Table.HeightControlVariant": ["Auto", "UseHeightInFormRows", "UseHeightInTableRows", "UseContentHeight"],
+    "HierarchyPanelLocation": ["Auto", "None"],
+    "HorizontalAlign": ["Left", "Center", "Right", "Auto"],
+    "HorizontalLinesBWA": ["true", "false", "auto"],
+    "HorizontalLocation": ["Left", "Center", "Right", "Auto"],
+    "Table.HorizontalScrollBar": ["DontUse", "UseAlways", "AutoUse"],
+    "HorizontalSpacing": ["Auto", "None", "Half", "Single", "OneAndHalf", "Double"],
+    "AutoCommandBar.HorizontalStretch": ["true", "false", "auto"],
+    "ButtonGroup.HorizontalStretch": ["true", "false", "auto"],
+    "CheckBoxField.HorizontalStretch": ["true", "false", "auto"],
+    "ColumnGroup.HorizontalStretch": ["true", "false", "auto"],
+    "CommandBar.HorizontalStretch": ["true", "false", "auto"],
+    "ContextMenu.HorizontalStretch": ["true", "false", "auto"],
+    "InputField.HorizontalStretch": ["true", "false", "auto"],
+    "LabelDecoration.HorizontalStretch": ["true", "false", "auto"],
+    "LabelField.HorizontalStretch": ["true", "false", "auto"],
+    "Page.HorizontalStretch": ["true", "false", "auto"],
+    "Pages.HorizontalStretch": ["true", "false", "auto"],
+    "PictureDecoration.HorizontalStretch": ["true", "false", "auto"],
+    "Popup.HorizontalStretch": ["true", "false", "auto"],
+    "RadioButtonField.HorizontalStretch": ["true", "false", "auto"],
+    "UsualGroup.HorizontalStretch": ["true", "false", "auto"],
+    "Importance": ["Main", "Normal", "Supplementary"],
+    "IncompleteChoiceMode": ["OnEnterPressed", "OnActivate"],
+    "InitialListView": ["Beginning", "End", "Auto"],
+    "InitialRowActivation": ["Auto", "Activate", "NoActivate"],
+    "InitialTreeView": ["NoExpand", "ExpandTopLevel", "ExpandAllLevels"],
+    "IntervalsSelectionMode": ["Auto", "Multiple", "Single", "None"],
+    "LocationInCommandBar": ["Auto", "InAdditionalSubmenu", "InCommandBar", "InCommandBarAndInAdditionalSubmenu"],
+    "MarkNegatives": ["true", "false", "auto"],
+    "MarkRequiredComplete": ["true", "false", "auto"],
+    "MarkingAppearance": ["DontShow", "TopLeft", "BottomRight", "BothSides"],
+    "MobileDeviceTableType": ["Auto", "List", "Cards"],
+    "MultiLine": ["true", "false", "auto"],
+    "MultipleValuePictureShape": ["Auto", "Rect", "Circle", "Square"],
+    "MultipleValuePictureSize": ["Auto", "Small", "Medium", "Large"],
+    "MultipleValuesHyperlink": ["true", "false", "auto"],
+    "OnMainServerUnavalableBehavior": ["Auto", "MakeDisable", "DontChangeBehavior"],
+    "OnScreenKeyboardReturnKeyText": ["Auto", "Return", "Go", "Join", "Next", "Search", "Send", "Done", "Continue"],
+    "OnlyInAllActions": ["true", "false", "auto"],
+    "OpenButton": ["true", "false", "auto"],
+    "Orientation": ["Horizontal", "Vertical", "HorizontalIfPossible"],
+    "Output": ["Auto", "Enable", "Disable"],
+    "PagesRepresentation": ["None", "TabsOnTop", "TabsOnBottom", "TabsOnLeftHorizontal", "TabsOnRightHorizontal", "Swipe", "Auto"],
+    "PasswordMode": ["true", "false", "auto"],
+    "PictureLocation": ["Auto", "Left", "Right", "Top", "Bottom"],
+    "PictureSize": ["RealSize", "Stretch", "Proportionally", "Tile", "AutoSize", "RealSizeIgnoreScale", "AutoSizeIgnoreScale", "ByFontSize"],
+    "PlacementArea": ["mainCmdsLeft", "autoCmds", "userCmds", "mainCmdsRight"],
+    "PointerType": ["Special", "Regular"],
+    "QuickChoice": ["true", "false", "auto"],
+    "RadioButtonType": ["Auto", "RadioButtons", "Tumbler"],
+    "RefreshRequest": ["None", "PullFromTop", "PullFromBottom", "PullFromTopOrBottom"],
+    "ReportFormType": ["Main", "Settings", "Variant"],
+    "ReportResultViewMode": ["Auto", "Default", "Compact"],
+    "Button.Representation": ["Text", "Picture", "PictureAndText", "Auto"],
+    "ButtonGroup.Representation": ["Auto", "Usual", "Compact"],
+    "Popup.Representation": ["Text", "Picture", "PictureAndText", "Auto"],
+    "ProgressBarField.Representation": ["Smooth", "Broken", "BrokenTilt"],
+    "Table.Representation": ["List", "HierarchicalList", "Tree"],
+    "UsualGroup.Representation": ["Auto", "None", "StrongSeparation", "WeakSeparation", "NormalSeparation", "GroupBox", "Line", "Margin"],
+    "RepresentationInContextMenu": ["None", "AdditionalInContextMenu", "OnlyInContextMenu", "Auto"],
+    "RowActionsShowType": ["Auto", "DontShow", "ShowOnHover", "ShowAlways"],
+    "RowInputMode": ["EndOfList", "EndOfWindow", "AfterCurrentRow", "BeforeCurrentRow"],
+    "RowSelectionMode": ["Auto", "Cell", "Row"],
+    "SaveColors": ["Auto", "ForUser", "ByKeyForUser", "DontUse"],
+    "SaveDataInSettings": ["DontUse", "UseList"],
+    "ScaleVariant": ["Auto", "Normal", "Compact", "NormalIfPossible"],
+    "ScalingMode": ["Auto", "Normal", "Compact"],
+    "Page.ScrollOnCompress": ["true", "false", "auto"],
+    "UsualGroup.ScrollOnCompress": ["true", "false", "auto"],
+    "SearchControlLocation": ["Auto", "None", "CommandBar"],
+    "SearchOnInput": ["Use", "DontUse", "Auto"],
+    "SearchStringLocation": ["Auto", "None", "CommandBar", "Top", "Bottom", "FormCaption", "PullFromTop"],
+    "CalendarField.SelectionMode": ["Single", "Multiple", "Interval"],
+    "Table.SelectionMode": ["SingleRow", "MultiRow"],
+    "SelectionShowMode": ["WhenActive", "Always", "DontShow", "WhenMultipleCellsSelected", "WhenMultipleCellsSelectedWhenActive"],
+    "Shape": ["Auto", "Usual", "Oval"],
+    "ShapeRepresentation": ["Auto", "Always", "WhenActive", "None"],
+    "ShowCheckBoxesInDropList": ["true", "false", "auto"],
+    "ShowCommandBar": ["true", "false", "auto"],
+    "ShowHorizontalLinesFlag": ["true", "false", "auto"],
+    "ColumnGroup.ShowTitle": ["true", "false", "auto"],
+    "Form.ShowTitle": ["true", "false", "auto"],
+    "Page.ShowTitle": ["true", "false", "auto"],
+    "UsualGroup.ShowTitle": ["true", "false", "auto"],
+    "ShowTitleInCard": ["true", "false", "auto"],
+    "ShowVerticalLinesFlag": ["true", "false", "auto"],
+    "SkipOnInput": ["true", "false", "auto"],
+    "SpecialTextInputMode": ["Auto", "None", "DigitsAndPunctuation", "URL", "Email", "PhoneNumber", "Digits"],
+    "SpellCheckingOnTextInput": ["Auto", "Use", "DontUse"],
+    "SpinButton": ["true", "false", "auto"],
+    "SpreadsheetDocumentMultipleSelectionPanelViewMode": ["Auto", "DontShow", "ShowOnMultipleSelection", "ShowAlways"],
+    "TableLocation": ["Auto", "Left", "Right", "None"],
+    "TextSize": ["Enlarged", "Normal", "Reduced"],
+    "ThroughAlign": ["Use", "DontUse", "Auto"],
+    "TimeChoiceMode": ["Auto", "DontChoose", "CustomTime", "Interval1Minute", "Interval5Minutes", "Interval10Minutes", "Interval15Minutes", "Interval15And20Minutes", "Interval20Minutes", "Interval30Minutes", "Interval60Minutes"],
+    "TitleLocation": ["None", "Auto", "Left", "Top", "Right", "Bottom"],
+    "ToolTipRepresentation": ["Auto", "None", "Balloon", "Button", "ShowAuto", "ShowTop", "ShowLeft", "ShowBottom", "ShowRight"],
+    "TumblerRepresentation": ["Text", "Picture", "Auto"],
+    "Type": ["CommandBarButton", "UsualButton", "Hyperlink", "CommandBarHyperlink"],
+    "UpdateOnDataChange": ["Auto", "DontUpdate"],
+    "UseAlternationRowColorBWA": ["true", "false", "auto"],
+    "UseCopy": ["true", "false", "auto"],
+    "UseForFoldersAndItems": ["Items", "Folders", "FoldersAndItems"],
+    "UsePostingMode": ["Regular", "RealTime", "Ask", "Auto"],
+    "ValuesSelectionMode": ["Auto", "Multiple", "Single", "None"],
+    "VerticalAlign": ["Top", "Center", "Bottom", "Auto"],
+    "VerticalLinesBWA": ["true", "false", "auto"],
+    "VerticalScroll": ["auto", "use", "useIfNecessary", "useWithoutStretch"],
+    "Table.VerticalScrollBar": ["DontUse", "UseAlways", "AutoUse"],
+    "VerticalSpacing": ["Auto", "None", "Half", "Single", "OneAndHalf", "Double"],
+    "AutoCommandBar.VerticalStretch": ["true", "false", "auto"],
+    "ButtonGroup.VerticalStretch": ["true", "false", "auto"],
+    "ColumnGroup.VerticalStretch": ["true", "false", "auto"],
+    "CommandBar.VerticalStretch": ["true", "false", "auto"],
+    "ContextMenu.VerticalStretch": ["true", "false", "auto"],
+    "InputField.VerticalStretch": ["true", "false", "auto"],
+    "LabelDecoration.VerticalStretch": ["true", "false", "auto"],
+    "LabelField.VerticalStretch": ["true", "false", "auto"],
+    "Page.VerticalStretch": ["true", "false", "auto"],
+    "Pages.VerticalStretch": ["true", "false", "auto"],
+    "PictureDecoration.VerticalStretch": ["true", "false", "auto"],
+    "Popup.VerticalStretch": ["true", "false", "auto"],
+    "UsualGroup.VerticalStretch": ["true", "false", "auto"],
+    "ViewMode": ["All", "QuickAccess"],
+    "ViewModeApplicationOnSetReportResult": ["Auto", "Apply", "DontApply"],
+    "ViewScalingMode": ["Auto", "Normal", "Large"],
+    "ViewStatusLocation": ["Auto", "None", "Top", "Bottom"],
+    "WarningOnEditRepresentation": ["Show", "DontShow", "Auto"],
+    "WidthInCard": ["Auto", "Full", "Half"],
+    "WindowOpeningMode": ["Auto", "DontBlock", "LockOwner", "LockWholeInterface", "Independent", "LockOwnerWindow"],
+}
+# Старые имена значений, которые платформа принимает и переводит в современные (замер выгрузки 8.3.24)
+enum_value_aliases = {
+    "TitlesLeftDataLeft": "ItemsLeftTitlesLeft",
+    "TitlesLeftDataRight": "ItemsRightTitlesLeft",
+    "TitlesRightDataLeft": "ItemsLeftTitlesRight",
+    "TitlesRightDataRight": "ItemsRightTitlesRight",
+    "GroupBox": "StrongSeparation",
+    "Margin": "NormalSeparation",
+    "Square": "Rect",
+}
+# --- /Перечисления свойств формы ---
+obj_type = None
+
+
+def normalize_enum_value(prop_name, value):
+    valid = valid_enum_values.get(f"{obj_type}.{prop_name}") or valid_enum_values.get(prop_name)
+    # 1. Check alias dictionary — silent auto-correct. Словарь общий для всех свойств: у свойства со
+    # списком алиас берётся, только если его результат в списке (иначе «None» дало бы Nonperiodical везде)
+    alias_key = next((k for k in enum_value_aliases if k.lower() == value.lower()), None)
+    if alias_key is not None:
+        aliased = enum_value_aliases[alias_key]
+        if not valid or aliased in valid:
+            return aliased
+    # 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
+    if valid:
+        for v in valid:
+            if v.lower() == value.lower():
+                return v
+        # 3. Known property, unknown value — error with hint
+        print(f"Invalid value '{value}' for property '{prop_name}'. Valid values: {', '.join(valid)}", file=sys.stderr)
+        sys.exit(1)
+    # 4. Unknown property — pass-through (no validation data)
+    return value
+
+# Значения перечислений в выводе эмиттера — к каноническому виду (normalize_enum_value): простой тег
+# элемента формы известного типа или корня формы. Регистр и старые имена исправляются молча,
+# неизвестное значение — ошибка с перечнем допустимых. root_type — тип для тегов прямо под корнем
+# фрагмента (свойства формы во фрагменте form-edit).
+def normalize_enum_tags(text, root_type=''):
+    global obj_type
+    crlf = '\r\n' in text
+    lines = text.replace('\r\n', '\n').split('\n')
+    stack = []
+    for i, line in enumerate(lines):
+        m = re.fullmatch(r'\t*</([A-Za-z_][\w.:-]*)>', line)
+        if m:
+            if stack and stack[-1][0] == m.group(1):
+                stack.pop()
+            continue
+        m = re.fullmatch(r'(\t*)<([A-Za-z_][\w.:-]*)(\s[^>]*)?>', line)
+        if m and not line.endswith('/>'):
+            stack.append((m.group(2), len(m.group(1))))
+            continue
+        if not stack:
+            continue
+        m = re.fullmatch(r'(\t*)<([A-Za-z]\w*)>([^<]+)</([A-Za-z]\w*)>', line)
+        if not m or m.group(2) != m.group(4):
+            continue
+        name, ind = stack[-1]
+        if len(m.group(1)) != ind + 1:
+            continue
+        if len(stack) == 1:
+            ptype = 'Form' if name == 'Form' else root_type
+        else:
+            ptype = name
+        if not ptype or (ptype != 'Form' and ptype not in CHILD_TAG_ORDER):
+            continue
+        obj_type = ptype
+        tag = m.group(2)
+        v = normalize_enum_value(tag, m.group(3))
+        if v != m.group(3):
+            lines[i] = f'{m.group(1)}<{tag}>{v}</{tag}>'
+    out = '\n'.join(lines)
+    return out.replace('\n', '\r\n') if crlf else out
+
+
 # --- Канонический порядок дочерних тегов элемента ---
 # В каком порядке платформа пишет свойства и вложенные узлы элемента формы. Построено по корпусу
 # выгрузок (БП и ERP, 8.3.24, 17036 форм): для каждого типа элемента — граф «тег A раньше тега B»,
@@ -4342,7 +4623,7 @@ def emit_group(lines, el, name, eid, indent):
         'horizontal': 'Horizontal',
         'vertical': 'Vertical',
         'alwayshorizontal': 'AlwaysHorizontal',
-        'alwaysvertical': 'AlwaysVertical',
+        'alwaysvertical': 'Vertical',  # старое написание; у группы такого значения нет
         'horizontalifpossible': 'HorizontalIfPossible',
         'collapsible': 'Vertical',
     }
@@ -4469,8 +4750,7 @@ def emit_input(lines, el, name, eid, indent):
     emit_common_flags(lines, el, inner)
 
     if el.get('titleLocation'):
-        loc_map = {'none': 'None', 'left': 'Left', 'right': 'Right', 'top': 'Top', 'bottom': 'Bottom'}
-        loc = loc_map.get(str(el['titleLocation']), str(el['titleLocation']))
+        loc = map_title_loc(el['titleLocation'])
         lines.append(f'{inner}<TitleLocation>{loc}</TitleLocation>')
 
     if el.get('multiLine') is not None:
@@ -4939,7 +5219,7 @@ def emit_page(lines, el, name, eid, indent):
             'horizontal': 'Horizontal',
             'vertical': 'Vertical',
             'alwayshorizontal': 'AlwaysHorizontal',
-            'alwaysvertical': 'AlwaysVertical',
+            'alwaysvertical': 'Vertical',  # старое написание; у страницы такого значения нет
             'horizontalifpossible': 'HorizontalIfPossible',
         }
         orientation = orientation_map.get(str(el['group']).lower())
@@ -5234,8 +5514,7 @@ def emit_calendar(lines, el, name, eid, indent):
     emit_common_flags(lines, el, inner)
 
     if el.get('titleLocation'):
-        loc_map = {'none': 'None', 'left': 'Left', 'right': 'Right', 'top': 'Top', 'bottom': 'Bottom', 'auto': 'Auto'}
-        loc = loc_map.get(str(el['titleLocation']), str(el['titleLocation']))
+        loc = map_title_loc(el['titleLocation'])
         lines.append(f'{inner}<TitleLocation>{loc}</TitleLocation>')
 
     emit_layout(lines, el, inner)
@@ -7000,7 +7279,7 @@ def main():
     if out_dir and not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
 
-    content = sort_element_tag_order('\r\n'.join(lines))
+    content = sort_element_tag_order(normalize_enum_tags('\r\n'.join(lines)))
     write_utf8_bom(out_path, content)
 
     # --- 4. Auto-register form in parent object XML ---

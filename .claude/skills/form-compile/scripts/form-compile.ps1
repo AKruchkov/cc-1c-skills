@@ -1,4 +1,4 @@
-﻿# form-compile v1.204 — Compile 1C managed form from JSON or object metadata
+﻿# form-compile v1.205 — Compile 1C managed form from JSON or object metadata
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -3131,6 +3131,282 @@ function Normalize-ElementTypeSynonyms {
 	}
 }
 
+# --- Перечисления свойств формы (генерируется) ---
+# Значения свойств-перечислений элементов формы и корня (ключ «Тип.Свойство» или общий «Свойство»).
+# Источник — XSD xcf-logform 2.10–2.21, сверено с корпусом БП/ERP 8.3.24 (17036 форм, расхождений нет)
+# и загрузкой в 8.3.24. Перегенерировать: python debug/form-dsl-revision/gen_enum_table.py
+$script:validEnumValues = @{
+	"AppearanceInCard" = @("Auto","Extended")
+	"AppearanceMode" = @("Auto","CommandBar","UsualGroup")
+	"AutoAddIncomplete" = @("true","false","auto")
+	"AutoCapitalizationOnTextInput" = @("Auto","None","Words","Sentences","AllCharacters")
+	"AutoChoiceIncomplete" = @("true","false","auto")
+	"AutoCorrectionOnTextInput" = @("Auto","Use","DontUse")
+	"AutoMarkIncomplete" = @("true","false","auto")
+	"AutoSaveDataInSettings" = @("DontUse","Use")
+	"AutoShowClearButtonMode" = @("Auto","Always","FilledOnly")
+	"AutoShowOpenButtonMode" = @("Auto","Always","FilledOnly")
+	"AutoShowState" = @("Auto","DontShow","Show","ShowOnComposition")
+	"AutoTime" = @("DontUse","Last","First","CurrentOrLast","CurrentOrFirst")
+	"AutoWidthInTable" = @("Auto","ByData","None","ByDataAndTitle")
+	"AutofillHint" = @("DontUse","FullName","GivenName","FamilyName","MiddleName","NamePrefix","NameSuffix","Street","City","Region","Country","PostalCode","UserName","Password","NewPassword","OneTimeCode","Email","PhoneNumber","CreditCardNumber")
+	"BackPictureEffect" = @("Auto","None","Semitransparency","SemitransparencyAndBlur")
+	"BackgroundShowMode" = @("Auto","DontShow","ShowAndIncreaseSize","ShowAndDontIncreaseSize")
+	"Behavior" = @("Usual","Collapsible","PopUp","Auto")
+	"BehaviorOnHorizontalCompression" = @("Auto","HideItemsByImportance","MoveItemsByImportance")
+	"ButtonImportance" = @("Main","Normal","Supplementary")
+	"CardBehaviorOnVerticalCompression" = @("Auto","MoveItemsToSwipeablePages","HideItems")
+	"CardPictureAndTitleAlign" = @("Auto","LeftHorizontallySidesVertically","CenterHorizontallySidesVertically","CenterHorizontallyCenterVertically")
+	"CardRepresentationType" = @("Usual","Group")
+	"CellActionsButtonViewMode" = @("Auto","DontShow","ShowOnHover")
+	"CellHyperlinkDisplayVariant" = @("Auto","Always","OnRowHover")
+	"CellHyperlinkRepresentation" = @("Auto","Show","DontShow")
+	"CellHyperlinksRepresentation" = @("Auto","AutoForSingle","ForAll","DontShow")
+	"CellMark" = @("None","ShapeUnderTextOval","IconCircle")
+	"CheckBoxType" = @("Auto","CheckBox","Tumbler","Switcher")
+	"ChildItemsTitleLocation" = @("Auto","Left","LeftIfPossible","Top")
+	"ChildItemsWidth" = @("Auto","Equal","LeftWide","LeftWidest","LeftNarrow","LeftNarrowest")
+	"ChildrenAlign" = @("Auto","None","ItemsLeftTitlesLeft","ItemsRightTitlesLeft","ItemsLeftTitlesRight","ItemsRightTitlesRight","TitlesLeftDataLeft","TitlesLeftDataRight","TitlesRightDataLeft","TitlesRightDataRight","TitlesLeftDataAuto")
+	"ChoiceButton" = @("true","false","auto")
+	"ChoiceButtonRepresentation" = @("Auto","ShowInDropList","ShowInDropListAndInInputField","ShowInInputField")
+	"InputField.ChoiceFoldersAndItems" = @("Items","Folders","FoldersAndItems","Auto")
+	"Table.ChoiceFoldersAndItems" = @("Items","Folders","FoldersAndItems")
+	"ChoiceHistoryOnInput" = @("Auto","DontUse")
+	"ChoiceListButton" = @("true","false","auto")
+	"ClearButton" = @("true","false","auto")
+	"CollapseItemsByImportanceVariant" = @("Auto","Use","DontUse")
+	"CommandBarLocation" = @("None","Auto","Top","Bottom")
+	"ComplexSettingsViewMode" = @("Show","DontShow")
+	"ControlRepresentation" = @("TitleHyperlink","Picture","Button","ButtonInParentElement")
+	"ConversationsRepresentation" = @("Auto","Show","DontShow")
+	"CreateButton" = @("true","false","auto")
+	"Pages.CurrentRowUse" = @("Use","DontUse","Auto")
+	"Table.CurrentRowUse" = @("Auto","Choice","SelectionPresentation","SelectionPresentationAndChoice")
+	"UsualGroup.CurrentRowUse" = @("Use","DontUse","Auto")
+	"DisplayImportance" = @("Auto","VeryHigh","High","Usual","Low","VeryLow")
+	"DrawingSelectionShowMode" = @("Show","DontShow","Auto")
+	"DropListButton" = @("true","false","auto")
+	"EditMode" = @("Directly","Enter","EnterOnInput","Auto")
+	"EditTextUpdate" = @("Auto","DontUse","OnValueChange","Always")
+	"EnterKeyBehavior" = @("ControlNavigation","DefaultButton")
+	"EqualColumnsWidth" = @("true","false","auto")
+	"EqualItemsWidth" = @("true","false","auto")
+	"ExtendedEdit" = @("true","false","auto")
+	"FileDragMode" = @("AsFile","AsFileRef")
+	"FixInCard" = @("true","false","auto")
+	"FixingInTable" = @("None","Left","Right")
+	"FooterHorizontalAlign" = @("Left","Center","Right","Auto")
+	"ColumnGroup.Group" = @("Horizontal","Vertical","InCell")
+	"Form.Group" = @("Horizontal","Vertical","HorizontalIfPossible","AlwaysHorizontal","Auto","AutoScreenTypeSensitive")
+	"Page.Group" = @("Horizontal","Vertical","HorizontalIfPossible","AlwaysHorizontal","Auto","AutoScreenTypeSensitive")
+	"UsualGroup.Group" = @("Horizontal","Vertical","HorizontalIfPossible","AlwaysHorizontal","Auto","AutoScreenTypeSensitive")
+	"GroupHorizontalAlign" = @("Left","Center","Right","Auto")
+	"GroupVerticalAlign" = @("Top","Center","Bottom","Auto")
+	"HeaderHorizontalAlign" = @("Left","Center","Right","Auto")
+	"InputField.HeightControlVariant" = @("Auto","UseHeightInFormRows","UseContentHeight")
+	"Table.HeightControlVariant" = @("Auto","UseHeightInFormRows","UseHeightInTableRows","UseContentHeight")
+	"HierarchyPanelLocation" = @("Auto","None")
+	"HorizontalAlign" = @("Left","Center","Right","Auto")
+	"HorizontalLinesBWA" = @("true","false","auto")
+	"HorizontalLocation" = @("Left","Center","Right","Auto")
+	"Table.HorizontalScrollBar" = @("DontUse","UseAlways","AutoUse")
+	"HorizontalSpacing" = @("Auto","None","Half","Single","OneAndHalf","Double")
+	"AutoCommandBar.HorizontalStretch" = @("true","false","auto")
+	"ButtonGroup.HorizontalStretch" = @("true","false","auto")
+	"CheckBoxField.HorizontalStretch" = @("true","false","auto")
+	"ColumnGroup.HorizontalStretch" = @("true","false","auto")
+	"CommandBar.HorizontalStretch" = @("true","false","auto")
+	"ContextMenu.HorizontalStretch" = @("true","false","auto")
+	"InputField.HorizontalStretch" = @("true","false","auto")
+	"LabelDecoration.HorizontalStretch" = @("true","false","auto")
+	"LabelField.HorizontalStretch" = @("true","false","auto")
+	"Page.HorizontalStretch" = @("true","false","auto")
+	"Pages.HorizontalStretch" = @("true","false","auto")
+	"PictureDecoration.HorizontalStretch" = @("true","false","auto")
+	"Popup.HorizontalStretch" = @("true","false","auto")
+	"RadioButtonField.HorizontalStretch" = @("true","false","auto")
+	"UsualGroup.HorizontalStretch" = @("true","false","auto")
+	"Importance" = @("Main","Normal","Supplementary")
+	"IncompleteChoiceMode" = @("OnEnterPressed","OnActivate")
+	"InitialListView" = @("Beginning","End","Auto")
+	"InitialRowActivation" = @("Auto","Activate","NoActivate")
+	"InitialTreeView" = @("NoExpand","ExpandTopLevel","ExpandAllLevels")
+	"IntervalsSelectionMode" = @("Auto","Multiple","Single","None")
+	"LocationInCommandBar" = @("Auto","InAdditionalSubmenu","InCommandBar","InCommandBarAndInAdditionalSubmenu")
+	"MarkNegatives" = @("true","false","auto")
+	"MarkRequiredComplete" = @("true","false","auto")
+	"MarkingAppearance" = @("DontShow","TopLeft","BottomRight","BothSides")
+	"MobileDeviceTableType" = @("Auto","List","Cards")
+	"MultiLine" = @("true","false","auto")
+	"MultipleValuePictureShape" = @("Auto","Rect","Circle","Square")
+	"MultipleValuePictureSize" = @("Auto","Small","Medium","Large")
+	"MultipleValuesHyperlink" = @("true","false","auto")
+	"OnMainServerUnavalableBehavior" = @("Auto","MakeDisable","DontChangeBehavior")
+	"OnScreenKeyboardReturnKeyText" = @("Auto","Return","Go","Join","Next","Search","Send","Done","Continue")
+	"OnlyInAllActions" = @("true","false","auto")
+	"OpenButton" = @("true","false","auto")
+	"Orientation" = @("Horizontal","Vertical","HorizontalIfPossible")
+	"Output" = @("Auto","Enable","Disable")
+	"PagesRepresentation" = @("None","TabsOnTop","TabsOnBottom","TabsOnLeftHorizontal","TabsOnRightHorizontal","Swipe","Auto")
+	"PasswordMode" = @("true","false","auto")
+	"PictureLocation" = @("Auto","Left","Right","Top","Bottom")
+	"PictureSize" = @("RealSize","Stretch","Proportionally","Tile","AutoSize","RealSizeIgnoreScale","AutoSizeIgnoreScale","ByFontSize")
+	"PlacementArea" = @("mainCmdsLeft","autoCmds","userCmds","mainCmdsRight")
+	"PointerType" = @("Special","Regular")
+	"QuickChoice" = @("true","false","auto")
+	"RadioButtonType" = @("Auto","RadioButtons","Tumbler")
+	"RefreshRequest" = @("None","PullFromTop","PullFromBottom","PullFromTopOrBottom")
+	"ReportFormType" = @("Main","Settings","Variant")
+	"ReportResultViewMode" = @("Auto","Default","Compact")
+	"Button.Representation" = @("Text","Picture","PictureAndText","Auto")
+	"ButtonGroup.Representation" = @("Auto","Usual","Compact")
+	"Popup.Representation" = @("Text","Picture","PictureAndText","Auto")
+	"ProgressBarField.Representation" = @("Smooth","Broken","BrokenTilt")
+	"Table.Representation" = @("List","HierarchicalList","Tree")
+	"UsualGroup.Representation" = @("Auto","None","StrongSeparation","WeakSeparation","NormalSeparation","GroupBox","Line","Margin")
+	"RepresentationInContextMenu" = @("None","AdditionalInContextMenu","OnlyInContextMenu","Auto")
+	"RowActionsShowType" = @("Auto","DontShow","ShowOnHover","ShowAlways")
+	"RowInputMode" = @("EndOfList","EndOfWindow","AfterCurrentRow","BeforeCurrentRow")
+	"RowSelectionMode" = @("Auto","Cell","Row")
+	"SaveColors" = @("Auto","ForUser","ByKeyForUser","DontUse")
+	"SaveDataInSettings" = @("DontUse","UseList")
+	"ScaleVariant" = @("Auto","Normal","Compact","NormalIfPossible")
+	"ScalingMode" = @("Auto","Normal","Compact")
+	"Page.ScrollOnCompress" = @("true","false","auto")
+	"UsualGroup.ScrollOnCompress" = @("true","false","auto")
+	"SearchControlLocation" = @("Auto","None","CommandBar")
+	"SearchOnInput" = @("Use","DontUse","Auto")
+	"SearchStringLocation" = @("Auto","None","CommandBar","Top","Bottom","FormCaption","PullFromTop")
+	"CalendarField.SelectionMode" = @("Single","Multiple","Interval")
+	"Table.SelectionMode" = @("SingleRow","MultiRow")
+	"SelectionShowMode" = @("WhenActive","Always","DontShow","WhenMultipleCellsSelected","WhenMultipleCellsSelectedWhenActive")
+	"Shape" = @("Auto","Usual","Oval")
+	"ShapeRepresentation" = @("Auto","Always","WhenActive","None")
+	"ShowCheckBoxesInDropList" = @("true","false","auto")
+	"ShowCommandBar" = @("true","false","auto")
+	"ShowHorizontalLinesFlag" = @("true","false","auto")
+	"ColumnGroup.ShowTitle" = @("true","false","auto")
+	"Form.ShowTitle" = @("true","false","auto")
+	"Page.ShowTitle" = @("true","false","auto")
+	"UsualGroup.ShowTitle" = @("true","false","auto")
+	"ShowTitleInCard" = @("true","false","auto")
+	"ShowVerticalLinesFlag" = @("true","false","auto")
+	"SkipOnInput" = @("true","false","auto")
+	"SpecialTextInputMode" = @("Auto","None","DigitsAndPunctuation","URL","Email","PhoneNumber","Digits")
+	"SpellCheckingOnTextInput" = @("Auto","Use","DontUse")
+	"SpinButton" = @("true","false","auto")
+	"SpreadsheetDocumentMultipleSelectionPanelViewMode" = @("Auto","DontShow","ShowOnMultipleSelection","ShowAlways")
+	"TableLocation" = @("Auto","Left","Right","None")
+	"TextSize" = @("Enlarged","Normal","Reduced")
+	"ThroughAlign" = @("Use","DontUse","Auto")
+	"TimeChoiceMode" = @("Auto","DontChoose","CustomTime","Interval1Minute","Interval5Minutes","Interval10Minutes","Interval15Minutes","Interval15And20Minutes","Interval20Minutes","Interval30Minutes","Interval60Minutes")
+	"TitleLocation" = @("None","Auto","Left","Top","Right","Bottom")
+	"ToolTipRepresentation" = @("Auto","None","Balloon","Button","ShowAuto","ShowTop","ShowLeft","ShowBottom","ShowRight")
+	"TumblerRepresentation" = @("Text","Picture","Auto")
+	"Type" = @("CommandBarButton","UsualButton","Hyperlink","CommandBarHyperlink")
+	"UpdateOnDataChange" = @("Auto","DontUpdate")
+	"UseAlternationRowColorBWA" = @("true","false","auto")
+	"UseCopy" = @("true","false","auto")
+	"UseForFoldersAndItems" = @("Items","Folders","FoldersAndItems")
+	"UsePostingMode" = @("Regular","RealTime","Ask","Auto")
+	"ValuesSelectionMode" = @("Auto","Multiple","Single","None")
+	"VerticalAlign" = @("Top","Center","Bottom","Auto")
+	"VerticalLinesBWA" = @("true","false","auto")
+	"VerticalScroll" = @("auto","use","useIfNecessary","useWithoutStretch")
+	"Table.VerticalScrollBar" = @("DontUse","UseAlways","AutoUse")
+	"VerticalSpacing" = @("Auto","None","Half","Single","OneAndHalf","Double")
+	"AutoCommandBar.VerticalStretch" = @("true","false","auto")
+	"ButtonGroup.VerticalStretch" = @("true","false","auto")
+	"ColumnGroup.VerticalStretch" = @("true","false","auto")
+	"CommandBar.VerticalStretch" = @("true","false","auto")
+	"ContextMenu.VerticalStretch" = @("true","false","auto")
+	"InputField.VerticalStretch" = @("true","false","auto")
+	"LabelDecoration.VerticalStretch" = @("true","false","auto")
+	"LabelField.VerticalStretch" = @("true","false","auto")
+	"Page.VerticalStretch" = @("true","false","auto")
+	"Pages.VerticalStretch" = @("true","false","auto")
+	"PictureDecoration.VerticalStretch" = @("true","false","auto")
+	"Popup.VerticalStretch" = @("true","false","auto")
+	"UsualGroup.VerticalStretch" = @("true","false","auto")
+	"ViewMode" = @("All","QuickAccess")
+	"ViewModeApplicationOnSetReportResult" = @("Auto","Apply","DontApply")
+	"ViewScalingMode" = @("Auto","Normal","Large")
+	"ViewStatusLocation" = @("Auto","None","Top","Bottom")
+	"WarningOnEditRepresentation" = @("Show","DontShow","Auto")
+	"WidthInCard" = @("Auto","Full","Half")
+	"WindowOpeningMode" = @("Auto","DontBlock","LockOwner","LockWholeInterface","Independent","LockOwnerWindow")
+}
+# Старые имена значений, которые платформа принимает и переводит в современные (замер выгрузки 8.3.24)
+$script:enumValueAliases = @{
+	"TitlesLeftDataLeft" = "ItemsLeftTitlesLeft"
+	"TitlesLeftDataRight" = "ItemsRightTitlesLeft"
+	"TitlesRightDataLeft" = "ItemsLeftTitlesRight"
+	"TitlesRightDataRight" = "ItemsRightTitlesRight"
+	"GroupBox" = "StrongSeparation"
+	"Margin" = "NormalSeparation"
+	"Square" = "Rect"
+}
+# --- /Перечисления свойств формы ---
+$script:objType = $null
+
+function Normalize-EnumValue {
+	param([string]$propName, [string]$value)
+	$valid = $script:validEnumValues["$script:objType.$propName"]
+	if (-not $valid) { $valid = $script:validEnumValues[$propName] }
+	# 1. Check alias dictionary — silent auto-correct. Словарь общий для всех свойств: у свойства со
+	# списком алиас берётся, только если его результат в списке (иначе «None» дало бы Nonperiodical везде)
+	if ($script:enumValueAliases.ContainsKey($value)) {
+		$aliased = $script:enumValueAliases[$value]
+		if (-not $valid -or $valid -ccontains $aliased) { return $aliased }
+	}
+	# 2. Case-insensitive match against valid values — silent. Список вида объекта — раньше общего.
+	if ($valid) {
+		foreach ($v in $valid) {
+			if ($v -ieq $value) { return $v }
+		}
+		# 3. Known property, unknown value — error with hint
+		Write-Error "Invalid value '$value' for property '$propName'. Valid values: $($valid -join ', ')"
+		exit 1
+	}
+	# 4. Unknown property — pass-through (no validation data)
+	return $value
+}
+
+# Значения перечислений в выводе эмиттера — к каноническому виду (Normalize-EnumValue): простой тег
+# элемента формы известного типа или корня формы. Регистр и старые имена исправляются молча,
+# неизвестное значение — ошибка с перечнем допустимых. $rootType — тип для тегов прямо под корнем
+# фрагмента (свойства формы во фрагменте form-edit).
+function Normalize-EnumTags([string]$text, [string]$rootType = '') {
+	$crlf = $text.Contains("`r`n")
+	$lines = $text.Replace("`r`n", "`n") -split "`n"
+	$stack = New-Object System.Collections.ArrayList
+	for ($i = 0; $i -lt $lines.Count; $i++) {
+		$line = $lines[$i]
+		if ($line -cmatch '^\t*</([A-Za-z_][\w.:-]*)>$') {
+			if ($stack.Count -gt 0 -and $stack[$stack.Count - 1].Name -ceq $Matches[1]) { $stack.RemoveAt($stack.Count - 1) }
+			continue
+		}
+		if ($line -cmatch '^(\t*)<([A-Za-z_][\w.:-]*)(\s[^>]*)?>$' -and -not $line.EndsWith('/>')) {
+			[void]$stack.Add(@{ Name = $Matches[2]; Ind = $Matches[1].Length })
+			continue
+		}
+		if ($stack.Count -eq 0) { continue }
+		$m = [regex]::Match($line, '^(\t*)<([A-Za-z]\w*)>([^<]+)</([A-Za-z]\w*)>$')
+		if (-not $m.Success -or $m.Groups[2].Value -cne $m.Groups[4].Value) { continue }
+		$top = $stack[$stack.Count - 1]
+		if ($m.Groups[1].Value.Length -ne $top.Ind + 1) { continue }
+		$ptype = if ($stack.Count -eq 1) { if ($top.Name -ceq 'Form') { 'Form' } else { $rootType } } else { $top.Name }
+		if (-not $ptype -or ($ptype -cne 'Form' -and -not $script:childTagOrder.ContainsKey($ptype))) { continue }
+		$script:objType = $ptype
+		$tag = $m.Groups[2].Value
+		$v = Normalize-EnumValue $tag $m.Groups[3].Value
+		if ($v -cne $m.Groups[3].Value) { $lines[$i] = "$($m.Groups[1].Value)<$tag>$v</$tag>" }
+	}
+	$out = $lines -join "`n"
+	if ($crlf) { $out = $out.Replace("`n", "`r`n") }
+	return $out
+}
+
 # --- Канонический порядок дочерних тегов элемента ---
 # В каком порядке платформа пишет свойства и вложенные узлы элемента формы. Построено по корпусу
 # выгрузок (БП и ERP, 8.3.24, 17036 форм): для каждого типа элемента — граф «тег A раньше тега B»,
@@ -4166,7 +4442,7 @@ function Emit-Group {
 		"horizontal"       { "Horizontal" }
 		"vertical"         { "Vertical" }
 		"alwayshorizontal" { "AlwaysHorizontal" }
-		"alwaysvertical"   { "AlwaysVertical" }
+		"alwaysvertical"   { "Vertical" }   # старое написание; у группы такого значения нет
 		"horizontalifpossible" { "HorizontalIfPossible" }
 		"collapsible"      { "Vertical" }
 		default            { $null }
@@ -4293,17 +4569,7 @@ function Emit-Input {
 	Emit-Title -el $el -name $name -indent $inner -auto:(-not $el.path)
 	Emit-CommonFlags -el $el -indent $inner
 
-	if ($el.titleLocation) {
-		$loc = switch ("$($el.titleLocation)") {
-			"none"   { "None" }
-			"left"   { "Left" }
-			"right"  { "Right" }
-			"top"    { "Top" }
-			"bottom" { "Bottom" }
-			default  { "$($el.titleLocation)" }
-		}
-		X "$inner<TitleLocation>$loc</TitleLocation>"
-	}
+	if ($el.titleLocation) { X "$inner<TitleLocation>$(Map-TitleLoc "$($el.titleLocation)")</TitleLocation>" }
 
 	if ($null -ne $el.multiLine) { X "$inner<MultiLine>$(if ($el.multiLine){'true'}else{'false'})</MultiLine>" }
 	if ($null -ne $el.passwordMode) { X "$inner<PasswordMode>$(if ($el.passwordMode){'true'}else{'false'})</PasswordMode>" }
@@ -5127,12 +5393,12 @@ function Emit-Page {
 
 	if ($el.group) {
 		# Доступные значения страницы/обычной группы: Vertical / HorizontalIfPossible / AlwaysHorizontal
-		# (InCell — только у columnGroup). Horizontal/AlwaysVertical оставлены forgiving (legacy).
+		# (InCell — только у columnGroup). Horizontal и старое alwaysVertical (→ Vertical) — прощающий ввод.
 		$orientation = switch ("$($el.group)") {
 			"horizontal"          { "Horizontal" }
 			"vertical"            { "Vertical" }
 			"alwaysHorizontal"    { "AlwaysHorizontal" }
-			"alwaysVertical"      { "AlwaysVertical" }
+			"alwaysVertical"      { "Vertical" }   # старое написание; у страницы такого значения нет
 			"horizontalIfPossible" { "HorizontalIfPossible" }
 			default               { $null }
 		}
@@ -5367,15 +5633,7 @@ function Emit-Calendar {
 	Emit-CommonFlags -el $el -indent $inner
 
 	if ($el.titleLocation) {
-		$loc = switch ("$($el.titleLocation)") {
-			"none"   { "None" }
-			"left"   { "Left" }
-			"right"  { "Right" }
-			"top"    { "Top" }
-			"bottom" { "Bottom" }
-			"auto"   { "Auto" }
-			default  { "$($el.titleLocation)" }
-		}
+		$loc = Map-TitleLoc "$($el.titleLocation)"
 		X "$inner<TitleLocation>$loc</TitleLocation>"
 	}
 
@@ -6952,7 +7210,7 @@ if (-not (Test-Path $outDir)) {
 }
 
 $enc = New-Object System.Text.UTF8Encoding($true)
-[System.IO.File]::WriteAllText($outPath, (Sort-ElementTagOrder $xml.ToString().TrimEnd("`r", "`n")), $enc)
+[System.IO.File]::WriteAllText($outPath, (Sort-ElementTagOrder (Normalize-EnumTags $xml.ToString().TrimEnd("`r", "`n"))), $enc)
 
 # --- 13b. Auto-register form in parent object XML ---
 

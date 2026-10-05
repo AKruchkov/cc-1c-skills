@@ -1,4 +1,4 @@
-﻿# meta-edit v1.64 — Edit existing 1C metadata object XML
+﻿# meta-edit v1.65 — Edit existing 1C metadata object XML
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(

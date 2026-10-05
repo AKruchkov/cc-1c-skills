@@ -1,0 +1,29 @@
+{
+  "name": "Перечисления в правке: регистр и старые имена значений приводятся к виду платформы",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "properties": {
+      "windowOpeningMode": "lockownerwindow"
+    },
+    "elements": [
+      {
+        "input": "ПолеНовое",
+        "path": "Объект.Номер",
+        "titleLocation": "auto",
+        "horizontalAlign": "right",
+        "after": "Номер"
+      },
+      {
+        "set": "Склад",
+        "verticalAlign": "center"
+      },
+      {
+        "set": "ГруппаЛево",
+        "childrenAlign": "TitlesLeftDataLeft"
+      }
+    ]
+  }
+}

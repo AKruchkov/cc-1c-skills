@@ -1,0 +1,50 @@
+{
+  "name": "Неизвестное значение перечисления — ошибка с перечнем допустимых",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "input": "Поле",
+        "path": "Строка",
+        "horizontalAlign": "middle"
+      }
+    ],
+    "attributes": [
+      {
+        "name": "Объект",
+        "type": "DataProcessorObject.Тест",
+        "main": true
+      },
+      {
+        "name": "Строка",
+        "type": "string"
+      }
+    ]
+  },
+  "expect": {
+    "stderrContains": "Invalid value 'middle' for property 'HorizontalAlign'"
+  },
+  "expectError": true
+}

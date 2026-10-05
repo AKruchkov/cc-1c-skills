@@ -1,0 +1,88 @@
+{
+  "name": "Перечисления: регистр и старые имена значений приводятся к виду платформы",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+    "validatePath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "properties": {
+      "windowOpeningMode": "lockownerwindow",
+      "verticalScroll": "USEIFNECESSARY"
+    },
+    "elements": [
+      {
+        "input": "Поле",
+        "path": "Строка",
+        "titleLocation": "auto",
+        "horizontalAlign": "right",
+        "choiceButtonRepresentation": "showInDropList"
+      },
+      {
+        "group": "vertical",
+        "name": "Группа",
+        "childItemsWidth": "equal",
+        "childrenAlign": "TitlesLeftDataLeft",
+        "children": [
+          {
+            "label": "Надпись",
+            "title": "Текст",
+            "horizontalAlign": "center"
+          }
+        ]
+      },
+      {
+        "table": "Таблица",
+        "path": "Таблица",
+        "selectionMode": "multiRow",
+        "commandBarLocation": "none",
+        "columns": [
+          {
+            "input": "ТаблицаА",
+            "path": "Таблица.А"
+          }
+        ]
+      }
+    ],
+    "attributes": [
+      {
+        "name": "Объект",
+        "type": "DataProcessorObject.Тест",
+        "main": true
+      },
+      {
+        "name": "Строка",
+        "type": "string"
+      },
+      {
+        "name": "Таблица",
+        "type": "ValueTable",
+        "columns": [
+          {
+            "name": "А",
+            "type": "string"
+          }
+        ]
+      }
+    ]
+  }
+}

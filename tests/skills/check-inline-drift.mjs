@@ -475,7 +475,7 @@ const FAMILIES = [
   // отдельный гард check-enum-drift.mjs (авторитет тот же — meta-compile).
   {
     name: 'normalize_enum_value', py: 'normalize_enum_value', ps1: 'Normalize-EnumValue',
-    variants: [{ id: 'base', authority: 'meta-compile', consumers: ['meta-edit'] }],
+    variants: [{ id: 'base', authority: 'meta-compile', consumers: ['meta-edit', 'form-compile', 'form-edit'] }],
   },
 
   // ─── Регистронезависимый ввод: паритет с PS1 ─────────────────────────────
@@ -808,12 +808,14 @@ const FAMILIES = [
   { name: 'parse_restrict', py: 'parse_restrict', ps1: null, variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: 'is_dl_empty_value', py: 'is_dl_empty_value', ps1: null, variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   // ── Эмиттеры секций формы (реквизиты, команды, параметры, оформление, интерфейс, свойства) — общие с form-compile ──
-  { name: 'get_child_rank', py: 'get_child_rank', ps1: 'Get-ChildRank', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
+  { name: 'get_child_rank', py: 'get_child_rank', ps1: 'Get-ChildRank', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit', 'form-validate'] }] },
   { name: 'sort_element_tag_order', py: 'sort_element_tag_order', ps1: 'Sort-ElementTagOrder', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: 'Get-TagBlockEnd', py: null, ps1: 'Get-TagBlockEnd', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: '_sort_tag_blocks', py: '_sort_tag_blocks', ps1: 'Sort-TagBlocks', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: 'warn_unknown_form_event', py: 'warn_unknown_form_event', ps1: 'Warn-UnknownFormEvent', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
   { name: '_tag_block_end', py: '_tag_block_end', ps1: null, variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
+  // ── Эмиттеры секций формы (реквизиты, команды, параметры, оформление, интерфейс, свойства) — общие с form-compile ──
+  { name: 'normalize_enum_tags', py: 'normalize_enum_tags', ps1: 'Normalize-EnumTags', variants: [{ id: 'base', authority: 'form-compile', consumers: ['form-edit'] }] },
 ];
 
 // ─── Семьи, разъехавшиеся целиком ───────────────────────────────────────────

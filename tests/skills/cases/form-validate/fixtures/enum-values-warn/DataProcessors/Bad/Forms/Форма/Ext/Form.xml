@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Form xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.17">
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+	<ChildItems>
+		<UsualGroup name="Группа" id="1">
+			<ExtendedTooltip name="ГруппаРасширеннаяПодсказка" id="2"/>
+			<ChildrenAlign>TitlesLeftDataLeft</ChildrenAlign>
+			<ChildItems>
+				<InputField name="Поле" id="3">
+					<DataPath>Строка</DataPath>
+					<ContextMenu name="ПолеКонтекстноеМеню" id="4"/>
+					<ExtendedTooltip name="ПолеРасширеннаяПодсказка" id="5"/>
+				</InputField>
+			</ChildItems>
+		</UsualGroup>
+	</ChildItems>
+	<Attributes>
+		<Attribute name="Строка" id="1">
+			<Type>
+				<v8:Type>xs:string</v8:Type>
+			</Type>
+		</Attribute>
+	</Attributes>
+</Form>

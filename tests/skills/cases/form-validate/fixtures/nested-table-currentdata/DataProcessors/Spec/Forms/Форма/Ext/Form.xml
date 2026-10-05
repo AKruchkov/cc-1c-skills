@@ -23,6 +23,12 @@
 				</InputField>
 							<Table name="Вложенная" id="30">
 					<DataPath>Items.Список.CurrentData.Строки</DataPath>
+					<ContextMenu name="ВложеннаяКонтекстноеМеню" id="34"/>
+					<AutoCommandBar name="ВложеннаяКоманднаяПанель" id="36"/>
+					<ExtendedTooltip name="ВложеннаяРасширеннаяПодсказка" id="35"/>
+					<SearchStringAddition name="ВложеннаяСтрокаПоиска" id="37"/>
+					<ViewStatusAddition name="ВложеннаяСостояниеПросмотра" id="38"/>
+					<SearchControlAddition name="ВложеннаяУправлениеПоиском" id="39"/>
 					<ChildItems>
 						<InputField name="ПолеВложенной" id="31">
 							<DataPath>Items.Вложенная.CurrentData.Значение</DataPath>
@@ -30,12 +36,6 @@
 							<ExtendedTooltip name="ПолеВложеннойРасширеннаяПодсказка" id="33"/>
 						</InputField>
 					</ChildItems>
-					<ContextMenu name="ВложеннаяКонтекстноеМеню" id="34"/>
-					<AutoCommandBar name="ВложеннаяКоманднаяПанель" id="36"/>
-					<SearchStringAddition name="ВложеннаяСтрокаПоиска" id="37"/>
-					<ViewStatusAddition name="ВложеннаяСостояниеПросмотра" id="38"/>
-					<SearchControlAddition name="ВложеннаяУправлениеПоиском" id="39"/>
-					<ExtendedTooltip name="ВложеннаяРасширеннаяПодсказка" id="35"/>
 				</Table>
 </ChildItems>
 		</Table>

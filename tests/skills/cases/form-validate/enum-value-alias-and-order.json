@@ -1,0 +1,16 @@
+{
+  "name": "Старое имя значения и порядок свойств — предупреждения, не ошибки",
+  "setup": "fixture:enum-values-warn",
+  "params": {
+    "formPath": "DataProcessors/Bad/Forms/Форма"
+  },
+  "expect": {
+    "stdoutContains": [
+      "ChildrenAlign 'TitlesLeftDataLeft' is an old name",
+      "<ChildrenAlign> stands after <ExtendedTooltip>",
+      "0 errors"
+    ]
+  },
+  "noSnapshot": "read-only навык на ручной фикстуре — проверяется вывод",
+  "skipPlatformVerify": "ручная фикстура — одна форма без конфигурации; проверяется вывод валидатора"
+}

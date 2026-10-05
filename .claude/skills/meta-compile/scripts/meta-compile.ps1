@@ -1,4 +1,4 @@
-﻿# meta-compile v1.119 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.120 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(

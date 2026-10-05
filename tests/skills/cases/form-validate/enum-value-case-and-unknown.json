@@ -1,0 +1,15 @@
+{
+  "name": "Значения перечислений: другой регистр и неизвестное значение — ошибки с подсказкой",
+  "setup": "fixture:enum-values-bad",
+  "params": {
+    "formPath": "DataProcessors/Bad/Forms/Форма"
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "WindowOpeningMode 'lockownerwindow' — wrong case",
+      "use 'Auto'",
+      "HorizontalAlign has invalid value 'Middle'"
+    ]
+  }
+}

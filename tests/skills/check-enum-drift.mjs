@@ -71,5 +71,51 @@ for (const prop of Object.keys(cfev)) {
     drift++;
   }
 }
-console.log(drift === 0 ? 'OK — нет дрейфа значений enum-allowlist (meta-* vs meta-compile, cfe-validate vs cf-validate)' : `\n${drift} DRIFT(s) — свести к эталону.`);
+// Формы: перечисления свойств элементов и корня — эталон form-compile (генерирует
+// debug/form-dsl-revision/gen_enum_table.py); копии — form-edit (общий блок эмиттера) и form-validate.
+// Синонимы и порядок дочерних тегов — сверка блока целиком (другой формат записи).
+function ps1Block(file, start) {
+  const text = readFileSync(join(ROOT, file), 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const at = text.indexOf(start);
+  if (at < 0) throw new Error(`${start} not found in ${file}`);
+  let i = text.indexOf('@{', at) + 2, depth = 1;
+  while (i < text.length && depth > 0) { if (text[i] === '{') depth++; else if (text[i] === '}') depth--; i++; }
+  return text.slice(at, i);
+}
+const FORM_AUTH = '.claude/skills/form-compile/scripts/form-compile.ps1';
+const FORM_COPIES = ['.claude/skills/form-edit/scripts/form-edit.ps1', '.claude/skills/form-validate/scripts/form-validate.ps1'];
+const formAuth = parsePs1EnumMap(FORM_AUTH, '$script:validEnumValues = @{');
+for (const f of FORM_COPIES) {
+  const copy = parsePs1EnumMap(f, '$script:validEnumValues = @{');
+  const name = f.split('/')[2];
+  for (const k of new Set([...Object.keys(formAuth), ...Object.keys(copy)])) {
+    if (!copy[k] || !formAuth[k] || !eq(copy[k], formAuth[k])) {
+      console.log(`DRIFT  ${name}.validEnumValues[${k}]: [${(copy[k] || []).join(', ')}]  !=  form-compile [${(formAuth[k] || []).join(', ')}]`);
+      drift++;
+    }
+  }
+  for (const v of ['$script:enumValueAliases = @{', '$script:childTagOrder = @{']) {
+    if (ps1Block(f, v) !== ps1Block(FORM_AUTH, v)) {
+      console.log(`DRIFT  ${name}: ${v.split(' ')[0]} отличается от form-compile`);
+      drift++;
+    }
+  }
+}
+// py-копии тех же таблиц: блок от присваивания до закрывающей скобки в первой колонке
+function pyBlock(file, start) {
+  const text = readFileSync(join(ROOT, file), 'utf8').replace(/\r\n/g, '\n');
+  const at = text.indexOf(start);
+  if (at < 0) throw new Error(`${start} not found in ${file}`);
+  return text.slice(at, text.indexOf('\n}', at) + 2);
+}
+const FORM_AUTH_PY = '.claude/skills/form-compile/scripts/form-compile.py';
+for (const f of ['.claude/skills/form-edit/scripts/form-edit.py', '.claude/skills/form-validate/scripts/form-validate.py']) {
+  for (const v of ['valid_enum_values = {', 'enum_value_aliases = {', 'CHILD_TAG_ORDER = {']) {
+    if (pyBlock(f, v) !== pyBlock(FORM_AUTH_PY, v)) {
+      console.log(`DRIFT  ${f.split('/')[2]} (py): ${v.split(' ')[0]} отличается от form-compile.py`);
+      drift++;
+    }
+  }
+}
+console.log(drift === 0 ? 'OK — нет дрейфа значений enum-allowlist (meta-* vs meta-compile, cfe-validate vs cf-validate, form-edit/form-validate vs form-compile)' : `\n${drift} DRIFT(s) — свести к эталону.`);
 process.exit(drift ? 1 : 0);
