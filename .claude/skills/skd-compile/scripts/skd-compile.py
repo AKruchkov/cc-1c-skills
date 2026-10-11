@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.127 — Compile 1C DCS from JSON
+# skd-compile v1.128 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -3117,10 +3117,8 @@ def get_default_selection_fields(defn):
     declared = False
 
     def add(dp):
-        nonlocal declared
         if not dp:
             return
-        declared = True
         dot = dp.rfind('.')
         if dot >= 0 and dp[:dot].lower() not in folders:
             return
@@ -3189,11 +3187,12 @@ def selection_has_fields(items):
             continue
         if not isinstance(it, dict):
             continue
-        if _ps_eq_bool(it.get('use'), False) or _ps_eq_bool(it.get('auto'), True):
-            continue
+        # Папка — как её выводит эмиттер: use у папки не пишется, собственное field выводится
         if 'folder' in it:
-            if selection_has_fields(it.get('items')):
+            if _ps_truthy(it.get('field')) or selection_has_fields(it.get('items')):
                 return True
+            continue
+        if _ps_eq_bool(it.get('use'), False) or _ps_eq_bool(it.get('auto'), True):
             continue
         if _ps_truthy(it.get('field')):
             return True

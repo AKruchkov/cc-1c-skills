@@ -1,0 +1,12 @@
+{
+  "name": "Папка выбора считается так, как её выводит эмиттер: use у папки не пишется, собственное field выводится",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК А", "fields": ["А"] } ], "settingsVariants": [ { "name": "ПапкаВыкл", "settings": { "selection": [ { "folder": "П", "use": false, "items": ["А"] } ] } }, { "name": "ПапкаСПолем", "settings": { "selection": [ { "folder": "П", "field": "А", "items": [] } ] } } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": ["[INFO] Вариант «ПапкаВыкл»: в settings нет structure", "[INFO] Вариант «ПапкаСПолем»: в settings нет structure"],
+    "stdoutNotContains": "[WARN]",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

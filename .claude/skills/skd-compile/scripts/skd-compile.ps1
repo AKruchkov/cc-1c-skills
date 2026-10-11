@@ -1,4 +1,4 @@
-﻿# skd-compile v1.127 — Compile 1C DCS from JSON
+﻿# skd-compile v1.128 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -3659,7 +3659,8 @@ function Get-DatasetDeclaredFields($ds) {
 }
 
 # Поля для выбора по умолчанию: объявленные поля наборов верхнего уровня, затем вычисляемые.
-# Без запрета на выбор, без папок и путей с точкой (реквизиты, не колонки); повторы — по dataPath.
+# Без запрета на выбор и папок; путь с точкой — реквизит, если перед точкой не объявленная папка
+# (поля папки — «Папка.Поле»); повторы — по dataPath. Возвращает поля и признак «что-то объявлено».
 function Get-DefaultSelectionFields {
 	$result = New-Object System.Collections.Generic.List[string]
 	$seen = @{}
@@ -3673,11 +3674,10 @@ function Get-DefaultSelectionFields {
 			}
 		}
 	}
-	$script:defaultFieldsDeclared = $false
+	$declared = $false
 	$add = {
 		param([string]$dp)
 		if (-not $dp) { return }
-		$script:defaultFieldsDeclared = $true
 		$dot = $dp.LastIndexOf('.')
 		if ($dot -ge 0 -and -not $folders.ContainsKey($dp.Substring(0, $dot))) { return }
 		if (-not $seen.ContainsKey($dp)) { $seen[$dp] = $true; $result.Add($dp) }
@@ -3685,7 +3685,7 @@ function Get-DefaultSelectionFields {
 	foreach ($ds in @($def.dataSets)) {
 		foreach ($fd in (Get-DatasetDeclaredFields $ds)) {
 			if ($null -eq $fd) { continue }
-			$script:defaultFieldsDeclared = $true
+			$declared = $true
 			if ((Get-RestrictFlagNames (Get-FieldRestrict $fd)) -contains 'field') { continue }
 			if ($fd -is [string]) {
 				& $add "$((Parse-FieldShorthand $fd).dataPath)"
@@ -3698,7 +3698,7 @@ function Get-DefaultSelectionFields {
 	}
 	foreach ($cf in @($def.calculatedFields)) {
 		if ($null -eq $cf) { continue }
-		$script:defaultFieldsDeclared = $true
+		$declared = $true
 		if ((Get-RestrictFlagNames (Get-CalcRestrict $cf)) -contains 'field') { continue }
 		if ($cf -is [string]) {
 			& $add "$((Parse-CalcShorthand $cf).dataPath)"
@@ -3707,7 +3707,7 @@ function Get-DefaultSelectionFields {
 			& $add $dp
 		}
 	}
-	return ,$result.ToArray()
+	return @{ fields = $result.ToArray(); declared = $declared }
 }
 
 function New-DetailsGroup {
@@ -3727,11 +3727,12 @@ function Test-SelectionHasFields($items) {
 	foreach ($it in @($items)) {
 		if ($null -eq $it) { continue }
 		if ($it -is [string]) { if ($it -ne 'Auto') { return $true }; continue }
-		if ($it.use -eq $false -or $it.auto -eq $true) { continue }
+		# Папка — как её выводит эмиттер: use у папки не пишется, собственное field выводится
 		if (Has-JsonProp $it 'folder') {
-			if (Test-SelectionHasFields $it.items) { return $true }
+			if ($it.field -or (Test-SelectionHasFields $it.items)) { return $true }
 			continue
 		}
+		if ($it.use -eq $false -or $it.auto -eq $true) { continue }
 		if ($it.field) { return $true }
 	}
 	return $false
@@ -3768,7 +3769,8 @@ function Complete-VariantSettings($v, [bool]$autoVariant) {
 	$vn = "$($v.name)"
 
 	if (-not $hasSel -and -not $hasStruct) {
-		$fields = Get-DefaultSelectionFields
+		$picked = Get-DefaultSelectionFields
+		$fields = $picked.fields
 		$s | Add-Member -NotePropertyName "selection" -NotePropertyValue $fields -Force
 		$s | Add-Member -NotePropertyName "structure" -NotePropertyValue @(New-DetailsGroup) -Force
 		if ($autoVariant) {
@@ -3785,7 +3787,7 @@ function Complete-VariantSettings($v, [bool]$autoVariant) {
 			$script:hints.Add("[INFO] $head. Выбранные поля — $(Format-HintList $fields); структура — детальные записи (details). Если по задаче отчёту нужны другие поля или группировки — опишите $target и скомпилируйте заново; иначе действий не требуется.")
 		} else {
 			$fix = if ($autoVariant) { 'опишите settingsVariants и перечислите нужные поля в settings.selection' } else { 'перечислите нужные поля в settings.selection' }
-			$why = if ($script:defaultFieldsDeclared) { 'все объявленные поля исключены — с запретом на выбор, папки или реквизиты через точку' } else { 'в наборах данных не объявлены fields' }
+			$why = if ($picked.declared) { 'все объявленные поля исключены — с запретом на выбор, папки или реквизиты через точку' } else { 'в наборах данных не объявлены fields' }
 			$script:hints.Add("[WARN] $head, но выбранные поля подставить не из чего: $why. Без выбранных полей отчёт будет пустым — $fix.")
 		}
 	} elseif ($hasSel -and -not $hasStruct) {
