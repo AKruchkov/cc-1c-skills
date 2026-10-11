@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.126 — Compile 1C DCS from JSON
+# skd-compile v1.127 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1113,18 +1113,30 @@ def get_calc_restrict(cf):
     return get_object_restrict(cf)
 
 
-def has_restrict(restrict):
-    return restrict['obj'] is not None or len(restrict['tokens']) > 0
+def _ps_eq_bool(val, target):
+    """PowerShell `$x -eq $true/$false`: сравнение задаёт левый операнд — строка как текст
+    без учёта регистра, число как число (1/0), прочее не равно."""
+    if isinstance(val, bool):
+        return val is target
+    if isinstance(val, str):
+        return val.lower() == ('true' if target else 'false')
+    if isinstance(val, (int, float)):
+        return val == (1 if target else 0)
+    return False
 
 
 def get_restrict_flag_names(restrict):
     obj = restrict['obj']
     if obj is not None:
-        # Как -eq $true в PS-мастере: true, 1 и строка "true" в любом регистре
-        return [xml_name for xml_name, flag in obj.items()
-                if flag is True or (not isinstance(flag, bool) and isinstance(flag, (int, float)) and flag == 1)
-                or (isinstance(flag, str) and flag.lower() == 'true')]
+        return [str(xml_name) for xml_name, flag in obj.items() if _ps_eq_bool(flag, True)]
     return resolve_restrict_flags(restrict['tokens'])
+
+
+def has_restrict(restrict):
+    """<useRestriction> пишется, только когда есть хотя бы один известный флаг: булево
+    useRestriction: true (форма параметров) или { field: false } не дают пустой пары."""
+    return any(_ps_str(n).lower() in ('field', 'condition', 'group', 'order')
+               for n in get_restrict_flag_names(restrict) if n)
 
 
 def emit_field(lines, field_def, indent):
@@ -1141,7 +1153,6 @@ def emit_field(lines, field_def, indent):
                 else resolve_type_str(str(field_def['type']))
             ) if field_def.get('type') else '',
             'roles': [],
-            'restrict': [],
             'appearance': {},
             'roleExtras': {},
         }
@@ -3076,15 +3087,6 @@ def emit_structure_item(lines, item, indent, short_group=False):
 HINTS = []
 
 
-def _ps_true(val):
-    # PowerShell `-eq $true`: \u0441\u0442\u0440\u043e\u043a\u0430 \u0441\u0440\u0430\u0432\u043d\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u043a\u0430\u043a \u0442\u0435\u043a\u0441\u0442 \u0431\u0435\u0437 \u0443\u0447\u0451\u0442\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430
-    if isinstance(val, bool):
-        return val
-    if isinstance(val, str):
-        return val.lower() == 'true'
-    return False
-
-
 def get_dataset_declared_fields(ds):
     """Объявленные поля набора; у объединения без своих полей — поля его частей."""
     if not ds:
@@ -3101,12 +3103,28 @@ def get_dataset_declared_fields(ds):
 
 def get_default_selection_fields(defn):
     """Поля для выбора по умолчанию: объявленные поля наборов верхнего уровня, затем вычисляемые.
-    Без запрета на выбор, без папок и путей с точкой (реквизиты, не колонки); повторы — по dataPath."""
+    Без запрета на выбор и папок; путь с точкой — реквизит, если перед точкой не объявленная
+    папка (поля папки — «Папка.Поле»); повторы — по dataPath. Возвращает (поля, объявлено_ли_что-то)."""
     result = []
     seen = set()
+    folders = set()
+    for ds in defn.get('dataSets') or []:
+        for fd in get_dataset_declared_fields(ds):
+            if isinstance(fd, dict) and fd.get('folder') is True:
+                fp = _ps_str(fd.get('dataPath')) if fd.get('dataPath') else _ps_str(fd.get('field'))
+                if fp:
+                    folders.add(fp.lower())
+    declared = False
 
     def add(dp):
-        if dp and '.' not in dp and dp.lower() not in seen:
+        nonlocal declared
+        if not dp:
+            return
+        declared = True
+        dot = dp.rfind('.')
+        if dot >= 0 and dp[:dot].lower() not in folders:
+            return
+        if dp.lower() not in seen:
             seen.add(dp.lower())
             result.append(dp)
 
@@ -3115,6 +3133,9 @@ def get_default_selection_fields(defn):
 
     for ds in defn.get('dataSets') or []:
         for fd in get_dataset_declared_fields(ds):
+            if fd is None:
+                continue
+            declared = True
             if isinstance(fd, str):
                 if has_field_flag(get_restrict_flag_names(get_field_restrict(fd))):
                     continue
@@ -3126,7 +3147,10 @@ def get_default_selection_fields(defn):
                     continue
                 add(_ps_str(fd.get('dataPath')) if fd.get('dataPath') else _ps_str(fd.get('field')))
     for cf in defn.get('calculatedFields') or []:
-        if cf is None or not isinstance(cf, (str, dict)):
+        if cf is None:
+            continue
+        declared = True
+        if not isinstance(cf, (str, dict)):
             continue
         if has_field_flag(get_restrict_flag_names(get_calc_restrict(cf))):
             continue
@@ -3140,7 +3164,7 @@ def get_default_selection_fields(defn):
             else:
                 dp = _ps_str(cf.get('name'))
             add(dp)
-    return result
+    return result, declared
 
 
 def new_details_group():
@@ -3165,9 +3189,13 @@ def selection_has_fields(items):
             continue
         if not isinstance(it, dict):
             continue
-        if _ps_true(it.get('auto')):
+        if _ps_eq_bool(it.get('use'), False) or _ps_eq_bool(it.get('auto'), True):
             continue
-        if 'folder' in it or it.get('field'):
+        if 'folder' in it:
+            if selection_has_fields(it.get('items')):
+                return True
+            continue
+        if _ps_truthy(it.get('field')):
             return True
     return False
 
@@ -3179,7 +3207,7 @@ def find_groups_without_fields(items, inherited, out):
         if not isinstance(it, dict):
             continue
         item_type = _ps_str(it.get('type')) if it.get('type') else 'group'
-        if item_type.lower() != 'group' or it.get('use') is False:
+        if item_type.lower() != 'group' or _ps_eq_bool(it.get('use'), False):
             continue
         own = False
         if 'selection' in it:
@@ -3211,7 +3239,7 @@ def complete_variant_settings(v, defn, auto_variant):
     vn = _ps_str(v.get('name'))
 
     if not has_sel and not has_struct:
-        fields = get_default_selection_fields(defn)
+        fields, declared = get_default_selection_fields(defn)
         s['selection'] = fields
         s['structure'] = [new_details_group()]
         if auto_variant:
@@ -3227,7 +3255,9 @@ def complete_variant_settings(v, defn, auto_variant):
             HINTS.append(f'[INFO] {head}. \u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u2014 {format_hint_list(fields)}; \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0430 \u2014 \u0434\u0435\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0437\u0430\u043f\u0438\u0441\u0438 (details). \u0415\u0441\u043b\u0438 \u043f\u043e \u0437\u0430\u0434\u0430\u0447\u0435 \u043e\u0442\u0447\u0451\u0442\u0443 \u043d\u0443\u0436\u043d\u044b \u0434\u0440\u0443\u0433\u0438\u0435 \u043f\u043e\u043b\u044f \u0438\u043b\u0438 \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043a\u0438 \u2014 \u043e\u043f\u0438\u0448\u0438\u0442\u0435 {target} \u0438 \u0441\u043a\u043e\u043c\u043f\u0438\u043b\u0438\u0440\u0443\u0439\u0442\u0435 \u0437\u0430\u043d\u043e\u0432\u043e; \u0438\u043d\u0430\u0447\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439 \u043d\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f.')
         else:
             fix = '\u043e\u043f\u0438\u0448\u0438\u0442\u0435 settingsVariants \u0438 \u043f\u0435\u0440\u0435\u0447\u0438\u0441\u043b\u0438\u0442\u0435 \u043d\u0443\u0436\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u0432 settings.selection' if auto_variant else '\u043f\u0435\u0440\u0435\u0447\u0438\u0441\u043b\u0438\u0442\u0435 \u043d\u0443\u0436\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u0432 settings.selection'
-            HINTS.append(f'[WARN] {head}, \u043d\u043e \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u043f\u043e\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043d\u0435 \u0438\u0437 \u0447\u0435\u0433\u043e: \u0432 \u043d\u0430\u0431\u043e\u0440\u0430\u0445 \u0434\u0430\u043d\u043d\u044b\u0445 \u043d\u0435 \u043e\u0431\u044a\u044f\u0432\u043b\u0435\u043d\u044b fields. \u0411\u0435\u0437 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0445 \u043f\u043e\u043b\u0435\u0439 \u043e\u0442\u0447\u0451\u0442 \u0431\u0443\u0434\u0435\u0442 \u043f\u0443\u0441\u0442\u044b\u043c \u2014 {fix}.')
+            why = ('все объявленные поля исключены — с запретом на выбор, папки или реквизиты через точку'
+                   if declared else 'в наборах данных не объявлены fields')
+            HINTS.append(f'[WARN] {head}, \u043d\u043e \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u043f\u043e\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043d\u0435 \u0438\u0437 \u0447\u0435\u0433\u043e: {why}. \u0411\u0435\u0437 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0445 \u043f\u043e\u043b\u0435\u0439 \u043e\u0442\u0447\u0451\u0442 \u0431\u0443\u0434\u0435\u0442 \u043f\u0443\u0441\u0442\u044b\u043c \u2014 {fix}.')
     elif has_sel and not has_struct:
         s['structure'] = [new_details_group()]
         if selection_has_fields(s.get('selection')):

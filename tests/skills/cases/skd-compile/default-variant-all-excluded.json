@@ -1,0 +1,11 @@
+{
+  "name": "Поля объявлены, но все исключены — [WARN] называет причину, а не «не объявлены»",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК А", "fields": [ "Служебное #noField", "Контрагент.ИНН" ] } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "[WARN] Вариант «Основной» создан автоматически, потому что в определении нет settingsVariants, но выбранные поля подставить не из чего: все объявленные поля исключены — с запретом на выбор, папки или реквизиты через точку. Без выбранных полей отчёт будет пустым — опишите settingsVariants и перечислите нужные поля в settings.selection.", "stdoutNotContains": "не объявлены fields",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

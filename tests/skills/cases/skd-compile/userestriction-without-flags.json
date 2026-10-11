@@ -1,0 +1,11 @@
+{
+  "name": "useRestriction без флагов (булево или все false) не даёт пустой пары и не исключает поле",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК А", "fields": [ { "field": "Бул", "useRestriction": true }, { "field": "ВсеЛожь", "useRestriction": { "field": false, "condition": false } }, "Обычн" ] } ], "calculatedFields": [ { "name": "ВычЛожь", "expression": "1", "useRestriction": { "field": false } } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "Выбранные поля — Бул, ВсеЛожь, Обычн, ВычЛожь; структура", "fileNotContains": { "file": "Template.xml", "text": "<useRestriction>" },
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

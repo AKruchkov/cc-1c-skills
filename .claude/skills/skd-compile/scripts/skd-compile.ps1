@@ -1,4 +1,4 @@
-﻿# skd-compile v1.126 — Compile 1C DCS from JSON
+﻿# skd-compile v1.127 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1201,15 +1201,22 @@ function Get-CalcRestrict($cf) {
 	return (Get-ObjectRestrict $cf)
 }
 
-function Test-HasRestrict($restrict) {
-	return [bool]($restrict.obj -or @($restrict.tokens).Count -gt 0)
-}
-
 function Get-RestrictFlagNames($restrict) {
-	if ($restrict.obj) {
-		return ,@($restrict.obj.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
+	$o = $restrict.obj
+	if ($o -is [hashtable]) {
+		return ,@($o.Keys | Where-Object { $o[$_] -eq $true } | ForEach-Object { "$_" })
+	}
+	if ($o) {
+		return ,@($o.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
 	}
 	return (Resolve-RestrictFlags $restrict.tokens)
+}
+
+# <useRestriction> пишется, только когда есть хотя бы один известный флаг: булево
+# useRestriction: true (форма параметров) или { field: false } не дают пустой пары
+function Test-HasRestrict($restrict) {
+	$names = Get-RestrictFlagNames $restrict
+	return @($names | Where-Object { $_ -in @('field', 'condition', 'group', 'order') }).Count -gt 0
 }
 
 function Emit-Field {
@@ -1230,7 +1237,6 @@ function Emit-Field {
 				}
 			} else { "" }
 			roles = @()
-			restrict = @()
 			appearance = [ordered]@{}
 			roleExtras = [ordered]@{}
 		}
@@ -3657,10 +3663,29 @@ function Get-DatasetDeclaredFields($ds) {
 function Get-DefaultSelectionFields {
 	$result = New-Object System.Collections.Generic.List[string]
 	$seen = @{}
-	$add = { param([string]$dp) if ($dp -and -not $dp.Contains('.') -and -not $seen.ContainsKey($dp)) { $seen[$dp] = $true; $result.Add($dp) } }
+	# Путь с точкой — реквизит, если перед точкой не объявленная папка: поля папки — «Папка.Поле»
+	$folders = @{}
+	foreach ($ds in @($def.dataSets)) {
+		foreach ($fd in (Get-DatasetDeclaredFields $ds)) {
+			if ($fd -and $fd -isnot [string] -and $fd.folder -eq $true) {
+				$fp = if ($fd.dataPath) { "$($fd.dataPath)" } else { "$($fd.field)" }
+				if ($fp) { $folders[$fp] = $true }
+			}
+		}
+	}
+	$script:defaultFieldsDeclared = $false
+	$add = {
+		param([string]$dp)
+		if (-not $dp) { return }
+		$script:defaultFieldsDeclared = $true
+		$dot = $dp.LastIndexOf('.')
+		if ($dot -ge 0 -and -not $folders.ContainsKey($dp.Substring(0, $dot))) { return }
+		if (-not $seen.ContainsKey($dp)) { $seen[$dp] = $true; $result.Add($dp) }
+	}
 	foreach ($ds in @($def.dataSets)) {
 		foreach ($fd in (Get-DatasetDeclaredFields $ds)) {
 			if ($null -eq $fd) { continue }
+			$script:defaultFieldsDeclared = $true
 			if ((Get-RestrictFlagNames (Get-FieldRestrict $fd)) -contains 'field') { continue }
 			if ($fd -is [string]) {
 				& $add "$((Parse-FieldShorthand $fd).dataPath)"
@@ -3673,6 +3698,7 @@ function Get-DefaultSelectionFields {
 	}
 	foreach ($cf in @($def.calculatedFields)) {
 		if ($null -eq $cf) { continue }
+		$script:defaultFieldsDeclared = $true
 		if ((Get-RestrictFlagNames (Get-CalcRestrict $cf)) -contains 'field') { continue }
 		if ($cf -is [string]) {
 			& $add "$((Parse-CalcShorthand $cf).dataPath)"
@@ -3701,8 +3727,12 @@ function Test-SelectionHasFields($items) {
 	foreach ($it in @($items)) {
 		if ($null -eq $it) { continue }
 		if ($it -is [string]) { if ($it -ne 'Auto') { return $true }; continue }
-		if ($it.auto -eq $true) { continue }
-		if ((Has-JsonProp $it 'folder') -or $it.field) { return $true }
+		if ($it.use -eq $false -or $it.auto -eq $true) { continue }
+		if (Has-JsonProp $it 'folder') {
+			if (Test-SelectionHasFields $it.items) { return $true }
+			continue
+		}
+		if ($it.field) { return $true }
 	}
 	return $false
 }
@@ -3755,7 +3785,8 @@ function Complete-VariantSettings($v, [bool]$autoVariant) {
 			$script:hints.Add("[INFO] $head. Выбранные поля — $(Format-HintList $fields); структура — детальные записи (details). Если по задаче отчёту нужны другие поля или группировки — опишите $target и скомпилируйте заново; иначе действий не требуется.")
 		} else {
 			$fix = if ($autoVariant) { 'опишите settingsVariants и перечислите нужные поля в settings.selection' } else { 'перечислите нужные поля в settings.selection' }
-			$script:hints.Add("[WARN] $head, но выбранные поля подставить не из чего: в наборах данных не объявлены fields. Без выбранных полей отчёт будет пустым — $fix.")
+			$why = if ($script:defaultFieldsDeclared) { 'все объявленные поля исключены — с запретом на выбор, папки или реквизиты через точку' } else { 'в наборах данных не объявлены fields' }
+			$script:hints.Add("[WARN] $head, но выбранные поля подставить не из чего: $why. Без выбранных полей отчёт будет пустым — $fix.")
 		}
 	} elseif ($hasSel -and -not $hasStruct) {
 		$s | Add-Member -NotePropertyName "structure" -NotePropertyValue @(New-DetailsGroup) -Force

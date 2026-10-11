@@ -1,0 +1,11 @@
+{
+  "name": "Поля внутри папки (Папка.Поле) идут в вариант по умолчанию, реквизит через точку — нет",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК А", "fields": [ { "dataPath": "Поступление", "folder": true, "title": "Поступление" }, "Поступление.Сумма: decimal(15,2)", "Поступление.Количество: decimal(15,3)", "Контрагент.ИНН" ] } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "Выбранные поля — Поступление.Сумма, Поступление.Количество; структура", "stdoutNotContains": "ИНН",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}
