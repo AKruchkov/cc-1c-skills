@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.125 — Compile 1C DCS from JSON
+# skd-compile v1.126 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1071,47 +1071,53 @@ def resolve_restrict_flags(tokens):
     return [RESTRICT_MAP.get(_ps_str(t).lower()) for t in tokens]
 
 
-def get_field_restrict_tokens(field_def):
-    """Токены запрета поля набора: shorthand "#noField", в объектной форме — массив restrict."""
-    if isinstance(field_def, str):
-        return list(parse_field_shorthand(field_def)['restrict'])
-    r = field_def.get('restrict')
-    if not _ps_truthy(r):
-        return []
-    return list(r) if isinstance(r, list) else [r]
-
-
-def get_calc_restrict(cf):
-    """Запрет вычисляемого поля: shorthand-строка или объектная форма, где restrict/useRestriction —
-    объект XML-флагов, массив или строка флагов "#noField #noFilter" (решётка необязательна)."""
+def get_object_restrict(o):
+    """Запрет в объектной форме поля (набора или вычисляемого): restrict, иначе useRestriction —
+    объект XML-флагов { field, condition, group, order }, массив или строка "#noField #noFilter"
+    (решётка необязательна)."""
     tokens = []
     obj = None
-    if isinstance(cf, str):
-        tokens = list(parse_calc_shorthand(cf).get('restrict') or [])
+    if _ps_truthy(o.get('restrict')):
+        restrict_val = o.get('restrict')
+    elif _ps_truthy(o.get('useRestriction')):
+        restrict_val = o.get('useRestriction')
     else:
-        if _ps_truthy(cf.get('restrict')):
-            restrict_val = cf.get('restrict')
-        elif _ps_truthy(cf.get('useRestriction')):
-            restrict_val = cf.get('useRestriction')
+        restrict_val = None
+    if restrict_val is not None:
+        if isinstance(restrict_val, dict):
+            obj = restrict_val
+        elif isinstance(restrict_val, str):
+            for tok in restrict_val.split():
+                t = tok.strip().lstrip('#')
+                if t:
+                    tokens.append(t)
+        elif isinstance(restrict_val, list):
+            for r in restrict_val:
+                tokens.append(_ps_str(r))
         else:
-            restrict_val = None
-        if restrict_val is not None:
-            if isinstance(restrict_val, dict):
-                obj = restrict_val
-            elif isinstance(restrict_val, str):
-                for tok in restrict_val.split():
-                    t = tok.strip().lstrip('#')
-                    if t:
-                        tokens.append(t)
-            elif isinstance(restrict_val, list):
-                for r in restrict_val:
-                    tokens.append(_ps_str(r))
-            else:
-                tokens.append(_ps_str(restrict_val))
+            tokens.append(_ps_str(restrict_val))
     return {'tokens': tokens, 'obj': obj}
 
 
-def get_calc_restrict_flag_names(restrict):
+def get_field_restrict(field_def):
+    """Запрет поля набора: shorthand "Поле #noField" или объектная форма."""
+    if isinstance(field_def, str):
+        return {'tokens': list(parse_field_shorthand(field_def)['restrict']), 'obj': None}
+    return get_object_restrict(field_def)
+
+
+def get_calc_restrict(cf):
+    """Запрет вычисляемого поля: shorthand "Имя = Выражение #noField" или объектная форма."""
+    if isinstance(cf, str):
+        return {'tokens': list(parse_calc_shorthand(cf).get('restrict') or []), 'obj': None}
+    return get_object_restrict(cf)
+
+
+def has_restrict(restrict):
+    return restrict['obj'] is not None or len(restrict['tokens']) > 0
+
+
+def get_restrict_flag_names(restrict):
     obj = restrict['obj']
     if obj is not None:
         # Как -eq $true в PS-мастере: true, 1 и строка "true" в любом регистре
@@ -1144,8 +1150,6 @@ def emit_field(lines, field_def, indent):
             parsed = parse_role_spec(field_def['role'])
             f['roles'] = parsed['tokens']
             f['roleExtras'] = parsed['extras']
-        # Parse restrictions
-        f['restrict'] = get_field_restrict_tokens(field_def)
         # Parse appearance (сохраняем значение как есть — может быть string или multilang dict)
         if field_def.get('appearance'):
             for k, v in field_def['appearance'].items():
@@ -1187,9 +1191,10 @@ def emit_field(lines, field_def, indent):
         emit_mltext(lines, f'{indent}\t', 'title', f['title'])
 
     # UseRestriction
-    if f.get('restrict') and len(f['restrict']) > 0:
+    restrict = get_field_restrict(field_def)
+    if has_restrict(restrict):
         lines.append(f'{indent}\t<useRestriction>')
-        emit_restriction_flags(lines, resolve_restrict_flags(f['restrict']), f'{indent}\t\t')
+        emit_restriction_flags(lines, get_restrict_flag_names(restrict), f'{indent}\t\t')
         lines.append(f'{indent}\t</useRestriction>')
 
     # AttributeUseRestriction
@@ -1389,9 +1394,9 @@ def emit_calc_fields(lines, defn):
 
         if title:
             emit_mltext(lines, '\t\t', 'title', title)
-        if restrict['obj'] is not None or restrict['tokens']:
+        if has_restrict(restrict):
             lines.append('\t\t<useRestriction>')
-            emit_restriction_flags(lines, get_calc_restrict_flag_names(restrict), '\t\t\t')
+            emit_restriction_flags(lines, get_restrict_flag_names(restrict), '\t\t\t')
             lines.append('\t\t</useRestriction>')
         if appearance:
             lines.append('\t\t<appearance>')
@@ -3111,11 +3116,11 @@ def get_default_selection_fields(defn):
     for ds in defn.get('dataSets') or []:
         for fd in get_dataset_declared_fields(ds):
             if isinstance(fd, str):
-                if has_field_flag(resolve_restrict_flags(get_field_restrict_tokens(fd))):
+                if has_field_flag(get_restrict_flag_names(get_field_restrict(fd))):
                     continue
                 add(_ps_str(parse_field_shorthand(fd)['dataPath']))
             elif isinstance(fd, dict):
-                if has_field_flag(resolve_restrict_flags(get_field_restrict_tokens(fd))):
+                if has_field_flag(get_restrict_flag_names(get_field_restrict(fd))):
                     continue
                 if fd.get('folder') is True:
                     continue
@@ -3123,7 +3128,7 @@ def get_default_selection_fields(defn):
     for cf in defn.get('calculatedFields') or []:
         if cf is None or not isinstance(cf, (str, dict)):
             continue
-        if has_field_flag(get_calc_restrict_flag_names(get_calc_restrict(cf))):
+        if has_field_flag(get_restrict_flag_names(get_calc_restrict(cf))):
             continue
         if isinstance(cf, str):
             add(_ps_str(parse_calc_shorthand(cf)['dataPath']))

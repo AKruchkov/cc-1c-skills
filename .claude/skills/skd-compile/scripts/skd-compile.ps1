@@ -1,4 +1,4 @@
-﻿# skd-compile v1.125 — Compile 1C DCS from JSON
+﻿# skd-compile v1.126 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1163,40 +1163,49 @@ function Resolve-RestrictFlags($tokens) {
 	return ,@(@($tokens) | ForEach-Object { $script:restrictMap["$_"] })
 }
 
-# Токены запрета поля набора: shorthand "#noField", в объектной форме — массив restrict
-function Get-FieldRestrictTokens($fieldDef) {
-	if ($fieldDef -is [string]) { return ,@((Parse-FieldShorthand $fieldDef).restrict) }
-	if ($fieldDef.restrict) { return ,@($fieldDef.restrict) }
-	return ,@()
-}
-
-# Запрет вычисляемого поля: shorthand-строка или объектная форма, где restrict/useRestriction —
-# объект XML-флагов, массив или строка флагов "#noField #noFilter" (решётка необязательна)
-function Get-CalcRestrict($cf) {
+# Запрет в объектной форме поля (набора или вычисляемого): restrict, иначе useRestriction —
+# объект XML-флагов { field, condition, group, order }, массив или строка "#noField #noFilter"
+# (решётка необязательна)
+function Get-ObjectRestrict($o) {
 	$tokens = @()
 	$obj = $null
-	if ($cf -is [string]) {
-		$parsed = Parse-CalcShorthand $cf
-		if ($parsed.restrict) { $tokens = @($parsed.restrict) }
-	} else {
-		$restrictVal = if ($cf.restrict) { $cf.restrict } elseif ($cf.useRestriction) { $cf.useRestriction } else { $null }
-		if ($restrictVal) {
-			if ($restrictVal -is [System.Management.Automation.PSCustomObject] -or $restrictVal -is [hashtable]) {
-				$obj = $restrictVal
-			} elseif ($restrictVal -is [string]) {
-				foreach ($tok in ($restrictVal -split '\s+')) {
-					$t = $tok.Trim().TrimStart('#')
-					if ($t) { $tokens += $t }
-				}
-			} else {
-				foreach ($r in $restrictVal) { $tokens += "$r" }
+	$restrictVal = if ($o.restrict) { $o.restrict } elseif ($o.useRestriction) { $o.useRestriction } else { $null }
+	if ($restrictVal) {
+		if ($restrictVal -is [System.Management.Automation.PSCustomObject] -or $restrictVal -is [hashtable]) {
+			$obj = $restrictVal
+		} elseif ($restrictVal -is [string]) {
+			foreach ($tok in ($restrictVal -split '\s+')) {
+				$t = $tok.Trim().TrimStart('#')
+				if ($t) { $tokens += $t }
 			}
+		} else {
+			foreach ($r in $restrictVal) { $tokens += "$r" }
 		}
 	}
 	return @{ tokens = $tokens; obj = $obj }
 }
 
-function Get-CalcRestrictFlagNames($restrict) {
+# Запрет поля набора: shorthand "Поле #noField" или объектная форма
+function Get-FieldRestrict($fieldDef) {
+	if ($fieldDef -is [string]) { return @{ tokens = @((Parse-FieldShorthand $fieldDef).restrict); obj = $null } }
+	return (Get-ObjectRestrict $fieldDef)
+}
+
+# Запрет вычисляемого поля: shorthand "Имя = Выражение #noField" или объектная форма
+function Get-CalcRestrict($cf) {
+	if ($cf -is [string]) {
+		$parsed = Parse-CalcShorthand $cf
+		$tokens = if ($parsed.restrict) { @($parsed.restrict) } else { @() }
+		return @{ tokens = $tokens; obj = $null }
+	}
+	return (Get-ObjectRestrict $cf)
+}
+
+function Test-HasRestrict($restrict) {
+	return [bool]($restrict.obj -or @($restrict.tokens).Count -gt 0)
+}
+
+function Get-RestrictFlagNames($restrict) {
 	if ($restrict.obj) {
 		return ,@($restrict.obj.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
 	}
@@ -1230,10 +1239,6 @@ function Emit-Field {
 			$parsed = Parse-RoleSpec $fieldDef.role
 			$f.roles = $parsed.tokens
 			$f.roleExtras = $parsed.extras
-		}
-		# Parse restrictions
-		if ($fieldDef.restrict) {
-			$f.restrict = @($fieldDef.restrict)
 		}
 		# Parse appearance (сохраняем значение как есть — может быть string или multilang dict)
 		if ($fieldDef.appearance) {
@@ -1285,9 +1290,10 @@ function Emit-Field {
 	}
 
 	# UseRestriction
-	if ($f.restrict.Count -gt 0) {
+	$restrict = Get-FieldRestrict $fieldDef
+	if (Test-HasRestrict $restrict) {
 		X "$indent`t<useRestriction>"
-		Emit-RestrictionFlags -names (Resolve-RestrictFlags $f.restrict) -indent "$indent`t`t"
+		Emit-RestrictionFlags -names (Get-RestrictFlagNames $restrict) -indent "$indent`t`t"
 		X "$indent`t</useRestriction>"
 	}
 
@@ -1520,9 +1526,9 @@ function Emit-CalcFields {
 		if ($title) {
 			Emit-MLText -tag "title" -text $title -indent "`t`t"
 		}
-		if ($restrict.obj -or $restrict.tokens.Count -gt 0) {
+		if (Test-HasRestrict $restrict) {
 			X "`t`t<useRestriction>"
-			Emit-RestrictionFlags -names (Get-CalcRestrictFlagNames $restrict) -indent "`t`t`t"
+			Emit-RestrictionFlags -names (Get-RestrictFlagNames $restrict) -indent "`t`t`t"
 			X "`t`t</useRestriction>"
 		}
 		if ($appearance) {
@@ -3655,7 +3661,7 @@ function Get-DefaultSelectionFields {
 	foreach ($ds in @($def.dataSets)) {
 		foreach ($fd in (Get-DatasetDeclaredFields $ds)) {
 			if ($null -eq $fd) { continue }
-			if ((Resolve-RestrictFlags (Get-FieldRestrictTokens $fd)) -contains 'field') { continue }
+			if ((Get-RestrictFlagNames (Get-FieldRestrict $fd)) -contains 'field') { continue }
 			if ($fd -is [string]) {
 				& $add "$((Parse-FieldShorthand $fd).dataPath)"
 			} else {
@@ -3667,7 +3673,7 @@ function Get-DefaultSelectionFields {
 	}
 	foreach ($cf in @($def.calculatedFields)) {
 		if ($null -eq $cf) { continue }
-		if ((Get-CalcRestrictFlagNames (Get-CalcRestrict $cf)) -contains 'field') { continue }
+		if ((Get-RestrictFlagNames (Get-CalcRestrict $cf)) -contains 'field') { continue }
 		if ($cf -is [string]) {
 			& $add "$((Parse-CalcShorthand $cf).dataPath)"
 		} else {

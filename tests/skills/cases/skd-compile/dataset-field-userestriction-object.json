@@ -1,0 +1,12 @@
+{
+  "name": "useRestriction в объектной форме поля набора — запрет пишется в XML, поле не идёт в вариант по умолчанию",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Обычн", "fields": [ { "field": "Скрыт", "useRestriction": { "field": true, "condition": true } }, { "field": "БезОтбора", "type": "decimal(15,2)", "useRestriction": { "condition": true, "order": true } }, "Обычн" ] } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "Выбранные поля — БезОтбора, Обычн; структура",
+    "fileContains": { "file": "Template.xml", "text": ["<dataPath>Скрыт</dataPath>\r\n\t\t\t<field>Скрыт</field>\r\n\t\t\t<useRestriction>\r\n\t\t\t\t<field>true</field>\r\n\t\t\t\t<condition>true</condition>\r\n\t\t\t</useRestriction>", "<useRestriction>\r\n\t\t\t\t<condition>true</condition>\r\n\t\t\t\t<order>true</order>\r\n\t\t\t</useRestriction>"] },
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}
