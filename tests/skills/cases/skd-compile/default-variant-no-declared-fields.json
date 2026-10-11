@@ -1,0 +1,11 @@
+{
+  "name": "Вариант по умолчанию без объявленных полей — [WARN], выбор пуст",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Номер" } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "[WARN] Вариант «Основной» создан автоматически, потому что в определении нет settingsVariants, но выбранные поля подставить не из чего: в наборах данных не объявлены fields. Без выбранных полей отчёт будет пустым — опишите settingsVariants и перечислите нужные поля в settings.selection.",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

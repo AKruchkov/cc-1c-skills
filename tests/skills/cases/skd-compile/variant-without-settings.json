@@ -1,0 +1,11 @@
+{
+  "name": "Вариант без settings достраивается как вариант по умолчанию",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Номер, \"а\" КАК Имя", "fields": ["Номер: decimal(10)", "Имя: string(10)"] } ], "settingsVariants": [ { "name": "Мой" } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "[INFO] Вариант «Мой»: настройки достроены автоматически, потому что у варианта нет settings. Выбранные поля — Номер, Имя; структура — детальные записи (details).",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

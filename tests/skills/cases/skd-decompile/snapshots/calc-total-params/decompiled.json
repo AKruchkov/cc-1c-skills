@@ -9,5 +9,5 @@
     "СлужебныйПар: string @hidden",
     { "name": "ПорядокОкругления", "type": "EnumRef.Округления", "value": "Перечисление.Округления.Окр1", "availableValues": [{ "value": "Перечисление.Округления.Окр1_00", "presentation": "руб. коп" }, { "value": "Перечисление.Округления.Окр1", "presentation": "руб." }] }
   ],
-  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Auto"], "structure": "details" } }]
+  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Цена", "Закупка", "Маржа", "Наценка"], "structure": "details" } }]
 }

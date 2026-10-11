@@ -1,0 +1,11 @@
+{
+  "name": "Есть structure, нет selection и полей в группировках — [WARN], настройки не меняются",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Номер, \"а\" КАК Имя", "fields": ["Номер: decimal(10)", "Имя: string(10)"] } ], "settingsVariants": [ { "name": "ПоИмени", "settings": { "structure": "Имя > details" } }, { "name": "Детали", "settings": { "structure": "details" } } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": ["[WARN] Вариант «ПоИмени»: в settings нет selection, и у группировок «Имя», «детальные записи (details)» выбранных полей тоже нет — в отчёте будут только колонки группировок (Имя), ресурсы, другие поля и детальные записи не выведутся. Перечислите нужные поля в settings.selection.", "[WARN] Вариант «Детали»: в settings нет selection, и у группировки «детальные записи (details)» выбранных полей тоже нет — отчёт будет пустым. Перечислите нужные поля в settings.selection."],
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

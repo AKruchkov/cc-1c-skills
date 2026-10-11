@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.124 — Compile 1C DCS from JSON
+# skd-compile v1.125 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -1038,6 +1038,89 @@ def emit_restriction_flags(lines, names, indent):
             lines.append(f'{indent}<{n}>true</{n}>')
 
 
+def _ps_truthy(val):
+    # if ($x) в PowerShell: пустые строка/массив, 0, $false и $null ложны; объект истинен всегда
+    if val is None or isinstance(val, bool):
+        return bool(val)
+    if isinstance(val, (str, list)):
+        return len(val) > 0
+    if isinstance(val, (int, float)):
+        return val != 0
+    return True
+
+
+def _ps_str(val):
+    # "$($x)" в PowerShell: $null → пустая строка, bool → True/False
+    if val is None:
+        return ''
+    if isinstance(val, bool):
+        return 'True' if val else 'False'
+    return str(val)
+
+
+# Флаги запрета: DSL-имя → XML-имя. Один разбор и для эмиттеров, и для подбора полей варианта
+# по умолчанию — иначе поле, которому эмиттер запрета не пишет, молча выпадало бы из выбора.
+# Поиск без учёта регистра, как в хеш-таблице PS-мастера.
+RESTRICT_MAP = {
+    'nofield': 'field', 'nofilter': 'condition', 'nocondition': 'condition',
+    'nogroup': 'group', 'noorder': 'order',
+}
+
+
+def resolve_restrict_flags(tokens):
+    return [RESTRICT_MAP.get(_ps_str(t).lower()) for t in tokens]
+
+
+def get_field_restrict_tokens(field_def):
+    """Токены запрета поля набора: shorthand "#noField", в объектной форме — массив restrict."""
+    if isinstance(field_def, str):
+        return list(parse_field_shorthand(field_def)['restrict'])
+    r = field_def.get('restrict')
+    if not _ps_truthy(r):
+        return []
+    return list(r) if isinstance(r, list) else [r]
+
+
+def get_calc_restrict(cf):
+    """Запрет вычисляемого поля: shorthand-строка или объектная форма, где restrict/useRestriction —
+    объект XML-флагов, массив или строка флагов "#noField #noFilter" (решётка необязательна)."""
+    tokens = []
+    obj = None
+    if isinstance(cf, str):
+        tokens = list(parse_calc_shorthand(cf).get('restrict') or [])
+    else:
+        if _ps_truthy(cf.get('restrict')):
+            restrict_val = cf.get('restrict')
+        elif _ps_truthy(cf.get('useRestriction')):
+            restrict_val = cf.get('useRestriction')
+        else:
+            restrict_val = None
+        if restrict_val is not None:
+            if isinstance(restrict_val, dict):
+                obj = restrict_val
+            elif isinstance(restrict_val, str):
+                for tok in restrict_val.split():
+                    t = tok.strip().lstrip('#')
+                    if t:
+                        tokens.append(t)
+            elif isinstance(restrict_val, list):
+                for r in restrict_val:
+                    tokens.append(_ps_str(r))
+            else:
+                tokens.append(_ps_str(restrict_val))
+    return {'tokens': tokens, 'obj': obj}
+
+
+def get_calc_restrict_flag_names(restrict):
+    obj = restrict['obj']
+    if obj is not None:
+        # Как -eq $true в PS-мастере: true, 1 и строка "true" в любом регистре
+        return [xml_name for xml_name, flag in obj.items()
+                if flag is True or (not isinstance(flag, bool) and isinstance(flag, (int, float)) and flag == 1)
+                or (isinstance(flag, str) and flag.lower() == 'true')]
+    return resolve_restrict_flags(restrict['tokens'])
+
+
 def emit_field(lines, field_def, indent):
     if isinstance(field_def, str):
         f = parse_field_shorthand(field_def)
@@ -1062,8 +1145,7 @@ def emit_field(lines, field_def, indent):
             f['roles'] = parsed['tokens']
             f['roleExtras'] = parsed['extras']
         # Parse restrictions
-        if field_def.get('restrict'):
-            f['restrict'] = list(field_def['restrict'])
+        f['restrict'] = get_field_restrict_tokens(field_def)
         # Parse appearance (сохраняем значение как есть — может быть string или multilang dict)
         if field_def.get('appearance'):
             for k, v in field_def['appearance'].items():
@@ -1072,7 +1154,8 @@ def emit_field(lines, field_def, indent):
             f['presentationExpression'] = str(field_def['presentationExpression'])
         # attrRestrict
         if field_def.get('attrRestrict'):
-            f['attrRestrict'] = list(field_def['attrRestrict'])
+            ar = field_def['attrRestrict']
+            f['attrRestrict'] = list(ar) if isinstance(ar, list) else [ar]
         # availableValues — array of {value, presentation}
         if field_def.get('availableValues'):
             f['availableValues'] = field_def['availableValues']
@@ -1104,19 +1187,15 @@ def emit_field(lines, field_def, indent):
         emit_mltext(lines, f'{indent}\t', 'title', f['title'])
 
     # UseRestriction
-    restrict_map = {
-        'noField': 'field', 'noFilter': 'condition', 'noCondition': 'condition',
-        'noGroup': 'group', 'noOrder': 'order',
-    }
     if f.get('restrict') and len(f['restrict']) > 0:
         lines.append(f'{indent}\t<useRestriction>')
-        emit_restriction_flags(lines, [restrict_map.get(str(r)) for r in f['restrict']], f'{indent}\t\t')
+        emit_restriction_flags(lines, resolve_restrict_flags(f['restrict']), f'{indent}\t\t')
         lines.append(f'{indent}\t</useRestriction>')
 
     # AttributeUseRestriction
     if f.get('attrRestrict') and len(f['attrRestrict']) > 0:
         lines.append(f'{indent}\t<attributeUseRestriction>')
-        emit_restriction_flags(lines, [restrict_map.get(str(r)) for r in f['attrRestrict']], f'{indent}\t\t')
+        emit_restriction_flags(lines, resolve_restrict_flags(f['attrRestrict']), f'{indent}\t\t')
         lines.append(f'{indent}\t</attributeUseRestriction>')
 
     # Role
@@ -1280,19 +1359,14 @@ def emit_data_set_links(lines, defn):
 def emit_calc_fields(lines, defn):
     if not defn.get('calculatedFields'):
         return
-    restrict_map = {
-        'noField': 'field', 'noFilter': 'condition', 'noCondition': 'condition',
-        'noGroup': 'group', 'noOrder': 'order',
-    }
     for cf in defn['calculatedFields']:
         # Collect dataPath/expression/title/type/restrict/appearance from either
         # shorthand string or object form. Object form accepts dataPath/field/name
         # as synonyms; useRestriction/restrict accepts object, array, or flag string.
         title = ''
         type_str = ''
-        restrict_tokens = []
-        restrict_obj = None
         appearance = None
+        restrict = get_calc_restrict(cf)
 
         if isinstance(cf, str):
             parsed = parse_calc_shorthand(cf)
@@ -1300,7 +1374,6 @@ def emit_calc_fields(lines, defn):
             expression = parsed['expression']
             title = parsed.get('title', '') or ''
             type_str = parsed.get('type', '') or ''
-            restrict_tokens = list(parsed.get('restrict') or [])
         else:
             data_path = str(cf.get('dataPath') or cf.get('field') or cf.get('name') or '')
             expression = str(cf.get('expression', ''))
@@ -1308,21 +1381,6 @@ def emit_calc_fields(lines, defn):
                 title = cf['title']
             if cf.get('type'):
                 type_str = resolve_type_str(str(cf['type']))
-
-            restrict_val = cf.get('restrict') if cf.get('restrict') is not None else cf.get('useRestriction')
-            if restrict_val:
-                if isinstance(restrict_val, dict):
-                    restrict_obj = restrict_val
-                elif isinstance(restrict_val, str):
-                    # Flag-string form: "#noField #noFilter #noGroup #noOrder" (or without `#`)
-                    for tok in restrict_val.split():
-                        t = tok.strip().lstrip('#')
-                        if t:
-                            restrict_tokens.append(t)
-                else:
-                    # Array form: ["noField", "noFilter", ...]
-                    for r in restrict_val:
-                        restrict_tokens.append(str(r))
             appearance = cf.get('appearance')
 
         lines.append('\t<calculatedField>')
@@ -1331,16 +1389,9 @@ def emit_calc_fields(lines, defn):
 
         if title:
             emit_mltext(lines, '\t\t', 'title', title)
-        if restrict_obj or restrict_tokens:
+        if restrict['obj'] is not None or restrict['tokens']:
             lines.append('\t\t<useRestriction>')
-            if restrict_obj:
-                # Как -eq $true в PS-мастере: true, 1 и строка "true" в любом регистре
-                flag_names = [xml_name for xml_name, flag in restrict_obj.items()
-                              if flag is True or (not isinstance(flag, bool) and isinstance(flag, (int, float)) and flag == 1)
-                              or (isinstance(flag, str) and flag.lower() == 'true')]
-            else:
-                flag_names = [restrict_map.get(str(r)) for r in restrict_tokens]
-            emit_restriction_flags(lines, flag_names, '\t\t\t')
+            emit_restriction_flags(lines, get_calc_restrict_flag_names(restrict), '\t\t\t')
             lines.append('\t\t</useRestriction>')
         if appearance:
             lines.append('\t\t<appearance>')
@@ -3012,23 +3063,200 @@ def emit_structure_item(lines, item, indent, short_group=False):
         lines.append(f'{indent}</dcsset:item>')
 
 
-def emit_settings_variants(lines, defn):
-    variants = defn.get('settingsVariants')
+# --- \u0414\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0430 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043a \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u0430 ---
+# \u0427\u0435\u0433\u043e \u043d\u0435\u0442 \u0432 \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0438 (\u043a\u043b\u044e\u0447\u0430 \u043d\u0435\u0442) \u2014 \u0434\u043e\u0441\u0442\u0440\u0430\u0438\u0432\u0430\u0435\u043c \u0438 \u0441\u043e\u043e\u0431\u0449\u0430\u0435\u043c \u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u043e\u0439; \u0447\u0442\u043e \u0437\u0430\u0434\u0430\u043d\u043e, \u0434\u0430\u0436\u0435
+# \u043f\u0443\u0441\u0442\u044b\u043c ([] / ["Auto"]), \u2014 \u0440\u0435\u0448\u0435\u043d\u0438\u0435 \u0430\u0432\u0442\u043e\u0440\u0430, \u043d\u0435 \u0442\u0440\u043e\u0433\u0430\u0435\u043c. \u041a\u043e\u0440\u043d\u0435\u0432\u043e\u0439 Auto \u0440\u0430\u0441\u043a\u0440\u044b\u0432\u0430\u0442\u044c \u043d\u0435 \u0438\u0437 \u0447\u0435\u0433\u043e:
+# \u0432\u0430\u0440\u0438\u0430\u043d\u0442 \u0431\u0435\u0437 \u044f\u0432\u043d\u044b\u0445 \u043f\u043e\u043b\u0435\u0439 \u0432\u044b\u0432\u043e\u0434\u0438\u0442 \u043f\u0443\u0441\u0442\u043e\u0439 \u043e\u0442\u0447\u0451\u0442 (#115).
 
-    # Default variant if none specified
-    if not variants or len(variants) == 0:
-        variants = [{
-            'name': '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439',
-            'presentation': '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439',
-            'settings': {
-                'selection': ['Auto'],
-                'structure': [{
-                    'type': 'group',
-                    'order': ['Auto'],
-                    'selection': ['Auto'],
-                }],
-            },
-        }]
+HINTS = []
+
+
+def _ps_true(val):
+    # PowerShell `-eq $true`: \u0441\u0442\u0440\u043e\u043a\u0430 \u0441\u0440\u0430\u0432\u043d\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u043a\u0430\u043a \u0442\u0435\u043a\u0441\u0442 \u0431\u0435\u0437 \u0443\u0447\u0451\u0442\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() == 'true'
+    return False
+
+
+def get_dataset_declared_fields(ds):
+    """Объявленные поля набора; у объединения без своих полей — поля его частей."""
+    if not ds:
+        return []
+    fields = ds.get('fields')
+    if _ps_truthy(fields):
+        return list(fields) if isinstance(fields, list) else [fields]
+    acc = []
+    for it in (ds.get('items') or []):
+        if it:
+            acc += get_dataset_declared_fields(it)
+    return acc
+
+
+def get_default_selection_fields(defn):
+    """Поля для выбора по умолчанию: объявленные поля наборов верхнего уровня, затем вычисляемые.
+    Без запрета на выбор, без папок и путей с точкой (реквизиты, не колонки); повторы — по dataPath."""
+    result = []
+    seen = set()
+
+    def add(dp):
+        if dp and '.' not in dp and dp.lower() not in seen:
+            seen.add(dp.lower())
+            result.append(dp)
+
+    def has_field_flag(names):
+        return any(_ps_str(n).lower() == 'field' for n in names if n)
+
+    for ds in defn.get('dataSets') or []:
+        for fd in get_dataset_declared_fields(ds):
+            if isinstance(fd, str):
+                if has_field_flag(resolve_restrict_flags(get_field_restrict_tokens(fd))):
+                    continue
+                add(_ps_str(parse_field_shorthand(fd)['dataPath']))
+            elif isinstance(fd, dict):
+                if has_field_flag(resolve_restrict_flags(get_field_restrict_tokens(fd))):
+                    continue
+                if fd.get('folder') is True:
+                    continue
+                add(_ps_str(fd.get('dataPath')) if fd.get('dataPath') else _ps_str(fd.get('field')))
+    for cf in defn.get('calculatedFields') or []:
+        if cf is None or not isinstance(cf, (str, dict)):
+            continue
+        if has_field_flag(get_calc_restrict_flag_names(get_calc_restrict(cf))):
+            continue
+        if isinstance(cf, str):
+            add(_ps_str(parse_calc_shorthand(cf)['dataPath']))
+        else:
+            if cf.get('dataPath'):
+                dp = _ps_str(cf.get('dataPath'))
+            elif cf.get('field'):
+                dp = _ps_str(cf.get('field'))
+            else:
+                dp = _ps_str(cf.get('name'))
+            add(dp)
+    return result
+
+
+def new_details_group():
+    return {'type': 'group', 'order': ['Auto'], 'selection': ['Auto']}
+
+
+def format_hint_list(items):
+    if len(items) <= 8:
+        return ', '.join(items)
+    return ', '.join(items[:8]) + f' \u0438 \u0435\u0449\u0451 {len(items) - 8}'
+
+
+def selection_has_fields(items):
+    if items is None:
+        return False
+    for it in (items if isinstance(items, list) else [items]):
+        if it is None:
+            continue
+        if isinstance(it, str):
+            if it.lower() != 'auto':
+                return True
+            continue
+        if not isinstance(it, dict):
+            continue
+        if _ps_true(it.get('auto')):
+            continue
+        if 'folder' in it or it.get('field'):
+            return True
+    return False
+
+
+def find_groups_without_fields(items, inherited, out):
+    """\u0413\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043a\u0438, \u0443 \u043a\u043e\u0442\u043e\u0440\u044b\u0445 \u0432\u044b\u0431\u043e\u0440 \u043f\u0443\u0441\u0442 \u043f\u043e \u0432\u0441\u0435\u0439 \u0446\u0435\u043f\u043e\u0447\u043a\u0435 \u0434\u043e \u043a\u043e\u0440\u043d\u044f (Auto \u043d\u0430\u0441\u043b\u0435\u0434\u0443\u0435\u0442 \u0432\u044b\u0431\u043e\u0440 \u0440\u043e\u0434\u0438\u0442\u0435\u043b\u044f).
+    \u042f\u0432\u043d\u044b\u0439 [] \u0443 \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043a\u0438 \u2014 \u0440\u0435\u0448\u0435\u043d\u0438\u0435 \u0430\u0432\u0442\u043e\u0440\u0430, \u0432\u0435\u0442\u043a\u0443 \u043d\u0435 \u043f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u043c. \u0422\u0430\u0431\u043b\u0438\u0446\u044b \u0438 \u0434\u0438\u0430\u0433\u0440\u0430\u043c\u043c\u044b \u043d\u0435 \u043e\u0431\u0445\u043e\u0434\u0438\u043c."""
+    for it in (items if isinstance(items, list) else [items]):
+        if not isinstance(it, dict):
+            continue
+        item_type = _ps_str(it.get('type')) if it.get('type') else 'group'
+        if item_type.lower() != 'group' or it.get('use') is False:
+            continue
+        own = False
+        if 'selection' in it:
+            sel = it['selection']
+            if isinstance(sel, list) and len(sel) == 0:
+                continue
+            own = selection_has_fields(sel)
+        eff = inherited or own
+        if not eff:
+            gb = it.get('groupBy') or it.get('groupFields')
+            gb_items = gb if isinstance(gb, list) else ([] if gb is None else [gb])
+            names = []
+            for x in gb_items:
+                if x is None:
+                    continue
+                names.append(x if isinstance(x, str) else (_ps_str(x.get('field')) if isinstance(x, dict) else ''))
+            out.append(', '.join(names))
+        if it.get('children'):
+            find_groups_without_fields(it['children'], eff, out)
+
+
+def complete_variant_settings(v, defn, auto_variant):
+    s = v.get('settings')
+    no_settings = s is None
+    if no_settings:
+        s = {}
+    has_sel = 'selection' in s
+    has_struct = 'structure' in s
+    vn = _ps_str(v.get('name'))
+
+    if not has_sel and not has_struct:
+        fields = get_default_selection_fields(defn)
+        s['selection'] = fields
+        s['structure'] = [new_details_group()]
+        if auto_variant:
+            head = f'\u0412\u0430\u0440\u0438\u0430\u043d\u0442 \u00ab{vn}\u00bb \u0441\u043e\u0437\u0434\u0430\u043d \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438, \u043f\u043e\u0442\u043e\u043c\u0443 \u0447\u0442\u043e \u0432 \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0438 \u043d\u0435\u0442 settingsVariants'
+            target = 'settingsVariants'
+        elif no_settings:
+            head = f'\u0412\u0430\u0440\u0438\u0430\u043d\u0442 \u00ab{vn}\u00bb: \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0434\u043e\u0441\u0442\u0440\u043e\u0435\u043d\u044b \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438, \u043f\u043e\u0442\u043e\u043c\u0443 \u0447\u0442\u043e \u0443 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u0430 \u043d\u0435\u0442 settings'
+            target = 'settings.selection \u0438 settings.structure \u044d\u0442\u043e\u0433\u043e \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u0430'
+        else:
+            head = f'\u0412\u0430\u0440\u0438\u0430\u043d\u0442 \u00ab{vn}\u00bb: \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0434\u043e\u0441\u0442\u0440\u043e\u0435\u043d\u044b \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438, \u043f\u043e\u0442\u043e\u043c\u0443 \u0447\u0442\u043e \u0432 settings \u043d\u0435\u0442 selection \u0438 structure'
+            target = 'settings.selection \u0438 settings.structure \u044d\u0442\u043e\u0433\u043e \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u0430'
+        if fields:
+            HINTS.append(f'[INFO] {head}. \u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u2014 {format_hint_list(fields)}; \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0430 \u2014 \u0434\u0435\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0437\u0430\u043f\u0438\u0441\u0438 (details). \u0415\u0441\u043b\u0438 \u043f\u043e \u0437\u0430\u0434\u0430\u0447\u0435 \u043e\u0442\u0447\u0451\u0442\u0443 \u043d\u0443\u0436\u043d\u044b \u0434\u0440\u0443\u0433\u0438\u0435 \u043f\u043e\u043b\u044f \u0438\u043b\u0438 \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043a\u0438 \u2014 \u043e\u043f\u0438\u0448\u0438\u0442\u0435 {target} \u0438 \u0441\u043a\u043e\u043c\u043f\u0438\u043b\u0438\u0440\u0443\u0439\u0442\u0435 \u0437\u0430\u043d\u043e\u0432\u043e; \u0438\u043d\u0430\u0447\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439 \u043d\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f.')
+        else:
+            fix = '\u043e\u043f\u0438\u0448\u0438\u0442\u0435 settingsVariants \u0438 \u043f\u0435\u0440\u0435\u0447\u0438\u0441\u043b\u0438\u0442\u0435 \u043d\u0443\u0436\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u0432 settings.selection' if auto_variant else '\u043f\u0435\u0440\u0435\u0447\u0438\u0441\u043b\u0438\u0442\u0435 \u043d\u0443\u0436\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u0432 settings.selection'
+            HINTS.append(f'[WARN] {head}, \u043d\u043e \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u043f\u043e\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043d\u0435 \u0438\u0437 \u0447\u0435\u0433\u043e: \u0432 \u043d\u0430\u0431\u043e\u0440\u0430\u0445 \u0434\u0430\u043d\u043d\u044b\u0445 \u043d\u0435 \u043e\u0431\u044a\u044f\u0432\u043b\u0435\u043d\u044b fields. \u0411\u0435\u0437 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0445 \u043f\u043e\u043b\u0435\u0439 \u043e\u0442\u0447\u0451\u0442 \u0431\u0443\u0434\u0435\u0442 \u043f\u0443\u0441\u0442\u044b\u043c \u2014 {fix}.')
+    elif has_sel and not has_struct:
+        s['structure'] = [new_details_group()]
+        if selection_has_fields(s.get('selection')):
+            HINTS.append(f'[INFO] \u0412\u0430\u0440\u0438\u0430\u043d\u0442 \u00ab{vn}\u00bb: \u0432 settings \u043d\u0435\u0442 structure \u2014 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u044b \u0434\u0435\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0437\u0430\u043f\u0438\u0441\u0438 (details), \u043e\u0442\u0447\u0451\u0442 \u0432\u044b\u0432\u0435\u0434\u0435\u0442 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0447\u043d\u043e. \u0415\u0441\u043b\u0438 \u043f\u043e \u0437\u0430\u0434\u0430\u0447\u0435 \u043d\u0443\u0436\u043d\u044b \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043a\u0438 \u0441 \u0438\u0442\u043e\u0433\u0430\u043c\u0438 \u2014 \u043e\u043f\u0438\u0448\u0438\u0442\u0435 settings.structure; \u0438\u043d\u0430\u0447\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439 \u043d\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f.')
+        else:
+            HINTS.append(f'[WARN] Вариант «{vn}»: в settings нет structure — добавлены детальные записи (details), но в settings.selection нет ни одного поля — отчёт будет пустым. Перечислите нужные поля в settings.selection.')
+    elif has_struct and not has_sel:
+        struct_items = s['structure']
+        if isinstance(struct_items, str):
+            struct_items = parse_structure_shorthand(struct_items)
+        found = []
+        find_groups_without_fields(struct_items, False, found)
+        if found:
+            labels = [f'\u00ab{x}\u00bb' if x else '\u00ab\u0434\u0435\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0437\u0430\u043f\u0438\u0441\u0438 (details)\u00bb' for x in found]
+            group_cols = [x for x in found if x]
+            has_details = any(not x for x in found)
+            who = f'\u0443 \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043a\u0438 {labels[0]}' if len(labels) == 1 else f'\u0443 \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043e\u043a {", ".join(labels)}'
+            if group_cols:
+                tail = '\u0440\u0435\u0441\u0443\u0440\u0441\u044b, \u0434\u0440\u0443\u0433\u0438\u0435 \u043f\u043e\u043b\u044f \u0438 \u0434\u0435\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0437\u0430\u043f\u0438\u0441\u0438 \u043d\u0435 \u0432\u044b\u0432\u0435\u0434\u0443\u0442\u0441\u044f' if has_details else '\u0440\u0435\u0441\u0443\u0440\u0441\u044b \u0438 \u0434\u0440\u0443\u0433\u0438\u0435 \u043f\u043e\u043b\u044f \u043d\u0435 \u0432\u044b\u0432\u0435\u0434\u0443\u0442\u0441\u044f'
+                effect = f'\u0432 \u043e\u0442\u0447\u0451\u0442\u0435 \u0431\u0443\u0434\u0443\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u043a\u043e\u043b\u043e\u043d\u043a\u0438 \u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u043e\u043a ({", ".join(group_cols)}), {tail}'
+            else:
+                effect = '\u043e\u0442\u0447\u0451\u0442 \u0431\u0443\u0434\u0435\u0442 \u043f\u0443\u0441\u0442\u044b\u043c'
+            HINTS.append(f'[WARN] \u0412\u0430\u0440\u0438\u0430\u043d\u0442 \u00ab{vn}\u00bb: \u0432 settings \u043d\u0435\u0442 selection, \u0438 {who} \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0445 \u043f\u043e\u043b\u0435\u0439 \u0442\u043e\u0436\u0435 \u043d\u0435\u0442 \u2014 {effect}. \u041f\u0435\u0440\u0435\u0447\u0438\u0441\u043b\u0438\u0442\u0435 \u043d\u0443\u0436\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u0432 settings.selection.')
+    return s
+
+
+def emit_settings_variants(lines, defn):
+    sv = defn.get('settingsVariants') or []
+    if isinstance(sv, dict):
+        sv = [sv]
+    variants = [v for v in sv if v is not None]
+    auto_variant = len(variants) == 0
+    if auto_variant:
+        variants = [{'name': '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439', 'presentation': '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439'}]
 
     for v in variants:
         lines.append('\t<settingsVariant>')
@@ -3039,7 +3267,7 @@ def emit_settings_variants(lines, defn):
 
         lines.append('\t\t<dcsset:settings xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows">')
 
-        s = v.get('settings', {})
+        s = complete_variant_settings(v, defn, auto_variant)
 
         # Helper: resolve XViewMode/XUserSettingID from settings — emit only if explicitly set
         def _block_usid(key):
@@ -3273,6 +3501,8 @@ def main():
     print(f"OK  {args.OutputPath}")
     print(f"    DataSets: {ds_count}  Fields: {field_count}  Calculated: {calc_count}  Totals: {total_count}  Params: {param_count}  Variants: {variant_count}")
     print(f"    Size: {file_size} bytes")
+    for h in HINTS:
+        print(h)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-﻿# skd-decompile v0.96 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+﻿# skd-decompile v0.97 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -2984,7 +2984,10 @@ foreach ($sv in $svNodes) {
 	# selection (top-level)
 	$selTop = $settingsNode.SelectSingleNode("dcsset:selection", $ns)
 	$selItems = Build-Selection -selNode $selTop -loc "variant[$vi]/selection"
-	if ($selItems.Count -gt 0) { $settings['selection'] = $selItems }
+	# selection и structure варианта — всегда явные: без ключа compile достроит вариант сам (поля наборов,
+	# детальные записи), и пустой в XML вариант после круга начнёт выводить данные. [] = «нет».
+	# NB: прямое присваивание @() (не через if-выражение — там пустой массив схлопнется в $null).
+	if ($selItems.Count -gt 0) { $settings['selection'] = $selItems } else { $settings['selection'] = @() }
 	# Block-level viewMode/userSettingID: preserve exact presence (even Normal) for bit-perfect
 	$svm = Get-BlockVM $selTop
 	if ($null -ne $svm) { $settings['selectionViewMode'] = $svm }
@@ -3039,7 +3042,7 @@ foreach ($sv in $svNodes) {
 		$short = Try-StructureShorthand $structItems
 		if ($short) { $settings['structure'] = $short }
 		else        { $settings['structure'] = $structItems }
-	}
+	} else { $settings['structure'] = @() }
 
 	# <dcsset:itemsViewMode> on settings — preserve presence (even Normal)
 	$sivmNode = $settingsNode.SelectSingleNode("dcsset:itemsViewMode", $ns)
@@ -3057,17 +3060,10 @@ foreach ($sv in $svNodes) {
 		if ($apDict.Count -gt 0) { $settings['additionalProperties'] = $apDict }
 	}
 
-	# Skip pure-default variants: settings contains only "details" structure (or nothing) +
-	# name=Основной + no distinctive title.
-	$nonStructKeys = @($settings.Keys | Where-Object { $_ -ne 'structure' })
-	$structOnlyDetails = (-not $settings.Contains('structure')) -or ($settings['structure'] -eq 'details')
-	$isDefault = ($nonStructKeys.Count -eq 0) -and $structOnlyDetails -and ($vname -eq 'Основной') -and (-not $presentation -or $presentation -eq $vname)
-	if (-not $isDefault) {
-		$entry = [ordered]@{ name = $vname }
-		if ($presentation -and $presentation -ne $vname) { $entry['title'] = $presentation }
-		$entry['settings'] = $settings
-		$settingsVariants += $entry
-	}
+	$entry = [ordered]@{ name = $vname }
+	if ($presentation -and $presentation -ne $vname) { $entry['title'] = $presentation }
+	$entry['settings'] = $settings
+	$settingsVariants += $entry
 	$vi++
 }
 if ($settingsVariants.Count -gt 0) { $out['settingsVariants'] = $settingsVariants }

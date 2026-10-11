@@ -1,0 +1,11 @@
+{
+  "name": "В settings только отбор — выбор и структура достраиваются, отбор сохраняется",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Номер, \"а\" КАК Имя", "fields": ["Номер: decimal(10)", "Имя: string(10)"] } ], "settingsVariants": [ { "name": "Мой", "settings": { "filter": ["Номер = 1"] } } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "[INFO] Вариант «Мой»: настройки достроены автоматически, потому что в settings нет selection и structure. Выбранные поля — Номер, Имя;",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

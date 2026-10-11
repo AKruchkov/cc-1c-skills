@@ -1,0 +1,1 @@
+{ "dataSets": [{ "name": "Н", "query": "ВЫБРАТЬ 1 КАК А", "fields": ["А"] }], "settingsVariants": [{ "name": "Основной", "settings": { "selection": [], "structure": [] } }, { "name": "Второй", "settings": { "selection": [], "structure": "details" } }, { "name": "АвтоКорень", "settings": { "selection": ["Auto"], "structure": "details" } }] }

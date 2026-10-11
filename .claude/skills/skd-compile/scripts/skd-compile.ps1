@@ -1,4 +1,4 @@
-﻿# skd-compile v1.124 — Compile 1C DCS from JSON
+﻿# skd-compile v1.125 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1152,6 +1152,57 @@ function Emit-RestrictionFlags {
 	}
 }
 
+# Флаги запрета: DSL-имя → XML-имя. Один разбор и для эмиттеров, и для подбора полей варианта
+# по умолчанию — иначе поле, которому эмиттер запрета не пишет, молча выпадало бы из выбора.
+$script:restrictMap = @{
+	"noField" = "field"; "noFilter" = "condition"; "noCondition" = "condition"
+	"noGroup" = "group"; "noOrder" = "order"
+}
+
+function Resolve-RestrictFlags($tokens) {
+	return ,@(@($tokens) | ForEach-Object { $script:restrictMap["$_"] })
+}
+
+# Токены запрета поля набора: shorthand "#noField", в объектной форме — массив restrict
+function Get-FieldRestrictTokens($fieldDef) {
+	if ($fieldDef -is [string]) { return ,@((Parse-FieldShorthand $fieldDef).restrict) }
+	if ($fieldDef.restrict) { return ,@($fieldDef.restrict) }
+	return ,@()
+}
+
+# Запрет вычисляемого поля: shorthand-строка или объектная форма, где restrict/useRestriction —
+# объект XML-флагов, массив или строка флагов "#noField #noFilter" (решётка необязательна)
+function Get-CalcRestrict($cf) {
+	$tokens = @()
+	$obj = $null
+	if ($cf -is [string]) {
+		$parsed = Parse-CalcShorthand $cf
+		if ($parsed.restrict) { $tokens = @($parsed.restrict) }
+	} else {
+		$restrictVal = if ($cf.restrict) { $cf.restrict } elseif ($cf.useRestriction) { $cf.useRestriction } else { $null }
+		if ($restrictVal) {
+			if ($restrictVal -is [System.Management.Automation.PSCustomObject] -or $restrictVal -is [hashtable]) {
+				$obj = $restrictVal
+			} elseif ($restrictVal -is [string]) {
+				foreach ($tok in ($restrictVal -split '\s+')) {
+					$t = $tok.Trim().TrimStart('#')
+					if ($t) { $tokens += $t }
+				}
+			} else {
+				foreach ($r in $restrictVal) { $tokens += "$r" }
+			}
+		}
+	}
+	return @{ tokens = $tokens; obj = $obj }
+}
+
+function Get-CalcRestrictFlagNames($restrict) {
+	if ($restrict.obj) {
+		return ,@($restrict.obj.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
+	}
+	return (Resolve-RestrictFlags $restrict.tokens)
+}
+
 function Emit-Field {
 	param($fieldDef, [string]$indent)
 
@@ -1234,20 +1285,16 @@ function Emit-Field {
 	}
 
 	# UseRestriction
-	$restrictMap = @{
-		"noField" = "field"; "noFilter" = "condition"; "noCondition" = "condition"
-		"noGroup" = "group"; "noOrder" = "order"
-	}
 	if ($f.restrict.Count -gt 0) {
 		X "$indent`t<useRestriction>"
-		Emit-RestrictionFlags -names @($f.restrict | ForEach-Object { $restrictMap["$_"] }) -indent "$indent`t`t"
+		Emit-RestrictionFlags -names (Resolve-RestrictFlags $f.restrict) -indent "$indent`t`t"
 		X "$indent`t</useRestriction>"
 	}
 
 	# AttributeUseRestriction
 	if ($f["attrRestrict"] -and $f["attrRestrict"].Count -gt 0) {
 		X "$indent`t<attributeUseRestriction>"
-		Emit-RestrictionFlags -names @($f["attrRestrict"] | ForEach-Object { $restrictMap["$_"] }) -indent "$indent`t`t"
+		Emit-RestrictionFlags -names (Resolve-RestrictFlags $f["attrRestrict"]) -indent "$indent`t`t"
 		X "$indent`t</attributeUseRestriction>"
 	}
 
@@ -1441,19 +1488,14 @@ function Emit-DataSetLinks {
 # === CalculatedFields ===
 function Emit-CalcFields {
 	if (-not $def.calculatedFields) { return }
-	$restrictMap = @{
-		"noField" = "field"; "noFilter" = "condition"; "noCondition" = "condition"
-		"noGroup" = "group"; "noOrder" = "order"
-	}
 	foreach ($cf in $def.calculatedFields) {
 		# Collect dataPath/expression/title/type/restrict/appearance from either
 		# shorthand string or object form. Object form accepts dataPath/field/name
 		# as synonyms; useRestriction/restrict accepts object, array, or flag string.
 		$title = ""
 		$typeStr = ""
-		$restrictTokens = @()
-		$restrictObj = $null
 		$appearance = $null
+		$restrict = Get-CalcRestrict $cf
 
 		if ($cf -is [string]) {
 			$parsed = Parse-CalcShorthand $cf
@@ -1461,7 +1503,6 @@ function Emit-CalcFields {
 			$expression = "$($parsed.expression)"
 			$title = $parsed.title
 			$typeStr = "$($parsed.type)"
-			if ($parsed.restrict) { $restrictTokens = @($parsed.restrict) }
 		} else {
 			$dataPath = if ($cf.dataPath) { "$($cf.dataPath)" }
 				elseif ($cf.field) { "$($cf.field)" }
@@ -1469,22 +1510,6 @@ function Emit-CalcFields {
 			$expression = "$($cf.expression)"
 			if ($cf.title) { $title = $cf.title }
 			if ($cf.type) { $typeStr = Resolve-TypeStr "$($cf.type)" }
-
-			$restrictVal = if ($cf.restrict) { $cf.restrict } elseif ($cf.useRestriction) { $cf.useRestriction } else { $null }
-			if ($restrictVal) {
-				if ($restrictVal -is [System.Management.Automation.PSCustomObject] -or $restrictVal -is [hashtable]) {
-					$restrictObj = $restrictVal
-				} elseif ($restrictVal -is [string]) {
-					# Flag-string form: "#noField #noFilter #noGroup #noOrder" (or without `#`)
-					foreach ($tok in ($restrictVal -split '\s+')) {
-						$t = $tok.Trim().TrimStart('#')
-						if ($t) { $restrictTokens += $t }
-					}
-				} else {
-					# Array form: ["noField", "noFilter", ...]
-					foreach ($r in $restrictVal) { $restrictTokens += "$r" }
-				}
-			}
 			if ($cf.appearance) { $appearance = $cf.appearance }
 		}
 
@@ -1495,14 +1520,9 @@ function Emit-CalcFields {
 		if ($title) {
 			Emit-MLText -tag "title" -text $title -indent "`t`t"
 		}
-		if ($restrictObj -or $restrictTokens.Count -gt 0) {
+		if ($restrict.obj -or $restrict.tokens.Count -gt 0) {
 			X "`t`t<useRestriction>"
-			if ($restrictObj) {
-				$flagNames = @($restrictObj.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
-			} else {
-				$flagNames = @($restrictTokens | ForEach-Object { $restrictMap["$_"] })
-			}
-			Emit-RestrictionFlags -names $flagNames -indent "`t`t`t"
+			Emit-RestrictionFlags -names (Get-CalcRestrictFlagNames $restrict) -indent "`t`t`t"
 			X "`t`t</useRestriction>"
 		}
 		if ($appearance) {
@@ -3610,38 +3630,164 @@ function Emit-StructureItem {
 	}
 }
 
-function Emit-SettingsVariants {
-	$variants = $def.settingsVariants
+# --- Достройка настроек варианта ---
+# Чего нет в определении (ключа нет) — достраиваем и сообщаем подсказкой; что задано, даже
+# пустым ([] / ["Auto"]), — решение автора, не трогаем. Корневой Auto раскрывать не из чего:
+# вариант без явных полей выводит пустой отчёт (#115).
 
-	# Default variant if none specified
-	if (-not $variants -or $variants.Count -eq 0) {
-		$variants = @(@{
-			name = "Основной"
-			presentation = "Основной"
-			settings = @{
-				selection = @("Auto")
-				structure = @(@{
-					type = "group"
-					order = @("Auto")
-					selection = @("Auto")
-				})
+$script:hints = New-Object System.Collections.Generic.List[string]
+
+# Объявленные поля набора; у объединения без своих полей — поля его частей
+function Get-DatasetDeclaredFields($ds) {
+	if (-not $ds) { return ,@() }
+	if ($ds.fields) { return ,@($ds.fields) }
+	$acc = @()
+	foreach ($it in @($ds.items)) { if ($it) { $acc += Get-DatasetDeclaredFields $it } }
+	return ,$acc
+}
+
+# Поля для выбора по умолчанию: объявленные поля наборов верхнего уровня, затем вычисляемые.
+# Без запрета на выбор, без папок и путей с точкой (реквизиты, не колонки); повторы — по dataPath.
+function Get-DefaultSelectionFields {
+	$result = New-Object System.Collections.Generic.List[string]
+	$seen = @{}
+	$add = { param([string]$dp) if ($dp -and -not $dp.Contains('.') -and -not $seen.ContainsKey($dp)) { $seen[$dp] = $true; $result.Add($dp) } }
+	foreach ($ds in @($def.dataSets)) {
+		foreach ($fd in (Get-DatasetDeclaredFields $ds)) {
+			if ($null -eq $fd) { continue }
+			if ((Resolve-RestrictFlags (Get-FieldRestrictTokens $fd)) -contains 'field') { continue }
+			if ($fd -is [string]) {
+				& $add "$((Parse-FieldShorthand $fd).dataPath)"
+			} else {
+				if ($fd.folder -eq $true) { continue }
+				$dp = if ($fd.dataPath) { "$($fd.dataPath)" } else { "$($fd.field)" }
+				& $add $dp
 			}
-		})
-		# Convert to PSCustomObject-like structure
-		$variants = @($variants | ForEach-Object {
-			$v = New-Object PSObject
-			$v | Add-Member -NotePropertyName "name" -NotePropertyValue $_.name
-			$v | Add-Member -NotePropertyName "presentation" -NotePropertyValue $_.presentation
-			$settingsObj = New-Object PSObject
-			$settingsObj | Add-Member -NotePropertyName "selection" -NotePropertyValue $_.settings.selection
-			$structItem = New-Object PSObject
-			$structItem | Add-Member -NotePropertyName "type" -NotePropertyValue "group"
-			$structItem | Add-Member -NotePropertyName "order" -NotePropertyValue @("Auto")
-			$structItem | Add-Member -NotePropertyName "selection" -NotePropertyValue @("Auto")
-			$settingsObj | Add-Member -NotePropertyName "structure" -NotePropertyValue @($structItem)
-			$v | Add-Member -NotePropertyName "settings" -NotePropertyValue $settingsObj
-			$v
-		})
+		}
+	}
+	foreach ($cf in @($def.calculatedFields)) {
+		if ($null -eq $cf) { continue }
+		if ((Get-CalcRestrictFlagNames (Get-CalcRestrict $cf)) -contains 'field') { continue }
+		if ($cf -is [string]) {
+			& $add "$((Parse-CalcShorthand $cf).dataPath)"
+		} else {
+			$dp = if ($cf.dataPath) { "$($cf.dataPath)" } elseif ($cf.field) { "$($cf.field)" } else { "$($cf.name)" }
+			& $add $dp
+		}
+	}
+	return ,$result.ToArray()
+}
+
+function New-DetailsGroup {
+	$g = New-Object PSObject
+	$g | Add-Member -NotePropertyName "type" -NotePropertyValue "group"
+	$g | Add-Member -NotePropertyName "order" -NotePropertyValue @("Auto")
+	$g | Add-Member -NotePropertyName "selection" -NotePropertyValue @("Auto")
+	return $g
+}
+
+function Format-HintList([string[]]$items) {
+	if ($items.Count -le 8) { return ($items -join ', ') }
+	return (($items[0..7] -join ', ') + " и ещё $($items.Count - 8)")
+}
+
+function Test-SelectionHasFields($items) {
+	foreach ($it in @($items)) {
+		if ($null -eq $it) { continue }
+		if ($it -is [string]) { if ($it -ne 'Auto') { return $true }; continue }
+		if ($it.auto -eq $true) { continue }
+		if ((Has-JsonProp $it 'folder') -or $it.field) { return $true }
+	}
+	return $false
+}
+
+# Группировки, у которых выбор пуст по всей цепочке до корня (Auto наследует выбор родителя).
+# Явный [] у группировки — решение автора, ветку не проверяем. Таблицы и диаграммы не обходим.
+function Find-GroupsWithoutFields($items, [bool]$inherited, $out) {
+	foreach ($it in @($items)) {
+		if ($null -eq $it) { continue }
+		$type = if ($it.type) { "$($it.type)" } else { "group" }
+		if ($type -ne 'group' -or $it.use -eq $false) { continue }
+		$own = $false
+		if (Has-JsonProp $it 'selection') {
+			if (@($it.selection).Count -eq 0) { continue }
+			$own = Test-SelectionHasFields $it.selection
+		}
+		$eff = $inherited -or $own
+		if (-not $eff) {
+			$gb = if ($it.groupBy) { $it.groupBy } else { $it.groupFields }
+			$names = @(@($gb) | Where-Object { $null -ne $_ } | ForEach-Object { if ($_ -is [string]) { $_ } else { "$($_.field)" } })
+			$out.Add($names -join ', ')
+		}
+		if ($it.children) { Find-GroupsWithoutFields $it.children $eff $out }
+	}
+}
+
+function Complete-VariantSettings($v, [bool]$autoVariant) {
+	$s = $v.settings
+	$noSettings = $null -eq $s
+	if ($noSettings) { $s = New-Object PSObject }
+	$hasSel = Has-JsonProp $s 'selection'
+	$hasStruct = Has-JsonProp $s 'structure'
+	$vn = "$($v.name)"
+
+	if (-not $hasSel -and -not $hasStruct) {
+		$fields = Get-DefaultSelectionFields
+		$s | Add-Member -NotePropertyName "selection" -NotePropertyValue $fields -Force
+		$s | Add-Member -NotePropertyName "structure" -NotePropertyValue @(New-DetailsGroup) -Force
+		if ($autoVariant) {
+			$head = "Вариант «$vn» создан автоматически, потому что в определении нет settingsVariants"
+			$target = 'settingsVariants'
+		} elseif ($noSettings) {
+			$head = "Вариант «$vn»: настройки достроены автоматически, потому что у варианта нет settings"
+			$target = 'settings.selection и settings.structure этого варианта'
+		} else {
+			$head = "Вариант «$vn»: настройки достроены автоматически, потому что в settings нет selection и structure"
+			$target = 'settings.selection и settings.structure этого варианта'
+		}
+		if ($fields.Count -gt 0) {
+			$script:hints.Add("[INFO] $head. Выбранные поля — $(Format-HintList $fields); структура — детальные записи (details). Если по задаче отчёту нужны другие поля или группировки — опишите $target и скомпилируйте заново; иначе действий не требуется.")
+		} else {
+			$fix = if ($autoVariant) { 'опишите settingsVariants и перечислите нужные поля в settings.selection' } else { 'перечислите нужные поля в settings.selection' }
+			$script:hints.Add("[WARN] $head, но выбранные поля подставить не из чего: в наборах данных не объявлены fields. Без выбранных полей отчёт будет пустым — $fix.")
+		}
+	} elseif ($hasSel -and -not $hasStruct) {
+		$s | Add-Member -NotePropertyName "structure" -NotePropertyValue @(New-DetailsGroup) -Force
+		if (Test-SelectionHasFields $s.selection) {
+			$script:hints.Add("[INFO] Вариант «$vn»: в settings нет structure — добавлены детальные записи (details), отчёт выведет выбранные поля построчно. Если по задаче нужны группировки с итогами — опишите settings.structure; иначе действий не требуется.")
+		} else {
+			$script:hints.Add("[WARN] Вариант «$vn»: в settings нет structure — добавлены детальные записи (details), но в settings.selection нет ни одного поля — отчёт будет пустым. Перечислите нужные поля в settings.selection.")
+		}
+	} elseif ($hasStruct -and -not $hasSel) {
+		$structItems = $s.structure
+		if ($structItems -is [string]) { $structItems = Parse-StructureShorthand $structItems }
+		$found = New-Object System.Collections.Generic.List[string]
+		Find-GroupsWithoutFields $structItems $false $found
+		if ($found.Count -gt 0) {
+			$labels = @($found | ForEach-Object { if ($_) { "«$_»" } else { '«детальные записи (details)»' } })
+			$groupCols = @($found | Where-Object { $_ })
+			$hasDetails = @($found | Where-Object { -not $_ }).Count -gt 0
+			$who = if ($labels.Count -eq 1) { "у группировки $($labels[0])" } else { "у группировок $($labels -join ', ')" }
+			if ($groupCols.Count -gt 0) {
+				$tail = if ($hasDetails) { 'ресурсы, другие поля и детальные записи не выведутся' } else { 'ресурсы и другие поля не выведутся' }
+				$effect = "в отчёте будут только колонки группировок ($($groupCols -join ', ')), $tail"
+			} else {
+				$effect = 'отчёт будет пустым'
+			}
+			$script:hints.Add("[WARN] Вариант «$vn»: в settings нет selection, и $who выбранных полей тоже нет — $effect. Перечислите нужные поля в settings.selection.")
+		}
+	}
+	return $s
+}
+
+function Emit-SettingsVariants {
+	$variants = @($def.settingsVariants | Where-Object { $null -ne $_ })
+	$autoVariant = $variants.Count -eq 0
+	if ($autoVariant) {
+		$v = New-Object PSObject
+		$v | Add-Member -NotePropertyName "name" -NotePropertyValue "Основной"
+		$v | Add-Member -NotePropertyName "presentation" -NotePropertyValue "Основной"
+		$variants = @($v)
 	}
 
 	foreach ($v in $variants) {
@@ -3653,7 +3799,7 @@ function Emit-SettingsVariants {
 
 		X "`t`t<dcsset:settings xmlns:style=`"http://v8.1c.ru/8.1/data/ui/style`" xmlns:sys=`"http://v8.1c.ru/8.1/data/ui/fonts/system`" xmlns:web=`"http://v8.1c.ru/8.1/data/ui/colors/web`" xmlns:win=`"http://v8.1c.ru/8.1/data/ui/colors/windows`">"
 
-		$s = $v.settings
+		$s = Complete-VariantSettings $v $autoVariant
 
 		# Helper: resolve XViewMode/XUserSettingID from settings — emit only if explicitly set
 		function Get-BlockVM([string]$key) {
@@ -3837,3 +3983,4 @@ $fileSize = (Get-Item $OutputPath).Length
 Write-Host "OK  $OutputPath"
 Write-Host "    DataSets: $dsCount  Fields: $fieldCount  Calculated: $calcCount  Totals: $totalCount  Params: $paramCount  Variants: $variantCount"
 Write-Host "    Size: $fileSize bytes"
+foreach ($h in $script:hints) { Write-Host $h }

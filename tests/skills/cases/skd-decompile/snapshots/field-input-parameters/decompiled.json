@@ -10,5 +10,5 @@
       ]
     }
   ],
-  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Auto"], "structure": "details" } }]
+  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["СегментНоменклатуры", "Сотрудник", "ПростоЕА"], "structure": "details" } }]
 }

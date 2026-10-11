@@ -1,0 +1,11 @@
+{
+  "name": "Есть selection, нет structure — добавляются детальные записи",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Номер, \"а\" КАК Имя", "fields": ["Номер: decimal(10)", "Имя: string(10)"] } ], "settingsVariants": [ { "name": "Мой", "settings": { "selection": ["Имя"] } } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "[INFO] Вариант «Мой»: в settings нет structure — добавлены детальные записи (details), отчёт выведет выбранные поля построчно. Если по задаче нужны группировки с итогами — опишите settings.structure; иначе действий не требуется.",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

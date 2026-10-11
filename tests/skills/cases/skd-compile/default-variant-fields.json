@@ -1,0 +1,11 @@
+{
+  "name": "Вариант по умолчанию: явные поля наборов и детальные записи, подсказка [INFO]",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Номер, \"а\" КАК Имя", "fields": ["Номер: decimal(10)", "Имя: string(10)"] } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "[INFO] Вариант «Основной» создан автоматически, потому что в определении нет settingsVariants. Выбранные поля — Номер, Имя; структура — детальные записи (details). Если по задаче отчёту нужны другие поля или группировки — опишите settingsVariants и скомпилируйте заново; иначе действий не требуется.",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

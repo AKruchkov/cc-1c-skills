@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-decompile v0.96 — Decompile 1C DCS Template.xml to JSON DSL (draft)
+# skd-decompile v0.97 — Decompile 1C DCS Template.xml to JSON DSL (draft)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -3092,8 +3092,9 @@ def run(root):
         # selection (top-level)
         sel_top = settings_node.select_single_node("dcsset:selection") if settings_node else None
         sel_items = build_selection(sel_top, "variant[%d]/selection" % vi)
-        if len(sel_items) > 0:
-            settings['selection'] = sel_items
+        # selection и structure варианта — всегда явные: без ключа compile достроит вариант сам (поля наборов,
+        # детальные записи), и пустой в XML вариант после круга начнёт выводить данные. [] = «нет».
+        settings['selection'] = sel_items if len(sel_items) > 0 else []
         svm = get_block_vm(sel_top)
         if svm is not None:
             settings['selectionViewMode'] = svm
@@ -3160,6 +3161,8 @@ def run(root):
                 settings['structure'] = short
             else:
                 settings['structure'] = struct_items
+        else:
+            settings['structure'] = []
 
         sivm_node = settings_node.select_single_node("dcsset:itemsViewMode") if settings_node else None
         if sivm_node:
@@ -3177,15 +3180,11 @@ def run(root):
             if len(ap_dict) > 0:
                 settings['additionalProperties'] = ap_dict
 
-        non_struct_keys = [k for k in settings if k != 'structure']
-        struct_only_details = ('structure' not in settings) or (settings.get('structure') == 'details')
-        is_default = (len(non_struct_keys) == 0) and struct_only_details and (vname == 'Основной') and (not presentation or presentation == vname)
-        if not is_default:
-            entry = {'name': vname}
-            if presentation and presentation != vname:
-                entry['title'] = presentation
-            entry['settings'] = settings
-            settings_variants.append(entry)
+        entry = {'name': vname}
+        if presentation and presentation != vname:
+            entry['title'] = presentation
+        entry['settings'] = settings
+        settings_variants.append(entry)
         vi += 1
     if len(settings_variants) > 0:
         out['settingsVariants'] = settings_variants

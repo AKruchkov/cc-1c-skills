@@ -1,0 +1,11 @@
+{
+  "name": "selection без полей (Auto или пусто) и без structure — детальные записи добавляются, [WARN] о пустом отчёте",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК А", "fields": ["А"] } ], "settingsVariants": [ { "name": "Авто", "settings": { "selection": ["Auto"] } }, { "name": "Пусто", "settings": { "selection": [] } } ] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": ["[WARN] Вариант «Авто»: в settings нет structure — добавлены детальные записи (details), но в settings.selection нет ни одного поля — отчёт будет пустым. Перечислите нужные поля в settings.selection.", "[WARN] Вариант «Пусто»: в settings нет structure"], "stdoutNotContains": "[INFO]",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

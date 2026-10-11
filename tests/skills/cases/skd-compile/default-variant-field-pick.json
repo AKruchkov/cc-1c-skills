@@ -1,0 +1,11 @@
+{
+  "name": "Поля варианта по умолчанию: без запрета на выбор, папок и путей с точкой, без повторов, с вычисляемыми; длинный список сокращается",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Н1", "query": "ВЫБРАТЬ 1 КАК А", "fields": ["А", "Скрыт #noField", { "dataPath": "Б", "restrict": ["noField"] }, { "dataPath": "Папка", "folder": true }, "Контрагент.ИНН", "В", "Г", "Д"] }, { "name": "Н2", "query": "ВЫБРАТЬ 1 КАК А", "fields": ["А", "Е", "Ж", "З", "И"] } ], "calculatedFields": ["Выч = А + 1", "ВычСкрыт = А #noField"] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "Выбранные поля — А, В, Г, Д, Е, Ж, З, И и ещё 1; структура", "stdoutNotContains": ["Скрыт", "Папка", "ИНН"],
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

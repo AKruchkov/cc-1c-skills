@@ -18,5 +18,5 @@
       ]
     }
   ],
-  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Auto"], "structure": "details" } }]
+  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Наименование", "Количество", "Организация", "СтрокаФикс", "Положительное", "Дата1", "СПояснением", "Многоязычное", "СоставноеПоле", "СВыражениемПредставления"], "structure": "details" } }]
 }

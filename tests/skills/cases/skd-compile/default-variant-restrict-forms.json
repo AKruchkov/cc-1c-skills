@@ -1,0 +1,11 @@
+{
+  "name": "Запрет на выбор: в вариант по умолчанию не идут поля с запретом field — в каждой документированной форме",
+  "params": { "outputPath": "Template.xml" },
+  "input": { "dataSets": [ { "name": "Набор", "query": "ВЫБРАТЬ 1 КАК Обычн", "fields": ["Скрыт #noField", { "dataPath": "МассивЗапрет", "restrict": ["noField", "noFilter"] }, { "dataPath": "ТолькоОтбор", "restrict": ["noFilter"] }, "Обычн"] } ], "calculatedFields": ["ВычСкрыт = 1 #noField", { "name": "ВычОбъект", "expression": "1", "useRestriction": { "field": true, "condition": true } }, { "name": "ВычСтрока", "expression": "1", "useRestriction": "#noField #noFilter" }, { "name": "ВычБезВыбора", "expression": "1", "useRestriction": { "condition": true } }, "Выч = 2"] },
+  "validatePath": "Template.xml",
+  "expect": {
+    "files": ["Template.xml"],
+    "stdoutContains": "Выбранные поля — ТолькоОтбор, Обычн, ВычБезВыбора, Выч; структура",
+    "preserves": { "file": "Template.xml", "bom": true, "eol": "crlf", "encoding": "UTF-8", "finalNewline": false, "noCR13": true, "selfClose": "tight", "noEmptyPairs": true }
+  }
+}

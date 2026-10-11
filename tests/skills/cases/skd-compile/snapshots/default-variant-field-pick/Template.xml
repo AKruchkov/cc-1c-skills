@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DataCompositionSchema xmlns="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcscom="http://v8.1c.ru/8.1/data-composition-system/common" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<dataSource>
+		<name>ИсточникДанных1</name>
+		<dataSourceType>Local</dataSourceType>
+	</dataSource>
+	<dataSet xsi:type="DataSetQuery">
+		<name>Н1</name>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>А</dataPath>
+			<field>А</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Скрыт</dataPath>
+			<field>Скрыт</field>
+			<useRestriction>
+				<field>true</field>
+			</useRestriction>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Б</dataPath>
+			<field>Б</field>
+			<useRestriction>
+				<field>true</field>
+			</useRestriction>
+		</field>
+		<field xsi:type="DataSetFieldFolder">
+			<dataPath>Папка</dataPath>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Контрагент.ИНН</dataPath>
+			<field>Контрагент.ИНН</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>В</dataPath>
+			<field>В</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Г</dataPath>
+			<field>Г</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Д</dataPath>
+			<field>Д</field>
+		</field>
+		<dataSource>ИсточникДанных1</dataSource>
+		<query>ВЫБРАТЬ 1 КАК А</query>
+	</dataSet>
+	<dataSet xsi:type="DataSetQuery">
+		<name>Н2</name>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>А</dataPath>
+			<field>А</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Е</dataPath>
+			<field>Е</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>Ж</dataPath>
+			<field>Ж</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>З</dataPath>
+			<field>З</field>
+		</field>
+		<field xsi:type="DataSetFieldField">
+			<dataPath>И</dataPath>
+			<field>И</field>
+		</field>
+		<dataSource>ИсточникДанных1</dataSource>
+		<query>ВЫБРАТЬ 1 КАК А</query>
+	</dataSet>
+	<calculatedField>
+		<dataPath>Выч</dataPath>
+		<expression>А + 1</expression>
+	</calculatedField>
+	<calculatedField>
+		<dataPath>ВычСкрыт</dataPath>
+		<expression>А</expression>
+		<useRestriction>
+			<field>true</field>
+		</useRestriction>
+	</calculatedField>
+	<settingsVariant>
+		<dcsset:name>Основной</dcsset:name>
+		<dcsset:presentation xsi:type="v8:LocalStringType">
+			<v8:item>
+				<v8:lang>ru</v8:lang>
+				<v8:content>Основной</v8:content>
+			</v8:item>
+		</dcsset:presentation>
+		<dcsset:settings xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows">
+			<dcsset:selection>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>А</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>В</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>Г</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>Д</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>Е</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>Ж</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>З</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>И</dcsset:field>
+				</dcsset:item>
+				<dcsset:item xsi:type="dcsset:SelectedItemField">
+					<dcsset:field>Выч</dcsset:field>
+				</dcsset:item>
+			</dcsset:selection>
+			<dcsset:item xsi:type="dcsset:StructureItemGroup">
+				<dcsset:order>
+					<dcsset:item xsi:type="dcsset:OrderItemAuto"/>
+				</dcsset:order>
+				<dcsset:selection>
+					<dcsset:item xsi:type="dcsset:SelectedItemAuto"/>
+				</dcsset:selection>
+			</dcsset:item>
+		</dcsset:settings>
+	</settingsVariant>
+</DataCompositionSchema>

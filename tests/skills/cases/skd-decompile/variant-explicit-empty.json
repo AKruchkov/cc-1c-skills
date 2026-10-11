@@ -1,0 +1,23 @@
+{
+  "name": "Варианты без выбора/структуры и с корневым Auto — выводятся явно, «Основной» не выбрасывается (круговой путь не достраивает)",
+  "preRun": [
+    {
+      "script": "skd-compile/scripts/skd-compile",
+      "input": {
+        "dataSets": [{ "name": "Н", "query": "ВЫБРАТЬ 1 КАК А", "fields": ["А"] }],
+        "settingsVariants": [
+          { "name": "Основной", "settings": { "selection": [], "structure": [] } },
+          { "name": "Второй", "settings": { "structure": "details" } },
+          { "name": "АвтоКорень", "settings": { "selection": ["Auto"], "structure": "details" } }
+        ]
+      },
+      "args": { "-DefinitionFile": "{inputFile}", "-OutputPath": "Template.xml" },
+      "cwd": "{workDir}"
+    }
+  ],
+  "params": { "templatePath": "Template.xml" },
+  "outputPath": "decompiled.json",
+  "expect": {
+    "fileContains": { "file": "decompiled.json", "text": "{ \"name\": \"Основной\", \"settings\": { \"selection\": [], \"structure\": [] } }" }
+  }
+}

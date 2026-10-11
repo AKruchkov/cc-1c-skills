@@ -4,5 +4,5 @@
     { "name": "Журнал", "objectName": "ЖурналОшибок", "fields": ["Сообщение: string(150)", "Уровень: string"] },
     { "name": "Объединение", "items": [{ "name": "Часть1", "query": "ВЫБРАТЬ 1 КАК Поле", "fields": ["Поле: decimal(10,2)"] }, { "name": "Часть2", "query": "ВЫБРАТЬ 2 КАК Поле", "fields": ["Поле: decimal(10,2)"] }] }
   ],
-  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Auto"], "structure": "details" } }]
+  "settingsVariants": [{ "name": "Основной", "settings": { "selection": ["Имя", "Сообщение", "Уровень", "Поле"], "structure": "details" } }]
 }
