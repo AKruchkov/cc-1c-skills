@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# cfe-borrow v1.46 — Borrow objects from configuration into extension (CFE)
+# cfe-borrow v1.47 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
+import html
 import json
 import os
 import re
@@ -481,6 +482,122 @@ MODULE_KINDS_BY_TYPE = {
 # Отказ — `-Module None`.
 AUTO_MODULE_TYPES = ["CommonModule", "HTTPService", "WebService"]
 MODULE_KIND_NAMES = ["Module", "ObjectModule", "ManagerModule", "RecordSetModule", "ValueManagerModule"]
+
+def query_key(s):
+    """Ключ сравнения имён в тексте запроса: язык запросов регистронезависим, Ё и Е — одна буква."""
+    return s.upper().replace('Ё', 'Е')
+
+
+# Виды таблиц языка запросов (рус. и англ.) → вид метаданных. Ключи — через query_key.
+QUERY_TABLE_KINDS = {}
+for _ru, _en in (
+    ("Справочник", "Catalog"), ("Документ", "Document"), ("Перечисление", "Enum"),
+    ("ПланВидовХарактеристик", "ChartOfCharacteristicTypes"), ("ПланСчетов", "ChartOfAccounts"),
+    ("ПланВидовРасчета", "ChartOfCalculationTypes"), ("ПланОбмена", "ExchangePlan"),
+    ("БизнесПроцесс", "BusinessProcess"), ("Задача", "Task"),
+    ("РегистрСведений", "InformationRegister"), ("РегистрНакопления", "AccumulationRegister"),
+    ("РегистрБухгалтерии", "AccountingRegister"), ("РегистрРасчета", "CalculationRegister"),
+    ("ЖурналДокументов", "DocumentJournal"), ("Константа", "Constant"),
+    ("Последовательность", "Sequence"), ("КритерийОтбора", "FilterCriterion"),
+    ("ВнешнийИсточникДанных", "ExternalDataSource"),
+):
+    QUERY_TABLE_KINDS[query_key(_ru)] = _en
+    QUERY_TABLE_KINDS[query_key(_en)] = _en
+
+
+# Ключевые слова языка запросов, которые могут стоять сразу за таблицей вместо псевдонима.
+QUERY_ALIAS_STOP_WORDS = {query_key(_kw) for _kw in (
+    "ГДЕ", "WHERE", "ЛЕВОЕ", "LEFT", "ПРАВОЕ", "RIGHT", "ПОЛНОЕ", "FULL", "ВНУТРЕННЕЕ", "INNER",
+    "ВНЕШНЕЕ", "OUTER", "СОЕДИНЕНИЕ", "JOIN", "ПО", "ON", "СГРУППИРОВАТЬ", "GROUP", "УПОРЯДОЧИТЬ", "ORDER",
+    "ИМЕЮЩИЕ", "HAVING", "ОБЪЕДИНИТЬ", "UNION", "ДЛЯ", "FOR", "ИТОГИ", "TOTALS", "ИНДЕКСИРОВАТЬ", "INDEX",
+    "ИЗ", "FROM", "ВЫБРАТЬ", "SELECT", "И", "AND", "ИЛИ", "OR", "НЕ", "NOT", "КОГДА", "WHEN", "ТОГДА", "THEN",
+    "ИНАЧЕ", "ELSE", "КОНЕЦ", "END", "ПОМЕСТИТЬ", "INTO", "ССЫЛКА", "REFS", "В", "IN", "МЕЖДУ", "BETWEEN",
+    "ПОДОБНО", "LIKE", "ЕСТЬ", "IS", "ИЕРАРХИИ", "HIERARCHY", "ВОЗР", "ASC", "УБЫВ", "DESC", "АВТОУПОРЯДОЧИВАНИЕ",
+    "AUTOORDER", "ИЗМЕНЕНИЯ", "UPDATE", "ВСЕ", "ALL")}
+
+# Стандартные поля по видам объектов (рус. и англ.) — есть у таблицы без заимствования реквизитов.
+# У каждого вида свои: Номер/Дата — стандартные у документа, а у справочника это обычные реквизиты,
+# которых в оболочке нет. Неизвестный вид — только общие поля. Поля, которые включаются свойством
+# объекта (Родитель, Владелец, Период регистра сведений…), — в QUERY_GATED_STD. Ключи — query_key.
+_QS_COMMON = ("Ссылка", "Ref", "ПометкаУдаления", "DeletionMark", "Предопределенный", "Predefined",
+              "ИмяПредопределенныхДанных", "PredefinedDataName", "ВерсияДанных", "DataVersion", "Представление",
+              "Presentation", "DefaultPicture")
+_QS_BY_KIND = {
+    "Catalog": ("Код", "Code", "Наименование", "Description"),
+    "Document": ("Номер", "Number", "Дата", "Date", "Проведен", "Posted", "МоментВремени", "PointInTime"),
+    "ChartOfCharacteristicTypes": ("Код", "Code", "Наименование", "Description", "ТипЗначения", "ValueType"),
+    "ChartOfAccounts": ("Код", "Code", "Наименование", "Description", "Родитель", "Parent", "Порядок", "Order", "Вид", "Type", "Забалансовый", "OffBalance"),
+    "ChartOfCalculationTypes": ("Код", "Code", "Наименование", "Description"),
+    "ExchangePlan": ("Код", "Code", "Наименование", "Description", "НомерОтправленного", "SentNo", "НомерПринятого", "ReceivedNo", "ЭтотУзел", "ThisNode"),
+    "BusinessProcess": ("Номер", "Number", "Дата", "Date", "Завершен", "Completed", "Стартован", "Started", "ВедущаяЗадача", "HeadTask"),
+    "Task": ("Номер", "Number", "Дата", "Date", "Наименование", "Description", "Выполнена", "Executed", "БизнесПроцесс", "BusinessProcess", "ТочкаМаршрута", "RoutePoint"),
+    "Enum": ("Порядок", "Order"),
+    "DocumentJournal": ("Номер", "Number", "Дата", "Date", "Проведен", "Posted", "Тип", "Type"),
+    "InformationRegister": (),
+    "AccumulationRegister": ("Период", "Period", "Регистратор", "Recorder", "НомерСтроки", "LineNumber", "Активность", "Active", "ВидДвижения", "RecordType"),
+    "AccountingRegister": ("Период", "Period", "Регистратор", "Recorder", "НомерСтроки", "LineNumber", "Активность", "Active"),
+    "CalculationRegister": ("Регистратор", "Recorder", "НомерСтроки", "LineNumber", "Активность", "Active"),
+}
+QUERY_STD_COMMON = {query_key(_sf) for _sf in _QS_COMMON}
+QUERY_STD_BY_KIND = {_k: {query_key(_sf) for _sf in _QS_COMMON + _v} for _k, _v in _QS_BY_KIND.items()}
+
+
+# Стандартные поля, которые есть, только если это включено свойством объекта: у заимствованного
+# объекта в расширении их нет, пока свойства нет в его копии (замер 8.3.24: Родитель у иерархического
+# справочника на оболочке без <Hierarchical> — «Неверный путь к данным»; Код, Наименование — есть).
+QUERY_GATED_STD = {}
+for _kind, _gate, _fields in (
+    ("Catalog", "Hierarchical", ("Родитель", "Parent", "ЭтоГруппа", "IsFolder")),
+    ("ChartOfCharacteristicTypes", "Hierarchical", ("Родитель", "Parent", "ЭтоГруппа", "IsFolder")),
+    ("Catalog", "Owners", ("Владелец", "Owner")),
+    ("InformationRegister", "Periodic", ("Период", "Period")),
+    ("InformationRegister", "Recorder", ("Регистратор", "Recorder", "НомерСтроки", "LineNumber", "Активность", "Active")),
+):
+    for _f in _fields:
+        QUERY_GATED_STD[f"{_kind}|{query_key(_f)}"] = _gate
+
+
+def test_query_std_field(info_, field_key):
+    gate = QUERY_GATED_STD.get(f"{info_['Kind']}|{field_key}")
+    if gate:
+        return bool(info_['Gates'].get(gate))
+    if info_['Kind'] in QUERY_STD_BY_KIND:
+        return field_key in QUERY_STD_BY_KIND[info_['Kind']]
+    return field_key in QUERY_STD_COMMON
+
+
+# Поля таблицы — только данные: команды, формы, макеты и т.п. полями не бывают
+QUERY_FIELD_KINDS = ('Attribute', 'Dimension', 'Resource', 'TabularSection', 'AddressingAttribute',
+                     'AccountingFlag', 'ExtDimensionAccountingFlag', 'Column', 'EnumValue')
+
+
+# Зарезервированные слова языка запросов — полем быть не могут: стоп-слова псевдонима плюс
+# литералы и модификаторы. Имена типов (СТРОКА, ДАТА…) и периодов (МЕСЯЦ, ГОД…) сюда не входят:
+# это бывают и имена полей. Тип пропускается по позиции — после КАК, как всякое определение
+# псевдонима; период — аргументом после запятой внутри скобок (НАЧАЛОПЕРИОДА(Д.Дата, МЕСЯЦ)).
+QUERY_RESERVED_WORDS = set(QUERY_ALIAS_STOP_WORDS) | {query_key(_kw) for _kw in (
+    "КАК", "AS", "РАЗРЕШЕННЫЕ", "ALLOWED", "РАЗЛИЧНЫЕ", "DISTINCT", "ПЕРВЫЕ", "TOP", "NULL", "ИСТИНА",
+    "TRUE", "ЛОЖЬ", "FALSE", "НЕОПРЕДЕЛЕНО", "UNDEFINED", "ВЫБОР", "CASE", "СПЕЦСИМВОЛ", "ESCAPE", "BY",
+    "ИЕРАРХИЯ", "ОБЩИЕ", "OVERALL", "ПЕРИОДАМИ", "PERIODS", "УНИЧТОЖИТЬ", "DROP", "ГРУППИРУЮЩИМ", "НАБОРАМ",
+    "GROUPING", "SETS")}
+QUERY_PERIOD_NAMES = {query_key(_kw) for _kw in (
+    "СЕКУНДА", "SECOND", "МИНУТА", "MINUTE", "ЧАС", "HOUR", "ДЕНЬ", "DAY", "НЕДЕЛЯ", "WEEK",
+    "МЕСЯЦ", "MONTH", "КВАРТАЛ", "QUARTER", "ГОД", "YEAR", "ДЕКАДА", "TENDAYS", "ПОЛУГОДИЕ", "HALFYEAR", "АВТО", "AUTO")}
+RE_TABLE_ALIAS = re.compile(r'(?:(КАК|AS)\s+)?([^\W\d]\w*)', re.IGNORECASE)
+RE_FUNC_PAREN = re.compile(r'\s*\(')
+# Слова, после которых в запросе стоит таблица-источник
+QUERY_SOURCE_KEYWORDS = {query_key(_kw) for _kw in ("ИЗ", "FROM", "СОЕДИНЕНИЕ", "JOIN")}
+
+
+def get_ref_kind_from_type(type_text):
+    """Ссылочный тип → вид метаданных: CatalogRef → Catalog и т.п. (у DefinedType и прочих — None)."""
+    t = type_text.strip()
+    ci = t.find(':')
+    if ci >= 0:
+        t = t[ci + 1:]
+    m = re.match(r'^(\w+)Ref\.(\w+)$', t)
+    return {'Kind': m.group(1), 'Name': m.group(2)} if m else None
+
 
 SYNONYM_MAP = {
     "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a": "Catalog",
@@ -1034,6 +1151,8 @@ def main():
 
     # Module-level list for borrowed files (used by both main loop and borrow_main_attribute)
     borrowed_files = []
+    # Формы с динамическим списком — основная таблица и тильда решаются в конце запуска (шаги 14a, 14c)
+    dyn_list_forms = []
 
     # --- Helper functions ---
     def get_source_attribute_uuids(type_name, obj_name):
@@ -1434,6 +1553,254 @@ def main():
                 "AttrUuids": attr_uuids, "FormAttrIds": form_attr_ids, "FormAttrCols": cols,
                 "AddCols": add_cols, "Tables": tables}
 
+    # Псевдоним таблицы, ссылка на которую кончается в позиции pos: «КАК имя» / «AS имя», имя без
+    # КАК (если это не ключевое слово); параметры виртуальной таблицы в скобках пропускаются.
+    # None — псевдонима нет, тогда псевдоним — последний сегмент имени таблицы. Иначе — имя и позиция:
+    # имя без КАК — тоже определение псевдонима, а не поле.
+    def get_query_table_alias(q, pos):
+        i = pos
+        while i < len(q) and q[i].isspace():
+            i += 1
+        if i < len(q) and q[i] == '(':
+            depth = 0
+            while i < len(q):
+                if q[i] == '(':
+                    depth += 1
+                elif q[i] == ')':
+                    depth -= 1
+                    if depth == 0:
+                        i += 1
+                        break
+                i += 1
+            while i < len(q) and q[i].isspace():
+                i += 1
+        m = RE_TABLE_ALIAS.match(q, i)
+        if not m:
+            return None
+        if m.group(1) is None and query_key(m.group(2)) in QUERY_ALIAS_STOP_WORDS:
+            return None
+        return m.group(2), m.start(2)
+
+    # Что объект предоставляет запросу в контексте расширения — по итоговому составу расширения.
+    # None — объекта в расширении нет. Fields: имена заимствованных подобъектов (реквизиты, измерения,
+    # ресурсы, ТЧ, признаки учёта…); TSCols: колонки заимствованных ТЧ; EnumValues: значения
+    # перечисления; Types: поле → ссылочный тип (одиночный) для разыменования. Ключи — query_key.
+    ext_table_info_cache = {}
+
+    def get_ext_table_info(kind, name_key):
+        cache_key = f"{kind}|{name_key}"
+        if cache_key in ext_table_info_cache:
+            return ext_table_info_cache[cache_key]
+        info_ = None
+        dir_ = CHILD_TYPE_DIR_MAP.get(kind)
+        actual = None
+        if dir_:
+            # Имя — каноническое, из состава расширения: в запросе регистр и Ё/Е произвольны
+            for c in child_objs_el:
+                if isinstance(c.tag, str) and etree.QName(c.tag).localname == kind \
+                        and query_key((c.text or '').strip()) == name_key:
+                    actual = (c.text or '').strip()
+                    break
+        if actual:
+            f = os.path.join(ext_dir, dir_, f"{actual}.xml")
+            if os.path.isfile(f):
+                root = etree.parse(f).getroot()
+                el = next((c for c in root if isinstance(c.tag, str)), None)
+                info_ = {'Kind': kind, 'Fields': set(), 'TSCols': {}, 'EnumValues': set(), 'Types': {}, 'Gates': {}}
+                if el is not None:
+                    pr = el.xpath("*[local-name()='Properties']")
+                    if pr:
+                        pr = pr[0]
+
+                        def _prop(name):
+                            n = pr.xpath(f"*[local-name()='{name}']")
+                            return (n[0].text or '').strip() if n else None
+                        info_['Gates']['Hierarchical'] = _prop('Hierarchical') == 'true'
+                        info_['Gates']['Owners'] = bool(pr.xpath("*[local-name()='Owners']/*"))
+                        pv = _prop('InformationRegisterPeriodicity')
+                        info_['Gates']['Periodic'] = bool(pv) and pv != 'Nonperiodical'
+                        info_['Gates']['Recorder'] = _prop('WriteMode') == 'RecorderSubordinate'
+                    for sub in el.xpath("*[local-name()='ChildObjects']/*"):
+                        local = etree.QName(sub.tag).localname
+                        if local not in QUERY_FIELD_KINDS:
+                            continue
+                        nm = sub.xpath("*[local-name()='Properties']/*[local-name()='Name']")
+                        if not nm:
+                            continue
+                        k = query_key((nm[0].text or '').strip())
+                        if local == 'EnumValue':
+                            info_['EnumValues'].add(k)
+                            continue
+                        info_['Fields'].add(k)
+                        types = sub.xpath("*[local-name()='Properties']/*[local-name()='Type']/*[local-name()='Type']")
+                        if len(types) == 1:
+                            rk = get_ref_kind_from_type(types[0].text or '')
+                            if rk:
+                                info_['Types'][k] = rk
+                        if local == 'TabularSection':
+                            info_['TSCols'][k] = {
+                                query_key((cn.text or '').strip())
+                                for cn in sub.xpath("*[local-name()='ChildObjects']/*/*[local-name()='Properties']/*[local-name()='Name']")}
+        ext_table_info_cache[cache_key] = info_
+        return info_
+
+    # Что в ручном запросе динамического списка не разрешится в контексте расширения — список причин;
+    # пустой — запрос разрешим, тильда не нужна. Проверяется по ИТОГОВОМУ составу расширения, а не по
+    # прогнозу заимствования: каждая таблица запроса (её объект) должна быть в расширении, её ТЧ,
+    # значения перечисления — тоже; каждое поле — заимствованным подобъектом или стандартным полем,
+    # разыменование — по одиночному ссылочному типу до объекта, который тоже есть в расширении.
+    # Предопределённые, виртуальные таблицы, «*», обращения через скобку и неизвестные слова — не
+    # разрешаются. Правило консервативное: лишняя тильда — лишь шум, пропущенная — отказ загрузки.
+    # Сверено с платформой 8.3.24 (оракул — загрузка без тильды).
+    def get_dyn_list_query_unresolved(query_text):
+        reasons = []
+        # Строковые литералы и комментарии — не код запроса; пробелы вокруг точки — часть пути
+        q = re.sub(r'"(?:[^"]|"")*"|//[^\r\n]*', ' ', query_text)
+        q = re.sub(r'(?<=[\w)])\s*\.\s*(?=[^\W\d]|\*)', '.', q)
+        empty_ref_keys = (query_key("ПустаяСсылка"), query_key("EmptyRef"))
+        ts_std_keys = (query_key("Ссылка"), query_key("Ref"), query_key("НомерСтроки"), query_key("LineNumber"))
+        same_obj_std = (query_key("Ссылка"), query_key("Ref"), query_key("Родитель"), query_key("Parent"))
+        ref_keys = (query_key("Ссылка"), query_key("Ref"))
+
+        # «*» (кроме КОЛИЧЕСТВО(*)) и обращение через скобку — состав полей не виден
+        if re.search(r'(?i)\.\*|(?:(?<![\w.])(?:ВЫБРАТЬ|SELECT|РАЗЛИЧНЫЕ|DISTINCT|РАЗРЕШЕННЫЕ|ALLOWED)|,|\{|(?<![\w.])(?:ПЕРВЫЕ|TOP)\s+\d+)\s*\*', q):
+            reasons.append("*")
+        # Области запроса не разбираются: части ОБЪЕДИНИТЬ и вложенные запросы — со своими таблицами
+        if re.search(r'(?i)(?<![\w.])(?:ОБЪЕДИНИТЬ|UNION)(?![\w.])', q):
+            reasons.append("ОБЪЕДИНИТЬ")
+        if len(re.findall(r'(?i)(?<![\w.])(?:ВЫБРАТЬ|SELECT)(?![\w.])', q)) > 1:
+            reasons.append("вложенный запрос")
+        if re.search(r'\)\.[^\W\d]', q):
+            reasons.append(").Поле")
+
+        path_matches = list(re.finditer(r'(?<![\w.&])[^\W\d]\w*(?:\.[^\W\d]\w*)+', q))
+        alias_pos = set()
+        # Таблицы и их псевдонимы: псевдоним → {Info, TS ('' — сам объект)}
+        alias_map = {}
+        for pm in path_matches:
+            segs = pm.group(0).split('.')
+            k0 = query_key(segs[0])
+            if k0 not in QUERY_TABLE_KINDS:
+                continue
+            kind = QUERY_TABLE_KINDS[k0]
+            tinfo = get_ext_table_info(kind, query_key(segs[1]))
+            if tinfo is None:
+                reasons.append(f"{segs[0]}.{segs[1]}")
+                continue
+            ts_key = ''
+            if len(segs) >= 3:
+                k2 = query_key(segs[2])
+                if len(segs) == 3 and (k2 in empty_ref_keys or k2 in tinfo['EnumValues']):
+                    continue
+                if len(segs) == 3 and k2 in tinfo['TSCols']:
+                    ts_key = k2
+                else:
+                    reasons.append(pm.group(0))
+                    continue
+            # Псевдоним — только у таблицы-источника (после ИЗ/СОЕДИНЕНИЕ или запятой в их списке). У
+            # ссылок в ЗНАЧЕНИЕ(), ТИП(), ВЫРАЗИТЬ(... КАК …), ССЫЛКА … псевдонима нет: фантомный псевдоним
+            # закрыл бы от проверки одноимённое поле.
+            bi = pm.start() - 1
+            while bi >= 0 and q[bi].isspace():
+                bi -= 1
+            is_source = False
+            if bi >= 0 and q[bi] == ',':
+                is_source = True
+            elif bi >= 0:
+                we = bi + 1
+                while bi >= 0 and q[bi].isalnum():
+                    bi -= 1
+                is_source = query_key(q[bi + 1:we]) in QUERY_SOURCE_KEYWORDS
+            if not is_source:
+                continue
+            al = get_query_table_alias(q, pm.end())
+            alias = segs[-1]
+            if al:
+                alias = al[0]
+                alias_pos.add(al[1])
+            alias_map[query_key(alias)] = {'Info': tinfo, 'TS': ts_key}
+
+        # Поле Источник.Поле[.Подполе…]: каждое звено — заимствованный подобъект или стандартное поле
+        for pm in path_matches:
+            segs = pm.group(0).split('.')
+            k0 = query_key(segs[0])
+            if k0 in QUERY_TABLE_KINDS:
+                continue
+            if k0 not in alias_map:
+                reasons.append(pm.group(0))
+                continue
+            cur_info = alias_map[k0]['Info']
+            cur_ts = alias_map[k0]['TS']
+            ok = True
+            for i in range(1, len(segs)):
+                fk = query_key(segs[i])
+                last = (i == len(segs) - 1)
+                if cur_ts:
+                    # Поле строки ТЧ: колонка (без разыменования) или Ссылка/НомерСтроки
+                    if last and (fk in cur_info['TSCols'][cur_ts] or fk in ts_std_keys):
+                        break
+                    if not last and fk in ref_keys:
+                        cur_ts = ''
+                        continue
+                    ok = False
+                    break
+                if last:
+                    if not (fk in cur_info['Fields'] or test_query_std_field(cur_info, fk)):
+                        ok = False
+                    break
+                # Разыменование: Ссылка/Родитель — тот же объект; реквизит — по его ссылочному типу
+                if fk in same_obj_std and test_query_std_field(cur_info, fk):
+                    continue
+                if fk in cur_info['Types']:
+                    t = cur_info['Types'][fk]
+                    cur_info = get_ext_table_info(t['Kind'], query_key(t['Name']))
+                    if cur_info is None:
+                        ok = False
+                        break
+                    continue
+                ok = False
+                break
+            if not ok:
+                reasons.append(pm.group(0))
+
+        # Слова без точки. Пропускаются: определение псевдонима (после КАК/AS — в т.ч. имя типа в
+        # ВЫРАЗИТЬ), имя функции (перед «(»), зарезервированное слово, период аргументом после запятой
+        # внутри скобок. Остальное — поле одной из таблиц запроса: Месяц, Документ, Сумма — и имена полей.
+        alias_defs = {mm.start(1) for mm in re.finditer(r'(?i)(?<![\w.])(?:КАК|AS)\s+([^\W\d]\w*)', q)}
+        comma_args = {mm.start(1) for mm in re.finditer(r',\s*([^\W\d]\w*)', q)}
+        depth_at = [0] * (len(q) + 1)
+        depth = 0
+        for ci, ch in enumerate(q):
+            depth_at[ci] = depth
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+        for wm in re.finditer(r'(?<![\w.&])[^\W\d]\w*(?![\w.])', q):
+            if wm.start() in alias_defs or wm.start() in alias_pos:
+                continue
+            wk = query_key(wm.group(0))
+            if wk in QUERY_RESERVED_WORDS:
+                continue
+            if wk in QUERY_PERIOD_NAMES and wm.start() in comma_args and depth_at[wm.start()] > 0:
+                continue
+            if RE_FUNC_PAREN.match(q, wm.end()):
+                continue
+            found = False
+            for src in alias_map.values():
+                if src['TS']:
+                    if wk in src['Info']['TSCols'][src['TS']] or wk in ts_std_keys:
+                        found = True
+                        break
+                elif wk in src['Info']['Fields'] or test_query_std_field(src['Info'], wk):
+                    found = True
+                    break
+            if not found:
+                reasons.append(wm.group(0))
+
+        seen = set()
+        return [r for r in reasons if not (r in seen or seen.add(r))]
+
     def get_main_attribute_info(form_el, ns_strip_pattern):
         main_attr = None
         for child in form_el:
@@ -1539,6 +1906,9 @@ def main():
     # --- 11c. Resolve source attributes and tabular sections ---
     def resolve_source_attributes(type_name, obj_name, first_level_names):
         # first_level_names: dict of names, or None for "all"
+        # Имена сверяются ключом запроса (регистр, Ё/Е): слова приходят и из текста запроса списка,
+        # а правило тильды (get_dyn_list_query_unresolved) считает их найденными по тому же ключу.
+        fl_keys = None if first_level_names is None else {query_key(k) for k in first_level_names}
         dir_name = CHILD_TYPE_DIR_MAP[type_name]
         src_file = os.path.join(cfg_dir, dir_name, f"{obj_name}.xml")
         if not os.path.isfile(src_file):
@@ -1581,7 +1951,7 @@ def main():
                 if name_node is None:
                     continue
                 attr_name = (name_node.text or "").strip()
-                if first_level_names is not None and attr_name not in first_level_names:
+                if fl_keys is not None and query_key(attr_name) not in fl_keys:
                     continue
 
                 attr_uuid = child.get("uuid", "")
@@ -1598,7 +1968,7 @@ def main():
                 if name_node is None:
                     continue
                 ts_name = (name_node.text or "").strip()
-                if first_level_names is not None and ts_name not in first_level_names:
+                if fl_keys is not None and query_key(ts_name) not in fl_keys:
                     continue
 
                 ts_uuid = child.get("uuid", "")
@@ -1776,31 +2146,35 @@ def main():
             info(f"  Merged {added} attribute(s) into: {obj_file}")
 
     # --- 11h. Borrow main attribute orchestrator ---
+    # Объект-оболочка в расширении: кто уже заимствован — пропускается, без источника — предупреждение.
+    def borrow_object_shell(type_name, obj_name):
+        if type_name not in CHILD_TYPE_DIR_MAP:
+            warn(f"  Unknown object type: {type_name}.{obj_name}")
+            return
+        if test_object_borrowed(type_name, obj_name):
+            info(f"  Already borrowed: {type_name}.{obj_name}")
+            return
+        src_file = os.path.join(cfg_dir, CHILD_TYPE_DIR_MAP[type_name], f"{obj_name}.xml")
+        if not os.path.isfile(src_file):
+            warn(f"  Source not found: {type_name}.{obj_name}")
+            return
+        src = read_source_object(type_name, obj_name)
+        borrowed_xml = build_borrowed_object_xml(type_name, obj_name, src["Uuid"], src["Properties"])
+        target_dir = os.path.join(ext_dir, CHILD_TYPE_DIR_MAP[type_name])
+        os.makedirs(target_dir, exist_ok=True)
+        target_file = os.path.join(target_dir, f"{obj_name}.xml")
+        write_xml_file(target_file, borrowed_xml)
+        add_to_child_objects(type_name, obj_name)
+        borrowed_files.append(target_file)
+        info(f"  Auto-borrowed: {type_name}.{obj_name}")
+
     def borrow_reference_type_shells(type_xmls):
         """Ссылочные типы → объекты-оболочки в расширении (кто уже заимствован — пропускается)."""
         ref_types = collect_reference_types(type_xmls)
         info(f"  Reference types to borrow: {len(ref_types)}")
 
         for rt in ref_types:
-            if rt["TypeName"] not in CHILD_TYPE_DIR_MAP:
-                warn(f"  Unknown reference type: {rt['TypeName']}.{rt['ObjName']}")
-                continue
-            if test_object_borrowed(rt["TypeName"], rt["ObjName"]):
-                info(f"  Already borrowed: {rt['TypeName']}.{rt['ObjName']}")
-                continue
-            rt_src_file = os.path.join(cfg_dir, CHILD_TYPE_DIR_MAP[rt["TypeName"]], f"{rt['ObjName']}.xml")
-            if not os.path.isfile(rt_src_file):
-                warn(f"  Source not found: {rt['TypeName']}.{rt['ObjName']}")
-                continue
-            src = read_source_object(rt["TypeName"], rt["ObjName"])
-            borrowed_xml = build_borrowed_object_xml(rt["TypeName"], rt["ObjName"], src["Uuid"], src["Properties"])
-            target_dir = os.path.join(ext_dir, CHILD_TYPE_DIR_MAP[rt["TypeName"]])
-            os.makedirs(target_dir, exist_ok=True)
-            target_file = os.path.join(target_dir, f"{rt['ObjName']}.xml")
-            write_xml_file(target_file, borrowed_xml)
-            add_to_child_objects(rt["TypeName"], rt["ObjName"])
-            borrowed_files.append(target_file)
-            info(f"  Auto-borrowed: {rt['TypeName']}.{rt['ObjName']}")
+            borrow_object_shell(rt["TypeName"], rt["ObjName"])
 
     # Владелец общей формы — из ТИПА её основного реквизита (эталон УТ CommonMain):
     # <Вид>Object.Имя / <Вид>RecordManager.Имя → объект; DynamicList → объект из <MainTable>;
@@ -2547,26 +2921,25 @@ def main():
         parts.append("\t</BaseForm>\r\n")
         parts.append("</Form>")
 
-        # Динамический список с ручным запросом: в расширении его запрос компилируется в контексте
-        # расширения, и любой объект запроса, которого там нет, делает невалидными все поля списка
-        # («Неверный путь к данным»). Конфигуратор такие пути пишет с тильдой — платформа разрешает их
-        # после наложения на основную конфигурацию; путь, разрешимый и так, она при загрузке разрешает
-        # и выгружает уже без тильды (замер 8.3.24). Поэтому тильда — без разбора запроса — всем
-        # привязкам к полям списка, которые платформа проверяет при загрузке: *DataPath элементов
-        # (DataPath, FooterDataPath, RowPictureDataPath…) и <Field> в UseAlways реквизита. Сам список
-        # (DataPath без поля) — как есть; пути отбора и оформления (dcsset:/dcscor:) при загрузке не
-        # проверяются, их не трогаем.
+        # Динамический список: оболочка его основной таблицы и тильда у путей полей — в конце запуска
+        # (шаги 14a и 14c), по итоговому составу расширения — реквизиты основной таблицы заимствует
+        # borrow_main_attribute уже после формы, а в пакете — и соседние формы.
         form_xml_text = "".join(parts)
-        if with_main_attr and '<ManualQuery>true</ManualQuery>' in main_attr_info['Xml']:
-            dl_field_pat = r'(<(?:\w*DataPath|Field)>)(?=' + re.escape(main_attr_info['Name']) + r'\.)'
-            form_xml_text, dl_count = re.subn(dl_field_pat, r'\1~', form_xml_text)
-            if dl_count > 0:
-                info(f"  Поля динамического списка с ручным запросом: пути с тильдой ({dl_count}) — разрешатся после наложения")
+        pending_dyn_list = with_main_attr and (':DynamicList<' in main_attr_info['Xml']
+                                               or 'xsi:type="DynamicList"' in main_attr_info['Xml'])
 
         form_xml_dir = os.path.join(ext_form_dir, "Ext")
         os.makedirs(form_xml_dir, exist_ok=True)
         form_xml_file = os.path.join(form_xml_dir, "Form.xml")
         write_xml_file(form_xml_file, form_xml_text)
+        if pending_dyn_list:
+            dl_mt = re.search(r'<MainTable>([^<]*)</MainTable>', main_attr_info['Xml'])
+            dl_qt = re.search(r'(?s)<QueryText>(.*?)</QueryText>', main_attr_info['Xml'])
+            dyn_list_forms.append({
+                'File': form_xml_file, 'MainName': main_attr_info['Name'],
+                'Manual': '<ManualQuery>true</ManualQuery>' in main_attr_info['Xml'],
+                'MainTable': dl_mt.group(1).strip() if dl_mt else '',
+                'Query': html.unescape(dl_qt.group(1)) if dl_qt else ''})
         info(f"  Created: {form_xml_file}")
         if DROPPED_LINKS:
             uniq = sorted(set(DROPPED_LINKS))
@@ -2817,6 +3190,19 @@ def main():
                 borrowed_files.append(new_borrowed_module_file(type_name, obj_name, kind))
             borrowed_count += 1
 
+    # --- 14a. Основные таблицы динамических списков заимствованных форм — оболочками ---
+    # Объект основной таблицы списка обязан быть в расширении («Неверно указана главная таблица
+    # динамического списка»), даже если форма принадлежит другому объекту. Для виртуальной таблицы или
+    # ТЧ (InformationRegister.Цены.SliceLast) — объект по первым двум сегментам. До шага 14b: оболочке
+    # справочника нужны и его владельцы.
+    for dl in dyn_list_forms:
+        mt = re.match(r'^(\w+)\.(\w+)(?:\.\w+)*$', dl['MainTable'])
+        if mt and mt.group(1) in CHILD_TYPE_DIR_MAP:
+            mt_kind, mt_name = mt.group(1), mt.group(2)
+            if not test_object_borrowed(mt_kind, mt_name):
+                info(f"Основная таблица динамического списка {mt_kind}.{mt_name} — в расширение оболочкой")
+                borrow_object_shell(mt_kind, mt_name)
+
     # --- Владельцы заимствованных справочников ---
     # Ссылка в <Owners> должна вести на объект, который в расширении есть: иначе платформа падает
     # при загрузке (проверено — access violation, не сообщение об ошибке). Конфигуратор владельца
@@ -2857,6 +3243,44 @@ def main():
             add_to_child_objects(o_type, o_name)
             borrowed_files.append(ow_file)
             info(f"  Auto-borrowed owner: {o_type}.{o_name}")
+
+    # --- 14c. Тильда у путей полей динамических списков заимствованных форм ---
+    # Запрос списка компилируется в контексте расширения, и что-то из него, чего там нет, делает
+    # невалидными все поля списка («Неверный путь к данным»). Конфигуратор такие пути пишет с тильдой —
+    # платформа разрешает их после наложения на основную конфигурацию. Тильду ставим, только если
+    # список не разрешится в расширении (get_dyn_list_query_unresolved): лишняя тильда безвредна, но первая
+    # выгрузка из базы её снимет — шум в истории файлов. У списка без ручного запроса поля — пути формы
+    # по основной таблице: проверяем их как запрос «ВЫБРАТЬ Т.Поле… ИЗ <таблица> КАК Т». Решаем здесь,
+    # по итоговому составу расширения (после 14a и 14b): реквизиты заимствуются уже после формы, в пакете —
+    # и соседними формами. Помечаются привязки, которые платформа проверяет при загрузке: *DataPath
+    # элементов (DataPath, FooterDataPath, RowPictureDataPath…) и <Field> в UseAlways; в форме и в
+    # BaseForm. Сам список (DataPath без поля) — как есть; пути отбора и оформления (dcsset:/dcscor:)
+    # не проверяются.
+    for dl in dyn_list_forms:
+        with open(dl['File'], 'r', encoding='utf-8-sig', newline='') as fh:
+            dl_text = fh.read()
+        if dl['Manual']:
+            dl_query = dl['Query']
+        else:
+            if not dl['MainTable']:
+                continue
+            dl_path_pat = r'<(?:\w*DataPath|Field)>~?' + re.escape(dl['MainName']) + r'\.([^<]+)<'
+            dl_fields = list(dict.fromkeys("Т." + m.group(1) for m in re.finditer(dl_path_pat, dl_text)))
+            if not dl_fields:
+                continue
+            dl_query = "ВЫБРАТЬ " + ", ".join(dl_fields) + f" ИЗ {dl['MainTable']} КАК Т"
+        dl_unresolved = get_dyn_list_query_unresolved(dl_query)
+        if not dl_unresolved:
+            continue
+        dl_field_pat = r'(<(?:\w*DataPath|Field)>)(?=' + re.escape(dl['MainName']) + r'\.)'
+        dl_text, dl_count = re.subn(dl_field_pat, r'\1~', dl_text)
+        if dl_count > 0:
+            write_utf8_bom(dl['File'], dl_text)
+            dl_shown = ", ".join(dl_unresolved[:5])
+            if len(dl_unresolved) > 5:
+                dl_shown += ", …"
+            dl_rel = os.path.relpath(dl['File'], ext_dir).replace('\\', '/')
+            info(f"Поля динамического списка ({dl_rel}): пути с тильдой ({dl_count}) — список использует то, чего нет в расширении ({dl_shown}); разрешатся после наложения")
 
     # --- Save modified Configuration.xml ---
     save_xml_bom(tree, ext_resolved)

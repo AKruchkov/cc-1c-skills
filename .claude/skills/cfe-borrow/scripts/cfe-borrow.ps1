@@ -1,4 +1,4 @@
-﻿# cfe-borrow v1.46 — Borrow objects from configuration into extension (CFE)
+﻿# cfe-borrow v1.47 — Borrow objects from configuration into extension (CFE)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1444,24 +1444,11 @@ function Borrow-Form {
 	$formXmlSb.Append("`r`n") | Out-Null
 	$formXmlSb.Append("</Form>") | Out-Null
 
-	# Динамический список с ручным запросом: в расширении его запрос компилируется в контексте
-	# расширения, и любой объект запроса, которого там нет, делает невалидными все поля списка
-	# («Неверный путь к данным»). Конфигуратор такие пути пишет с тильдой — платформа разрешает их
-	# после наложения на основную конфигурацию; путь, разрешимый и так, она при загрузке разрешает
-	# и выгружает уже без тильды (замер 8.3.24). Поэтому тильда — без разбора запроса — всем
-	# привязкам к полям списка, которые платформа проверяет при загрузке: *DataPath элементов
-	# (DataPath, FooterDataPath, RowPictureDataPath…) и <Field> в UseAlways реквизита. Сам список
-	# (DataPath без поля) — как есть; пути отбора и оформления (dcsset:/dcscor:) при загрузке не
-	# проверяются, их не трогаем.
+	# Динамический список: оболочка его основной таблицы и тильда у путей полей — в конце запуска
+	# (шаги 14a и 14c), по итоговому составу расширения — реквизиты основной таблицы заимствует
+	# Borrow-MainAttribute уже после формы, а в пакете — и соседние формы.
 	$formXmlText = $formXmlSb.ToString()
-	if ($withMainAttr -and $mainAttrInfo.Xml -match '<ManualQuery>true</ManualQuery>') {
-		$dlFieldPat = '(<(?:\w*DataPath|Field)>)(?=' + [regex]::Escape($mainAttrInfo.Name) + '\.)'
-		$script:dlCount = 0
-		$formXmlText = [regex]::Replace($formXmlText, $dlFieldPat, { param($m) $script:dlCount++; $m.Groups[1].Value + '~' })
-		if ($script:dlCount -gt 0) {
-			Info "  Поля динамического списка с ручным запросом: пути с тильдой ($($script:dlCount)) — разрешатся после наложения"
-		}
-	}
+	$pendingDynList = ($withMainAttr -and ($mainAttrInfo.Xml -match ':DynamicList<' -or $mainAttrInfo.Xml -match 'xsi:type="DynamicList"'))
 
 	# Write Form.xml
 	$formXmlDir = Join-Path $extFormDir "Ext"
@@ -1477,6 +1464,16 @@ function Borrow-Form {
 	# Файл создаём мы — канон выгрузки: CRLF в разделителях строк.
 	$formXmlText = ($formXmlText -replace "`r`n", "`n") -replace "`n", "`r`n"
 	[System.IO.File]::WriteAllText($formXmlFile, $formXmlText, $enc)
+	if ($pendingDynList) {
+		$dlMt = [regex]::Match($mainAttrInfo.Xml, '<MainTable>([^<]*)</MainTable>')
+		$dlQt = [regex]::Match($mainAttrInfo.Xml, '(?s)<QueryText>(.*?)</QueryText>')
+		$script:dynListForms += @{
+			File = $formXmlFile; MainName = $mainAttrInfo.Name
+			Manual = ($mainAttrInfo.Xml -match '<ManualQuery>true</ManualQuery>')
+			MainTable = $(if ($dlMt.Success) { $dlMt.Groups[1].Value.Trim() } else { '' })
+			Query = $(if ($dlQt.Success) { [System.Net.WebUtility]::HtmlDecode($dlQt.Groups[1].Value) } else { '' })
+		}
+	}
 	Info "  Created: $formXmlFile"
 	if ($script:droppedLinks.Count -gt 0) {
 		$uniq = @($script:droppedLinks | Sort-Object -Unique)
@@ -1828,6 +1825,334 @@ function Get-LinkContext {
 	}
 }
 
+# Ключ сравнения имён в тексте запроса: язык запросов регистронезависим, Ё и Е — одна буква.
+function Get-QueryKey([string]$s) {
+	return $s.ToUpperInvariant().Replace([string][char]0x0401, [string][char]0x0415)
+}
+
+# Виды таблиц языка запросов (рус. и англ.) → вид метаданных. Ключи — через Get-QueryKey.
+$script:queryTableKinds = @{}
+foreach ($qk in @(
+	@("Справочник","Catalog"), @("Документ","Document"), @("Перечисление","Enum"),
+	@("ПланВидовХарактеристик","ChartOfCharacteristicTypes"), @("ПланСчетов","ChartOfAccounts"),
+	@("ПланВидовРасчета","ChartOfCalculationTypes"), @("ПланОбмена","ExchangePlan"),
+	@("БизнесПроцесс","BusinessProcess"), @("Задача","Task"),
+	@("РегистрСведений","InformationRegister"), @("РегистрНакопления","AccumulationRegister"),
+	@("РегистрБухгалтерии","AccountingRegister"), @("РегистрРасчета","CalculationRegister"),
+	@("ЖурналДокументов","DocumentJournal"), @("Константа","Constant"),
+	@("Последовательность","Sequence"), @("КритерийОтбора","FilterCriterion"),
+	@("ВнешнийИсточникДанных","ExternalDataSource"))) {
+	$script:queryTableKinds[(Get-QueryKey $qk[0])] = $qk[1]
+	$script:queryTableKinds[(Get-QueryKey $qk[1])] = $qk[1]
+}
+
+# Ключевые слова языка запросов, которые могут стоять сразу за таблицей вместо псевдонима.
+$script:queryAliasStopWords = @{}
+foreach ($kw in @("ГДЕ","WHERE","ЛЕВОЕ","LEFT","ПРАВОЕ","RIGHT","ПОЛНОЕ","FULL","ВНУТРЕННЕЕ","INNER",
+	"ВНЕШНЕЕ","OUTER","СОЕДИНЕНИЕ","JOIN","ПО","ON","СГРУППИРОВАТЬ","GROUP","УПОРЯДОЧИТЬ","ORDER",
+	"ИМЕЮЩИЕ","HAVING","ОБЪЕДИНИТЬ","UNION","ДЛЯ","FOR","ИТОГИ","TOTALS","ИНДЕКСИРОВАТЬ","INDEX",
+	"ИЗ","FROM","ВЫБРАТЬ","SELECT","И","AND","ИЛИ","OR","НЕ","NOT","КОГДА","WHEN","ТОГДА","THEN",
+	"ИНАЧЕ","ELSE","КОНЕЦ","END","ПОМЕСТИТЬ","INTO","ССЫЛКА","REFS","В","IN","МЕЖДУ","BETWEEN",
+	"ПОДОБНО","LIKE","ЕСТЬ","IS","ИЕРАРХИИ","HIERARCHY","ВОЗР","ASC","УБЫВ","DESC","АВТОУПОРЯДОЧИВАНИЕ",
+	"AUTOORDER","ИЗМЕНЕНИЯ","UPDATE","ВСЕ","ALL")) { $script:queryAliasStopWords[(Get-QueryKey $kw)] = $true }
+
+# Стандартные поля по видам объектов (рус. и англ.) — есть у таблицы без заимствования реквизитов.
+# У каждого вида свои: Номер/Дата — стандартные у документа, а у справочника это обычные реквизиты,
+# которых в оболочке нет. Неизвестный вид — только общие поля. Поля, которые включаются свойством
+# объекта (Родитель, Владелец, Период регистра сведений…), — в $script:queryGatedStd. Ключи — Get-QueryKey.
+$script:queryStdByKind = @{}
+$qsCommon = @("Ссылка","Ref","ПометкаУдаления","DeletionMark","Предопределенный","Predefined",
+	"ИмяПредопределенныхДанных","PredefinedDataName","ВерсияДанных","DataVersion","Представление",
+	"Presentation","DefaultPicture")
+$qsByKind = @{
+	"Catalog" = @("Код","Code","Наименование","Description")
+	"Document" = @("Номер","Number","Дата","Date","Проведен","Posted","МоментВремени","PointInTime")
+	"ChartOfCharacteristicTypes" = @("Код","Code","Наименование","Description","ТипЗначения","ValueType")
+	"ChartOfAccounts" = @("Код","Code","Наименование","Description","Родитель","Parent","Порядок","Order","Вид","Type","Забалансовый","OffBalance")
+	"ChartOfCalculationTypes" = @("Код","Code","Наименование","Description")
+	"ExchangePlan" = @("Код","Code","Наименование","Description","НомерОтправленного","SentNo","НомерПринятого","ReceivedNo","ЭтотУзел","ThisNode")
+	"BusinessProcess" = @("Номер","Number","Дата","Date","Завершен","Completed","Стартован","Started","ВедущаяЗадача","HeadTask")
+	"Task" = @("Номер","Number","Дата","Date","Наименование","Description","Выполнена","Executed","БизнесПроцесс","BusinessProcess","ТочкаМаршрута","RoutePoint")
+	"Enum" = @("Порядок","Order")
+	"DocumentJournal" = @("Номер","Number","Дата","Date","Проведен","Posted","Тип","Type")
+	"InformationRegister" = @()
+	"AccumulationRegister" = @("Период","Period","Регистратор","Recorder","НомерСтроки","LineNumber","Активность","Active","ВидДвижения","RecordType")
+	"AccountingRegister" = @("Период","Period","Регистратор","Recorder","НомерСтроки","LineNumber","Активность","Active")
+	"CalculationRegister" = @("Регистратор","Recorder","НомерСтроки","LineNumber","Активность","Active")
+}
+$script:queryStdCommon = @{}
+foreach ($sf in $qsCommon) { $script:queryStdCommon[(Get-QueryKey $sf)] = $true }
+foreach ($qsk in $qsByKind.Keys) {
+	$set = @{}
+	foreach ($sf in $qsCommon + $qsByKind[$qsk]) { $set[(Get-QueryKey $sf)] = $true }
+	$script:queryStdByKind[$qsk] = $set
+}
+# Стандартные поля, которые есть, только если это включено свойством объекта: у заимствованного
+# объекта в расширении их нет, пока свойства нет в его копии (замер 8.3.24: Родитель у иерархического
+# справочника на оболочке без <Hierarchical> — «Неверный путь к данным»; Код, Наименование — есть).
+$script:queryGatedStd = @{}
+foreach ($g in @(
+	@("Catalog", "Hierarchical", @("Родитель","Parent","ЭтоГруппа","IsFolder")),
+	@("ChartOfCharacteristicTypes", "Hierarchical", @("Родитель","Parent","ЭтоГруппа","IsFolder")),
+	@("Catalog", "Owners", @("Владелец","Owner")),
+	@("InformationRegister", "Periodic", @("Период","Period")),
+	@("InformationRegister", "Recorder", @("Регистратор","Recorder","НомерСтроки","LineNumber","Активность","Active")))) {
+	foreach ($f in $g[2]) { $script:queryGatedStd["$($g[0])|$(Get-QueryKey $f)"] = $g[1] }
+}
+function Test-QueryStdField($info, [string]$fieldKey) {
+	$gate = $script:queryGatedStd["$($info.Kind)|$fieldKey"]
+	if ($gate) { return [bool]$info.Gates[$gate] }
+	if ($script:queryStdByKind.ContainsKey($info.Kind)) { return $script:queryStdByKind[$info.Kind].ContainsKey($fieldKey) }
+	return $script:queryStdCommon.ContainsKey($fieldKey)
+}
+
+# Псевдоним таблицы, ссылка на которую кончается в позиции $pos: «КАК имя» / «AS имя», имя без
+# КАК (если это не ключевое слово); параметры виртуальной таблицы в скобках пропускаются.
+# $null — псевдонима нет, тогда псевдоним — последний сегмент имени таблицы. Иначе — имя и позиция:
+# имя без КАК — тоже определение псевдонима, а не поле.
+$script:reTableAlias = New-Object System.Text.RegularExpressions.Regex '\G(?:(КАК|AS)\s+)?([^\W\d]\w*)', ([System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+function Get-QueryTableAlias([string]$q, [int]$pos) {
+	$i = $pos
+	while ($i -lt $q.Length -and [char]::IsWhiteSpace($q[$i])) { $i++ }
+	if ($i -lt $q.Length -and $q[$i] -eq '(') {
+		$depth = 0
+		while ($i -lt $q.Length) {
+			if ($q[$i] -eq '(') { $depth++ } elseif ($q[$i] -eq ')') { $depth--; if ($depth -eq 0) { $i++; break } }
+			$i++
+		}
+		while ($i -lt $q.Length -and [char]::IsWhiteSpace($q[$i])) { $i++ }
+	}
+	$m = $script:reTableAlias.Match($q, $i)
+	if (-not $m.Success) { return $null }
+	if (-not $m.Groups[1].Success -and $script:queryAliasStopWords.ContainsKey((Get-QueryKey $m.Groups[2].Value))) { return $null }
+	return @{ Name = $m.Groups[2].Value; Index = $m.Groups[2].Index }
+}
+
+# Зарезервированные слова языка запросов — полем быть не могут: стоп-слова псевдонима плюс
+# литералы и модификаторы. Имена типов (СТРОКА, ДАТА…) и периодов (МЕСЯЦ, ГОД…) сюда не входят:
+# это бывают и имена полей. Тип пропускается по позиции — после КАК, как всякое определение
+# псевдонима; период — аргументом после запятой внутри скобок (НАЧАЛОПЕРИОДА(Д.Дата, МЕСЯЦ)).
+$script:queryReservedWords = @{}
+foreach ($kw in $script:queryAliasStopWords.Keys) { $script:queryReservedWords[$kw] = $true }
+foreach ($kw in @("КАК","AS","РАЗРЕШЕННЫЕ","ALLOWED","РАЗЛИЧНЫЕ","DISTINCT","ПЕРВЫЕ","TOP","NULL","ИСТИНА",
+	"TRUE","ЛОЖЬ","FALSE","НЕОПРЕДЕЛЕНО","UNDEFINED","ВЫБОР","CASE","СПЕЦСИМВОЛ","ESCAPE","BY",
+	"ИЕРАРХИЯ","ОБЩИЕ","OVERALL","ПЕРИОДАМИ","PERIODS","УНИЧТОЖИТЬ","DROP","ГРУППИРУЮЩИМ","НАБОРАМ",
+	"GROUPING","SETS")) {
+	$script:queryReservedWords[(Get-QueryKey $kw)] = $true
+}
+$script:queryPeriodNames = @{}
+foreach ($kw in @("СЕКУНДА","SECOND","МИНУТА","MINUTE","ЧАС","HOUR","ДЕНЬ","DAY","НЕДЕЛЯ","WEEK",
+	"МЕСЯЦ","MONTH","КВАРТАЛ","QUARTER","ГОД","YEAR","ДЕКАДА","TENDAYS","ПОЛУГОДИЕ","HALFYEAR","АВТО","AUTO")) {
+	$script:queryPeriodNames[(Get-QueryKey $kw)] = $true
+}
+$script:reFuncParen = New-Object System.Text.RegularExpressions.Regex '\G\s*\('
+# Слова, после которых в запросе стоит таблица-источник
+$script:querySourceKeywords = @{}
+foreach ($kw in @("ИЗ","FROM","СОЕДИНЕНИЕ","JOIN")) { $script:querySourceKeywords[(Get-QueryKey $kw)] = $true }
+
+# Ссылочный тип → вид метаданных: CatalogRef → Catalog и т.п. (у DefinedType и прочих — $null).
+function Get-RefKindFromType([string]$typeText) {
+	$t = $typeText.Trim()
+	$ci = $t.IndexOf(':'); if ($ci -ge 0) { $t = $t.Substring($ci + 1) }
+	if ($t -match '^(\w+)Ref\.(\w+)$') { return @{ Kind = $Matches[1]; Name = $Matches[2] } }
+	return $null
+}
+
+# Что объект предоставляет запросу в контексте расширения — по итоговому составу расширения.
+# $null — объекта в расширении нет. Fields: имена заимствованных подобъектов (реквизиты, измерения,
+# ресурсы, ТЧ, признаки учёта…); TSCols: колонки заимствованных ТЧ; EnumValues: значения
+# перечисления; Types: поле → ссылочный тип (одиночный) для разыменования. Ключи — Get-QueryKey.
+$script:extTableInfoCache = @{}
+$script:queryFieldKinds = @('Attribute','Dimension','Resource','TabularSection','AddressingAttribute','AccountingFlag','ExtDimensionAccountingFlag','Column','EnumValue')
+function Get-ExtTableInfo([string]$kind, [string]$nameKey) {
+	$cacheKey = "$kind|$nameKey"
+	if ($script:extTableInfoCache.ContainsKey($cacheKey)) { return $script:extTableInfoCache[$cacheKey] }
+	$info = $null
+	$dir = $childTypeDirMap[$kind]
+	$actual = $null
+	if ($dir) {
+		# Имя — каноническое, из состава расширения: в запросе регистр и Ё/Е произвольны
+		foreach ($c in $script:childObjsEl.ChildNodes) {
+			if ($c.NodeType -ne 'Element' -or $c.LocalName -ne $kind) { continue }
+			if ((Get-QueryKey $c.InnerText.Trim()) -ceq $nameKey) { $actual = $c.InnerText.Trim(); break }
+		}
+	}
+	if ($actual) {
+		$f = Join-Path (Join-Path $extDir $dir) "$actual.xml"
+		if (Test-Path -LiteralPath $f) {
+			$doc = New-Object System.Xml.XmlDocument
+			$doc.Load($f)
+			$el = $null
+			foreach ($c in $doc.DocumentElement.ChildNodes) { if ($c.NodeType -eq 'Element') { $el = $c; break } }
+			$info = @{ Kind = $kind; Fields = @{}; TSCols = @{}; EnumValues = @{}; Types = @{}; Gates = @{} }
+			if ($el) {
+				$pr = $el.SelectSingleNode("*[local-name()='Properties']")
+				if ($pr) {
+					$hv = $pr.SelectSingleNode("*[local-name()='Hierarchical']")
+					$info.Gates['Hierarchical'] = [bool]($hv -and $hv.InnerText.Trim() -ceq 'true')
+					$info.Gates['Owners'] = [bool]($pr.SelectSingleNode("*[local-name()='Owners']/*"))
+					$pv = $pr.SelectSingleNode("*[local-name()='InformationRegisterPeriodicity']")
+					$info.Gates['Periodic'] = [bool]($pv -and $pv.InnerText.Trim() -and $pv.InnerText.Trim() -cne 'Nonperiodical')
+					$wv = $pr.SelectSingleNode("*[local-name()='WriteMode']")
+					$info.Gates['Recorder'] = [bool]($wv -and $wv.InnerText.Trim() -ceq 'RecorderSubordinate')
+				}
+				foreach ($sub in $el.SelectNodes("*[local-name()='ChildObjects']/*")) {
+					# Поля таблицы — только данные: команды, формы, макеты и т.п. полями не бывают
+					if ($script:queryFieldKinds -notcontains $sub.LocalName) { continue }
+					$nm = $sub.SelectSingleNode("*[local-name()='Properties']/*[local-name()='Name']")
+					if (-not $nm) { continue }
+					$k = Get-QueryKey $nm.InnerText.Trim()
+					if ($sub.LocalName -eq 'EnumValue') { $info.EnumValues[$k] = $true; continue }
+					$info.Fields[$k] = $true
+					$types = @($sub.SelectNodes("*[local-name()='Properties']/*[local-name()='Type']/*[local-name()='Type']"))
+					if ($types.Count -eq 1) {
+						$rk = Get-RefKindFromType $types[0].InnerText
+						if ($rk) { $info.Types[$k] = $rk }
+					}
+					if ($sub.LocalName -eq 'TabularSection') {
+						$cols = @{}
+						foreach ($cn in $sub.SelectNodes("*[local-name()='ChildObjects']/*/*[local-name()='Properties']/*[local-name()='Name']")) {
+							$cols[(Get-QueryKey $cn.InnerText.Trim())] = $true
+						}
+						$info.TSCols[$k] = $cols
+					}
+				}
+			}
+		}
+	}
+	$script:extTableInfoCache[$cacheKey] = $info
+	return $info
+}
+
+# Что в ручном запросе динамического списка не разрешится в контексте расширения — список причин;
+# пустой — запрос разрешим, тильда не нужна. Проверяется по ИТОГОВОМУ составу расширения, а не по
+# прогнозу заимствования: каждая таблица запроса (её объект) должна быть в расширении, её ТЧ,
+# значения перечисления — тоже; каждое поле — заимствованным подобъектом или стандартным полем,
+# разыменование — по одиночному ссылочному типу до объекта, который тоже есть в расширении.
+# Предопределённые, виртуальные таблицы, «*», обращения через скобку и неизвестные слова — не
+# разрешаются. Правило консервативное: лишняя тильда — лишь шум, пропущенная — отказ загрузки.
+# Сверено с платформой 8.3.24 (оракул — загрузка без тильды).
+function Get-DynListQueryUnresolved([string]$queryText) {
+	$reasons = New-Object System.Collections.Generic.List[string]
+	# Строковые литералы и комментарии — не код запроса; пробелы вокруг точки — часть пути
+	$q = [regex]::Replace($queryText, '"(?:[^"]|"")*"|//[^\r\n]*', ' ')
+	$q = [regex]::Replace($q, '(?<=[\w)])\s*\.\s*(?=[^\W\d]|\*)', '.')
+	$emptyRefKeys = @((Get-QueryKey "ПустаяСсылка"), (Get-QueryKey "EmptyRef"))
+	$tsStdKeys = @((Get-QueryKey "Ссылка"), (Get-QueryKey "Ref"), (Get-QueryKey "НомерСтроки"), (Get-QueryKey "LineNumber"))
+	$sameObjStd = @((Get-QueryKey "Ссылка"), (Get-QueryKey "Ref"), (Get-QueryKey "Родитель"), (Get-QueryKey "Parent"))
+	$refKeys = @((Get-QueryKey "Ссылка"), (Get-QueryKey "Ref"))
+
+	# «*» (кроме КОЛИЧЕСТВО(*)) и обращение через скобку — состав полей не виден
+	if ([regex]::IsMatch($q, '(?i)\.\*|(?:(?<![\w.])(?:ВЫБРАТЬ|SELECT|РАЗЛИЧНЫЕ|DISTINCT|РАЗРЕШЕННЫЕ|ALLOWED)|,|\{|(?<![\w.])(?:ПЕРВЫЕ|TOP)\s+\d+)\s*\*')) { $reasons.Add("*") }
+	# Области запроса не разбираются: части ОБЪЕДИНИТЬ и вложенные запросы — со своими таблицами
+	if ([regex]::IsMatch($q, '(?i)(?<![\w.])(?:ОБЪЕДИНИТЬ|UNION)(?![\w.])')) { $reasons.Add("ОБЪЕДИНИТЬ") }
+	if ([regex]::Matches($q, '(?i)(?<![\w.])(?:ВЫБРАТЬ|SELECT)(?![\w.])').Count -gt 1) { $reasons.Add("вложенный запрос") }
+	if ([regex]::IsMatch($q, '\)\.[^\W\d]')) { $reasons.Add(").Поле") }
+
+	$pathMatches = @([regex]::Matches($q, '(?<![\w.&])[^\W\d]\w*(?:\.[^\W\d]\w*)+'))
+	$aliasPos = New-Object 'System.Collections.Generic.HashSet[int]'
+	# Таблицы и их псевдонимы: псевдоним → @{ Info; TS ('' — сам объект) }
+	$aliasMap = @{}
+	foreach ($pm in $pathMatches) {
+		$segs = $pm.Value.Split('.')
+		$k0 = Get-QueryKey $segs[0]
+		if (-not $script:queryTableKinds.ContainsKey($k0)) { continue }
+		$kind = $script:queryTableKinds[$k0]
+		$info = Get-ExtTableInfo $kind (Get-QueryKey $segs[1])
+		if ($null -eq $info) { $reasons.Add("$($segs[0]).$($segs[1])"); continue }
+		$tsKey = ''
+		if ($segs.Count -ge 3) {
+			$k2 = Get-QueryKey $segs[2]
+			if ($segs.Count -eq 3 -and ($emptyRefKeys -ccontains $k2 -or $info.EnumValues.ContainsKey($k2))) { continue }
+			if ($segs.Count -eq 3 -and $info.TSCols.ContainsKey($k2)) { $tsKey = $k2 }
+			else { $reasons.Add($pm.Value); continue }
+		}
+		# Псевдоним — только у таблицы-источника (после ИЗ/СОЕДИНЕНИЕ или запятой в их списке). У
+		# ссылок в ЗНАЧЕНИЕ(), ТИП(), ВЫРАЗИТЬ(... КАК …), ССЫЛКА … псевдонима нет: фантомный псевдоним
+		# закрыл бы от проверки одноимённое поле.
+		$bi = $pm.Index - 1
+		while ($bi -ge 0 -and [char]::IsWhiteSpace($q[$bi])) { $bi-- }
+		$isSource = $false
+		if ($bi -ge 0 -and $q[$bi] -eq ',') { $isSource = $true }
+		elseif ($bi -ge 0) {
+			$we = $bi + 1
+			while ($bi -ge 0 -and [char]::IsLetterOrDigit($q[$bi])) { $bi-- }
+			$isSource = $script:querySourceKeywords.ContainsKey((Get-QueryKey $q.Substring($bi + 1, $we - $bi - 1)))
+		}
+		if (-not $isSource) { continue }
+		$al = Get-QueryTableAlias $q ($pm.Index + $pm.Length)
+		$alias = $segs[-1]
+		if ($al) { $alias = $al.Name; [void]$aliasPos.Add($al.Index) }
+		$aliasMap[(Get-QueryKey $alias)] = @{ Info = $info; TS = $tsKey }
+	}
+
+	# Поле Источник.Поле[.Подполе…]: каждое звено — заимствованный подобъект или стандартное поле
+	foreach ($pm in $pathMatches) {
+		$segs = $pm.Value.Split('.')
+		$k0 = Get-QueryKey $segs[0]
+		if ($script:queryTableKinds.ContainsKey($k0)) { continue }
+		if (-not $aliasMap.ContainsKey($k0)) { $reasons.Add($pm.Value); continue }
+		$curInfo = $aliasMap[$k0].Info; $curTS = $aliasMap[$k0].TS
+		$ok = $true
+		for ($i = 1; $i -lt $segs.Count; $i++) {
+			$fk = Get-QueryKey $segs[$i]
+			$last = ($i -eq $segs.Count - 1)
+			if ($curTS) {
+				# Поле строки ТЧ: колонка (без разыменования) или Ссылка/НомерСтроки
+				if ($last -and ($curInfo.TSCols[$curTS].ContainsKey($fk) -or $tsStdKeys -ccontains $fk)) { break }
+				if (-not $last -and $refKeys -ccontains $fk) { $curTS = ''; continue }
+				$ok = $false; break
+			}
+			if ($last) {
+				if (-not ($curInfo.Fields.ContainsKey($fk) -or (Test-QueryStdField $curInfo $fk))) { $ok = $false }
+				break
+			}
+			# Разыменование: Ссылка/Родитель — тот же объект; реквизит — по его ссылочному типу
+			if ($sameObjStd -ccontains $fk -and (Test-QueryStdField $curInfo $fk)) { continue }
+			if ($curInfo.Types.ContainsKey($fk)) {
+				$t = $curInfo.Types[$fk]
+				$curInfo = Get-ExtTableInfo $t.Kind (Get-QueryKey $t.Name)
+				if ($null -eq $curInfo) { $ok = $false; break }
+				continue
+			}
+			$ok = $false; break
+		}
+		if (-not $ok) { $reasons.Add($pm.Value) }
+	}
+
+	# Слова без точки. Пропускаются: определение псевдонима (после КАК/AS — в т.ч. имя типа в
+	# ВЫРАЗИТЬ), имя функции (перед «(»), зарезервированное слово, период аргументом после запятой
+	# внутри скобок. Остальное — поле одной из таблиц запроса: Месяц, Документ, Сумма — и имена полей.
+	$aliasDefs = New-Object 'System.Collections.Generic.HashSet[int]'
+	foreach ($m in [regex]::Matches($q, '(?i)(?<![\w.])(?:КАК|AS)\s+([^\W\d]\w*)')) { [void]$aliasDefs.Add($m.Groups[1].Index) }
+	$commaArgs = New-Object 'System.Collections.Generic.HashSet[int]'
+	foreach ($m in [regex]::Matches($q, ',\s*([^\W\d]\w*)')) { [void]$commaArgs.Add($m.Groups[1].Index) }
+	$depthAt = New-Object 'int[]' ($q.Length + 1)
+	$depth = 0
+	for ($ci = 0; $ci -lt $q.Length; $ci++) {
+		$depthAt[$ci] = $depth
+		if ($q[$ci] -eq '(') { $depth++ } elseif ($q[$ci] -eq ')') { $depth-- }
+	}
+	foreach ($wm in [regex]::Matches($q, '(?<![\w.&])[^\W\d]\w*(?![\w.])')) {
+		if ($aliasDefs.Contains($wm.Index) -or $aliasPos.Contains($wm.Index)) { continue }
+		$wk = Get-QueryKey $wm.Value
+		if ($script:queryReservedWords.ContainsKey($wk)) { continue }
+		if ($script:queryPeriodNames.ContainsKey($wk) -and $commaArgs.Contains($wm.Index) -and $depthAt[$wm.Index] -gt 0) { continue }
+		if ($script:reFuncParen.Match($q, $wm.Index + $wm.Length).Success) { continue }
+		$found = $false
+		foreach ($src in $aliasMap.Values) {
+			if ($src.TS) {
+				if ($src.Info.TSCols[$src.TS].ContainsKey($wk) -or $tsStdKeys -ccontains $wk) { $found = $true; break }
+			} elseif ($src.Info.Fields.ContainsKey($wk) -or (Test-QueryStdField $src.Info $wk)) { $found = $true; break }
+		}
+		if (-not $found) { $reasons.Add($wm.Value) }
+	}
+
+	# Дедуп с учётом регистра — как в py-порте (хеш-таблица PowerShell регистронезависима)
+	$seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+	return @($reasons | Where-Object { $seen.Add($_) })
+}
+
 function Get-MainAttributeInfo {
 	param($formEl, [string]$nsStripPattern)
 
@@ -1930,6 +2255,13 @@ function Collect-FormDataPaths {
 function Resolve-SourceAttributes {
 	param([string]$typeName, [string]$objName, $firstLevelNames)
 	# $firstLevelNames: hashtable of names, or $null for "all"
+	# Имена сверяются ключом запроса (регистр, Ё/Е): слова приходят и из текста запроса списка,
+	# а правило тильды (Get-DynListQueryUnresolved) считает их найденными по тому же ключу.
+	$flKeys = $null
+	if ($null -ne $firstLevelNames) {
+		$flKeys = @{}
+		foreach ($flk in $firstLevelNames.Keys) { $flKeys[(Get-QueryKey $flk)] = $true }
+	}
 
 	$dirName = $childTypeDirMap[$typeName]
 	$srcFile = Join-Path (Join-Path $cfgDir $dirName) "${objName}.xml"
@@ -1970,7 +2302,7 @@ function Resolve-SourceAttributes {
 			$nameNode = $child.SelectSingleNode("md:Properties/md:Name", $srcNs)
 			if (-not $nameNode) { continue }
 			$attrName = $nameNode.InnerText
-			if ($null -ne $firstLevelNames -and -not $firstLevelNames.ContainsKey($attrName)) { continue }
+			if ($null -ne $flKeys -and -not $flKeys.ContainsKey((Get-QueryKey $attrName))) { continue }
 
 			$uuid = $child.GetAttribute("uuid")
 			$typeNode = $child.SelectSingleNode("md:Properties/md:Type", $srcNs)
@@ -1984,7 +2316,7 @@ function Resolve-SourceAttributes {
 			$nameNode = $child.SelectSingleNode("md:Properties/md:Name", $srcNs)
 			if (-not $nameNode) { continue }
 			$tsName = $nameNode.InnerText
-			if ($null -ne $firstLevelNames -and -not $firstLevelNames.ContainsKey($tsName)) { continue }
+			if ($null -ne $flKeys -and -not $flKeys.ContainsKey((Get-QueryKey $tsName))) { continue }
 
 			$tsUuid = $child.GetAttribute("uuid")
 
@@ -2225,38 +2557,42 @@ function Merge-AttributesIntoObject {
 
 # --- 11h. Borrow-MainAttribute orchestrator ---
 # Ссылочные типы → объекты-оболочки в расширении (кто уже заимствован — пропускается)
+# Объект-оболочка в расширении: кто уже заимствован — пропускается, без источника — предупреждение.
+function Borrow-ObjectShell([string]$typeName, [string]$objName) {
+	if (-not $childTypeDirMap.ContainsKey($typeName)) {
+		Warn "  Unknown object type: ${typeName}.${objName}"
+		return
+	}
+	if (Test-ObjectBorrowed $typeName $objName) {
+		Info "  Already borrowed: ${typeName}.${objName}"
+		return
+	}
+	$srcFile = Join-Path (Join-Path $cfgDir $childTypeDirMap[$typeName]) "${objName}.xml"
+	if (-not (Test-Path $srcFile)) {
+		Warn "  Source not found: ${typeName}.${objName}"
+		return
+	}
+	$src = Read-SourceObject $typeName $objName
+	$borrowedXml = Build-BorrowedObjectXml $typeName $objName $src.Uuid $src.Properties
+	$targetDir = Join-Path $extDir $childTypeDirMap[$typeName]
+	if (-not (Test-Path $targetDir)) {
+		New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+	}
+	$targetFile = Join-Path $targetDir "${objName}.xml"
+	[System.IO.File]::WriteAllText($targetFile, $borrowedXml, (New-Object System.Text.UTF8Encoding($true)))
+	Add-ToChildObjects $typeName $objName
+	$script:borrowedFiles += $targetFile
+	Info "  Auto-borrowed: ${typeName}.${objName}"
+}
+
 function Borrow-ReferenceTypeShells {
 	param([string[]]$typeXmls)
 
-	$encBom = New-Object System.Text.UTF8Encoding($true)
 	$refTypes = Collect-ReferenceTypes $typeXmls
 	Info "  Reference types to borrow: $($refTypes.Count)"
 
 	foreach ($rt in $refTypes) {
-		if (-not $childTypeDirMap.ContainsKey($rt.TypeName)) {
-			Warn "  Unknown reference type: $($rt.TypeName).$($rt.ObjName)"
-			continue
-		}
-		if (Test-ObjectBorrowed $rt.TypeName $rt.ObjName) {
-			Info "  Already borrowed: $($rt.TypeName).$($rt.ObjName)"
-			continue
-		}
-		$rtSrcFile = Join-Path (Join-Path $cfgDir $childTypeDirMap[$rt.TypeName]) "$($rt.ObjName).xml"
-		if (-not (Test-Path $rtSrcFile)) {
-			Warn "  Source not found: $($rt.TypeName).$($rt.ObjName)"
-			continue
-		}
-		$src = Read-SourceObject $rt.TypeName $rt.ObjName
-		$borrowedXml = Build-BorrowedObjectXml $rt.TypeName $rt.ObjName $src.Uuid $src.Properties
-		$targetDir = Join-Path $extDir $childTypeDirMap[$rt.TypeName]
-		if (-not (Test-Path $targetDir)) {
-			New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-		}
-		$targetFile = Join-Path $targetDir "$($rt.ObjName).xml"
-		[System.IO.File]::WriteAllText($targetFile, $borrowedXml, $encBom)
-		Add-ToChildObjects $rt.TypeName $rt.ObjName
-		$script:borrowedFiles += $targetFile
-		Info "  Auto-borrowed: $($rt.TypeName).$($rt.ObjName)"
+		Borrow-ObjectShell $rt.TypeName $rt.ObjName
 	}
 }
 
@@ -2821,6 +3157,8 @@ function Add-ToChildObjects {
 
 # --- 14. Process each item ---
 $script:borrowedFiles = @()
+# Формы с динамическим списком — основная таблица и тильда решаются в конце запуска (шаги 14a, 14c)
+$script:dynListForms = @()
 $borrowedCount = 0
 
 foreach ($item in $items) {
@@ -2962,6 +3300,21 @@ foreach ($item in $items) {
 	}
 }
 
+# --- 14a. Основные таблицы динамических списков заимствованных форм — оболочками ---
+# Объект основной таблицы списка обязан быть в расширении («Неверно указана главная таблица
+# динамического списка»), даже если форма принадлежит другому объекту. Для виртуальной таблицы или
+# ТЧ (InformationRegister.Цены.SliceLast) — объект по первым двум сегментам. До шага 14b: оболочке
+# справочника нужны и его владельцы.
+foreach ($dl in $script:dynListForms) {
+	if ($dl.MainTable -match '^(\w+)\.(\w+)(?:\.\w+)*$' -and $childTypeDirMap.ContainsKey($Matches[1])) {
+		$mtKind = $Matches[1]; $mtName = $Matches[2]
+		if (-not (Test-ObjectBorrowed $mtKind $mtName)) {
+			Info "Основная таблица динамического списка ${mtKind}.${mtName} — в расширение оболочкой"
+			Borrow-ObjectShell $mtKind $mtName
+		}
+	}
+}
+
 # --- 14b. Владельцы заимствованных справочников ---
 # Ссылка в <Owners> должна вести на объект, который в расширении есть: иначе платформа падает при
 # загрузке (проверено — access violation, не сообщение об ошибке). Конфигуратор владельца
@@ -3000,6 +3353,43 @@ while ($true) {
 		Add-ToChildObjects $ow.T $ow.N
 		$script:borrowedFiles += $owFile
 		Info "  Auto-borrowed owner: $($ow.T).$($ow.N)"
+	}
+}
+
+# --- 14c. Тильда у путей полей динамических списков заимствованных форм ---
+# Запрос списка компилируется в контексте расширения, и что-то из него, чего там нет, делает
+# невалидными все поля списка («Неверный путь к данным»). Конфигуратор такие пути пишет с тильдой —
+# платформа разрешает их после наложения на основную конфигурацию. Тильду ставим, только если
+# список не разрешится в расширении (Get-DynListQueryUnresolved): лишняя тильда безвредна, но первая
+# выгрузка из базы её снимет — шум в истории файлов. У списка без ручного запроса поля — пути формы
+# по основной таблице: проверяем их как запрос «ВЫБРАТЬ Т.Поле… ИЗ <таблица> КАК Т». Решаем здесь,
+# по итоговому составу расширения (после 14a и 14b): реквизиты заимствуются уже после формы, в пакете —
+# и соседними формами. Помечаются привязки, которые платформа проверяет при загрузке: *DataPath
+# элементов (DataPath, FooterDataPath, RowPictureDataPath…) и <Field> в UseAlways; в форме и в
+# BaseForm. Сам список (DataPath без поля) — как есть; пути отбора и оформления (dcsset:/dcscor:)
+# не проверяются.
+foreach ($dl in $script:dynListForms) {
+	$dlText = [System.IO.File]::ReadAllText($dl.File, [System.Text.Encoding]::UTF8)
+	if ($dl.Manual) {
+		$dlQuery = $dl.Query
+	} else {
+		if (-not $dl.MainTable) { continue }
+		$dlPathPat = '<(?:\w*DataPath|Field)>~?' + [regex]::Escape($dl.MainName) + '\.([^<]+)<'
+		$dlFields = @([regex]::Matches($dlText, $dlPathPat) | ForEach-Object { "Т." + $_.Groups[1].Value } | Select-Object -Unique)
+		if ($dlFields.Count -eq 0) { continue }
+		$dlQuery = "ВЫБРАТЬ " + ($dlFields -join ", ") + " ИЗ $($dl.MainTable) КАК Т"
+	}
+	$dlUnresolved = @(Get-DynListQueryUnresolved $dlQuery)
+	if ($dlUnresolved.Count -eq 0) { continue }
+	$dlFieldPat = '(<(?:\w*DataPath|Field)>)(?=' + [regex]::Escape($dl.MainName) + '\.)'
+	$script:dlCount = 0
+	$dlText = [regex]::Replace($dlText, $dlFieldPat, { param($m) $script:dlCount++; $m.Groups[1].Value + '~' })
+	if ($script:dlCount -gt 0) {
+		[System.IO.File]::WriteAllText($dl.File, $dlText, (New-Object System.Text.UTF8Encoding($true)))
+		$dlShown = ($dlUnresolved | Select-Object -First 5) -join ', '
+		if ($dlUnresolved.Count -gt 5) { $dlShown += ", …" }
+		$dlRel = $dl.File.Substring($extDir.Length).TrimStart('\', '/') -replace '\\', '/'
+		Info "Поля динамического списка ($dlRel): пути с тильдой ($($script:dlCount)) — список использует то, чего нет в расширении ($dlShown); разрешатся после наложения"
 	}
 }
 

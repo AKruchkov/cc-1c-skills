@@ -1,0 +1,158 @@
+{
+  "name": "Форма объекта со списком по другой таблице (ручной запрос и авто-режим): таблица — оболочкой в расширение, её поля — с тильдой",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": [
+        {
+          "type": "Catalog",
+          "name": "Контрагенты"
+        },
+        {
+          "type": "Document",
+          "name": "Расход",
+          "attributes": [
+            "Контрагент: CatalogRef.Контрагенты",
+            "Комментарий: String(100)"
+          ]
+        }
+      ],
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Catalogs/Контрагенты.xml",
+        "-FormName": "ФормаДокументов",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокКомментарий",
+                "path": "Список.Комментарий"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Комментарий КАК Комментарий ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Catalogs/Контрагенты/Forms/ФормаДокументов/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Catalogs/Контрагенты.xml",
+        "-FormName": "ФормаДокументовАвто",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокКомментарий",
+                "path": "Список.Комментарий"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Catalogs/Контрагенты/Forms/ФормаДокументовАвто/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "Catalog.Контрагенты.Form.ФормаДокументов ;; Catalog.Контрагенты.Form.ФормаДокументовАвто"
+  },
+  "args_extra": [
+    "-BorrowMainAttribute",
+    "Form"
+  ],
+  "expect": {
+    "stdoutContains": [
+      "Основная таблица динамического списка Document.Расход — в расширение оболочкой",
+      "Д.Комментарий"
+    ],
+    "files": [
+      "cfe/Documents/Расход.xml"
+    ],
+    "fileContains": [
+      {
+        "file": "cfe/Catalogs/Контрагенты/Forms/ФормаДокументов/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>~Список.Комментарий</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Configuration.xml",
+        "text": "<Document>Расход</Document>"
+      },
+      {
+        "file": "cfe/Catalogs/Контрагенты/Forms/ФормаДокументовАвто/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Комментарий</DataPath>",
+          "<ManualQuery>false</ManualQuery>"
+        ]
+      }
+    ]
+  }
+}

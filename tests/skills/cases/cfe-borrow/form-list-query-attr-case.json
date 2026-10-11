@@ -1,0 +1,47 @@
+{
+  "name": "Реквизит из запроса списка в другом регистре заимствуется, тильда не нужна",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": [
+        { "type": "Catalog", "name": "Контрагенты" },
+        { "type": "Document", "name": "Расход", "attributes": ["Контрагент: CatalogRef.Контрагенты", "Комментарий: String(100)"] }
+      ],
+      "args": { "-JsonPath": "{inputFile}", "-OutputDir": "{workDir}" }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": { "-ObjectPath": "{workDir}/Documents/Расход.xml", "-FormName": "ФормаСписка", "-Purpose": "List" }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [ { "table": "Список", "path": "Список", "columns": [
+          { "input": "СписокСсылка", "path": "Список.Ссылка" },
+          { "input": "СписокПоле", "path": "Список.Поле" }
+        ] } ],
+        "attributes": [ { "name": "Список", "type": "DynamicList", "main": true, "settings": {
+          "mainTable": "Document.Расход",
+          "query": "выбрать д.Ссылка как Ссылка, д.контрагент как Поле из документ.Расход как д"
+        } } ]
+      },
+      "args": { "-JsonPath": "{inputFile}", "-OutputPath": "{workDir}/Documents/Расход/Forms/ФормаСписка/Ext/Form.xml" }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": { "-Name": "Тест", "-OutputDir": "{workDir}/cfe", "-ConfigPath": "{workDir}" }
+    }
+  ],
+  "params": { "extensionPath": "cfe", "object": "Document.Расход.Form.ФормаСписка" },
+  "args_extra": ["-BorrowMainAttribute", "Form"],
+  "expect": {
+    "fileContains": [
+      { "file": "cfe/Documents/Расход.xml", "text": "<Name>Контрагент</Name>" },
+      { "file": "cfe/Documents/Расход/Forms/ФормаСписка/Ext/Form.xml", "text": "<DataPath>Список.Поле</DataPath>" }
+    ],
+    "fileNotContains": [
+      { "file": "cfe/Documents/Расход.xml", "text": "<Name>Комментарий</Name>" },
+      { "file": "cfe/Documents/Расход/Forms/ФормаСписка/Ext/Form.xml", "text": "~Список." }
+    ]
+  }
+}

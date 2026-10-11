@@ -1,0 +1,1099 @@
+{
+  "name": "Тильда у полей динамического списка — только когда запрос не разрешится в расширении",
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": [
+        {
+          "type": "Catalog",
+          "name": "Контрагенты",
+          "hierarchical": true,
+          "attributes": [
+            "ИНН: String(12)",
+            "Дата: Date"
+          ]
+        },
+        {
+          "type": "Catalog",
+          "name": "Номенклатура"
+        },
+        {
+          "type": "Enum",
+          "name": "Статусы",
+          "values": [
+            "Новый",
+            "Закрыт"
+          ]
+        },
+        {
+          "type": "Document",
+          "name": "Расход",
+          "attributes": [
+            "Контрагент: CatalogRef.Контрагенты",
+            "Статус: EnumRef.Статусы"
+          ],
+          "tabularSections": {
+            "Товары": [
+              "Количество: Number(15,3)"
+            ]
+          }
+        }
+      ],
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "СвоиПоля",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Контрагент КАК Поле ИЗ Документ.Расход КАК Д ГДЕ Д.Проведен"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/СвоиПоля/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "ТЧСоединение",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Т.Количество КАК Поле ИЗ Документ.Расход КАК Д ЛЕВОЕ СОЕДИНЕНИЕ Документ.Расход.Товары КАК Т ПО Т.Ссылка = Д.Ссылка"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/ТЧСоединение/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "СтрокаКомментарий",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, \"Справочник.Фейк\" КАК Поле ИЗ Документ.Расход КАК Д ГДЕ Д.Ссылка <> ЗНАЧЕНИЕ(Документ.Расход.ПустаяСсылка) // Справочник.Номенклатура"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/СтрокаКомментарий/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "СтрочныеБуквы",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "выбрать д.Ссылка как Ссылка, д.Номер как Поле из документ.Расход как д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/СтрочныеБуквы/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "ЗначениеПеречисления",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, ЗНАЧЕНИЕ(Перечисление.Статусы.Новый) КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/ЗначениеПеречисления/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "Разыменование",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Контрагент.ИНН КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/Разыменование/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "ЧужаяТаблица",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Н.Наименование КАК Поле ИЗ Документ.Расход КАК Д ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Номенклатура КАК Н ПО ЛОЖЬ"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/ЧужаяТаблица/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "РегистрРеквизита",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, д.контрагент КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/РегистрРеквизита/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "ПсевдонимКолонки",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Контрагент КАК Контрагент, Контрагент.ИНН КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/ПсевдонимКолонки/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "РазыменованиеСтандартного",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Контрагент.Наименование КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/РазыменованиеСтандартного/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "СоединениеОболочки",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, К.Наименование КАК Поле ИЗ Документ.Расход КАК Д ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК К ПО К.Ссылка = Д.Контрагент"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/СоединениеОболочки/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "Звездочка",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.*, Д.Номер КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/Звездочка/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "БезПсевдонима",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Ссылка КАК Ссылка, Контрагент КАК Поле ИЗ Документ.Расход"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/БезПсевдонима/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "БезПсевдонимаЧужое",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Ссылка КАК Ссылка, Контрагент.ИНН КАК Поле ИЗ Документ.Расход"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/БезПсевдонимаЧужое/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "РазыменованиеДаты",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Контрагент.Дата КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/РазыменованиеДаты/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "СоединениеДата",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, К.Дата КАК Поле ИЗ Документ.Расход КАК Д ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК К ПО К.Ссылка = Д.Контрагент"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/СоединениеДата/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "РазыменованиеРодителя",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Контрагент.Родитель КАК Поле ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/РазыменованиеРодителя/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "Умножение",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Т.Количество * 2 КАК Поле ИЗ Документ.Расход КАК Д ЛЕВОЕ СОЕДИНЕНИЕ Документ.Расход.Товары КАК Т ПО Т.Ссылка = Д.Ссылка"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/Умножение/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "Объединение",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокПоле",
+                "path": "Список.Поле"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход",
+              "query": "ВЫБРАТЬ Д.Ссылка КАК Ссылка, Д.Номер КАК Поле ИЗ Документ.Расход КАК Д ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Д.Ссылка, Д.Номер ИЗ Документ.Расход КАК Д"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/Объединение/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/Documents/Расход.xml",
+        "-FormName": "АвтоРежим",
+        "-Purpose": "List"
+      }
+    },
+    {
+      "script": "form-compile/scripts/form-compile",
+      "input": {
+        "elements": [
+          {
+            "table": "Список",
+            "path": "Список",
+            "columns": [
+              {
+                "input": "СписокСсылка",
+                "path": "Список.Ссылка"
+              },
+              {
+                "input": "СписокКонтрагент",
+                "path": "Список.Контрагент"
+              }
+            ]
+          }
+        ],
+        "attributes": [
+          {
+            "name": "Список",
+            "type": "DynamicList",
+            "main": true,
+            "settings": {
+              "mainTable": "Document.Расход"
+            }
+          }
+        ]
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputPath": "{workDir}/Documents/Расход/Forms/АвтоРежим/Ext/Form.xml"
+      }
+    },
+    {
+      "script": "cfe-init/scripts/cfe-init",
+      "args": {
+        "-Name": "Тест",
+        "-OutputDir": "{workDir}/cfe",
+        "-ConfigPath": "{workDir}"
+      }
+    }
+  ],
+  "params": {
+    "extensionPath": "cfe",
+    "object": "Document.Расход.Form.СвоиПоля ;; Document.Расход.Form.ТЧСоединение ;; Document.Расход.Form.СтрокаКомментарий ;; Document.Расход.Form.СтрочныеБуквы ;; Document.Расход.Form.ЗначениеПеречисления ;; Document.Расход.Form.Разыменование ;; Document.Расход.Form.ЧужаяТаблица ;; Document.Расход.Form.РегистрРеквизита ;; Document.Расход.Form.ПсевдонимКолонки ;; Document.Расход.Form.РазыменованиеСтандартного ;; Document.Расход.Form.СоединениеОболочки ;; Document.Расход.Form.Звездочка ;; Document.Расход.Form.БезПсевдонима ;; Document.Расход.Form.БезПсевдонимаЧужое ;; Document.Расход.Form.РазыменованиеДаты ;; Document.Расход.Form.СоединениеДата ;; Document.Расход.Form.РазыменованиеРодителя ;; Document.Расход.Form.Умножение ;; Document.Расход.Form.Объединение ;; Document.Расход.Form.АвтоРежим"
+  },
+  "args_extra": [
+    "-BorrowMainAttribute",
+    "Form"
+  ],
+  "expect": {
+    "fileContains": [
+      {
+        "file": "cfe/Documents/Расход/Forms/СвоиПоля/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/ТЧСоединение/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СтрокаКомментарий/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СтрочныеБуквы/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/ЗначениеПеречисления/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/Разыменование/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/ЧужаяТаблица/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/РегистрРеквизита/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/ПсевдонимКолонки/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/РазыменованиеСтандартного/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СоединениеОболочки/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/Звездочка/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/БезПсевдонима/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/БезПсевдонимаЧужое/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/РазыменованиеДаты/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СоединениеДата/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/РазыменованиеРодителя/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/Умножение/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/Объединение/Ext/Form.xml",
+        "text": [
+          "<DataPath>~Список.Ссылка</DataPath>",
+          "<DataPath>Список</DataPath>"
+        ]
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/АвтоРежим/Ext/Form.xml",
+        "text": "<DataPath>Список.Ссылка</DataPath>"
+      }
+    ],
+    "fileNotContains": [
+      {
+        "file": "cfe/Documents/Расход/Forms/СвоиПоля/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/ТЧСоединение/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СтрокаКомментарий/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СтрочныеБуквы/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/РегистрРеквизита/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/РазыменованиеСтандартного/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/СоединениеОболочки/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/БезПсевдонима/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/Умножение/Ext/Form.xml",
+        "text": "~Список."
+      },
+      {
+        "file": "cfe/Documents/Расход/Forms/АвтоРежим/Ext/Form.xml",
+        "text": "~Список."
+      }
+    ]
+  }
+}
