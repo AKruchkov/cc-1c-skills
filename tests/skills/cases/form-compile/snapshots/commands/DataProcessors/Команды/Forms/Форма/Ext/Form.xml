@@ -93,21 +93,21 @@
 			<Use>
 				<xr:Common>false</xr:Common>
 			</Use>
-			<Action>ВыполнитьОбработка</Action>
-			<ModifiesSavedData>true</ModifiesSavedData>
 			<Shortcut>Ctrl+Enter</Shortcut>
 			<Picture>
 				<xr:Ref>StdPicture.ExecuteTask</xr:Ref>
 				<xr:LoadTransparent>true</xr:LoadTransparent>
 				<xr:TransparentPixel x="1" y="1"/>
 			</Picture>
+			<Action>ВыполнитьОбработка</Action>
+			<ModifiesSavedData>true</ModifiesSavedData>
 		</Command>
 		<Command name="БезЗаголовка" id="15">
-			<Action>БезЗаголовкаОбработка</Action>
 			<Picture>
 				<xr:Ref>StdPicture.Refresh</xr:Ref>
 				<xr:LoadTransparent>true</xr:LoadTransparent>
 			</Picture>
+			<Action>БезЗаголовкаОбработка</Action>
 			<Representation>Picture</Representation>
 		</Command>
 	</Commands>

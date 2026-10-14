@@ -1,4 +1,4 @@
-﻿# form-validate v1.24 — Validate 1C managed form
+﻿# form-validate v1.25 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -1056,6 +1056,7 @@ if (-not $stopped) {
 # Источник — XSD xcf-logform 2.10–2.21, сверено с корпусом БП/ERP 8.3.24 (17036 форм, расхождений нет)
 # и загрузкой в 8.3.24. Перегенерировать: python debug/form-dsl-revision/gen_enum_table.py
 $script:validEnumValues = @{
+	"ActionPurpose" = @("Usual","Create","Finish")
 	"AppearanceInCard" = @("Auto","Extended")
 	"AppearanceMode" = @("Auto","CommandBar","UsualGroup")
 	"AutoAddIncomplete" = @("true","false","auto")
@@ -1100,6 +1101,7 @@ $script:validEnumValues = @{
 	"ControlRepresentation" = @("TitleHyperlink","Picture","Button","ButtonInParentElement")
 	"ConversationsRepresentation" = @("Auto","Show","DontShow")
 	"CreateButton" = @("true","false","auto")
+	"Command.CurrentRowUse" = @("Use","DontUse","Auto")
 	"Pages.CurrentRowUse" = @("Use","DontUse","Auto")
 	"Table.CurrentRowUse" = @("Auto","Choice","SelectionPresentation","SelectionPresentationAndChoice")
 	"UsualGroup.CurrentRowUse" = @("Use","DontUse","Auto")
@@ -1113,6 +1115,7 @@ $script:validEnumValues = @{
 	"EqualItemsWidth" = @("true","false","auto")
 	"ExtendedEdit" = @("true","false","auto")
 	"FileDragMode" = @("AsFile","AsFileRef")
+	"FillCheck" = @("DontCheck","ShowError")
 	"FixInCard" = @("true","false","auto")
 	"FixingInTable" = @("None","Left","Right")
 	"FooterHorizontalAlign" = @("Left","Center","Right","Auto")
@@ -1137,6 +1140,7 @@ $script:validEnumValues = @{
 	"ColumnGroup.HorizontalStretch" = @("true","false","auto")
 	"CommandBar.HorizontalStretch" = @("true","false","auto")
 	"ContextMenu.HorizontalStretch" = @("true","false","auto")
+	"ExtendedTooltip.HorizontalStretch" = @("true","false","auto")
 	"InputField.HorizontalStretch" = @("true","false","auto")
 	"LabelDecoration.HorizontalStretch" = @("true","false","auto")
 	"LabelField.HorizontalStretch" = @("true","false","auto")
@@ -1145,13 +1149,17 @@ $script:validEnumValues = @{
 	"PictureDecoration.HorizontalStretch" = @("true","false","auto")
 	"Popup.HorizontalStretch" = @("true","false","auto")
 	"RadioButtonField.HorizontalStretch" = @("true","false","auto")
+	"SearchControlAddition.HorizontalStretch" = @("true","false","auto")
+	"SearchStringAddition.HorizontalStretch" = @("true","false","auto")
 	"UsualGroup.HorizontalStretch" = @("true","false","auto")
+	"ViewStatusAddition.HorizontalStretch" = @("true","false","auto")
 	"Importance" = @("Main","Normal","Supplementary")
 	"IncompleteChoiceMode" = @("OnEnterPressed","OnActivate")
 	"InitialListView" = @("Beginning","End","Auto")
 	"InitialRowActivation" = @("Auto","Activate","NoActivate")
 	"InitialTreeView" = @("NoExpand","ExpandTopLevel","ExpandAllLevels")
 	"IntervalsSelectionMode" = @("Auto","Multiple","Single","None")
+	"KeyType" = @("Auto","FieldValue","RowKey","RowNumber")
 	"LocationInCommandBar" = @("Auto","InAdditionalSubmenu","InCommandBar","InCommandBarAndInAdditionalSubmenu")
 	"MarkNegatives" = @("true","false","auto")
 	"MarkRequiredComplete" = @("true","false","auto")
@@ -1180,6 +1188,7 @@ $script:validEnumValues = @{
 	"ReportResultViewMode" = @("Auto","Default","Compact")
 	"Button.Representation" = @("Text","Picture","PictureAndText","Auto")
 	"ButtonGroup.Representation" = @("Auto","Usual","Compact")
+	"Command.Representation" = @("Text","Picture","TextPicture","Auto")
 	"Popup.Representation" = @("Text","Picture","PictureAndText","Auto")
 	"ProgressBarField.Representation" = @("Smooth","Broken","BrokenTilt")
 	"Table.Representation" = @("List","HierarchicalList","Tree")
@@ -1197,6 +1206,7 @@ $script:validEnumValues = @{
 	"SearchControlLocation" = @("Auto","None","CommandBar")
 	"SearchOnInput" = @("Use","DontUse","Auto")
 	"SearchStringLocation" = @("Auto","None","CommandBar","Top","Bottom","FormCaption","PullFromTop")
+	"SelectedRowsUse" = @("Use","DontUse","Auto")
 	"CalendarField.SelectionMode" = @("Single","Multiple","Interval")
 	"Table.SelectionMode" = @("SingleRow","MultiRow")
 	"SelectionShowMode" = @("WhenActive","Always","DontShow","WhenMultipleCellsSelected","WhenMultipleCellsSelectedWhenActive")
@@ -1223,7 +1233,7 @@ $script:validEnumValues = @{
 	"TitleLocation" = @("None","Auto","Left","Top","Right","Bottom")
 	"ToolTipRepresentation" = @("Auto","None","Balloon","Button","ShowAuto","ShowTop","ShowLeft","ShowBottom","ShowRight")
 	"TumblerRepresentation" = @("Text","Picture","Auto")
-	"Type" = @("CommandBarButton","UsualButton","Hyperlink","CommandBarHyperlink")
+	"Button.Type" = @("CommandBarButton","UsualButton","Hyperlink","CommandBarHyperlink")
 	"UpdateOnDataChange" = @("Auto","DontUpdate")
 	"UseAlternationRowColorBWA" = @("true","false","auto")
 	"UseCopy" = @("true","false","auto")
@@ -1240,6 +1250,7 @@ $script:validEnumValues = @{
 	"ColumnGroup.VerticalStretch" = @("true","false","auto")
 	"CommandBar.VerticalStretch" = @("true","false","auto")
 	"ContextMenu.VerticalStretch" = @("true","false","auto")
+	"ExtendedTooltip.VerticalStretch" = @("true","false","auto")
 	"InputField.VerticalStretch" = @("true","false","auto")
 	"LabelDecoration.VerticalStretch" = @("true","false","auto")
 	"LabelField.VerticalStretch" = @("true","false","auto")
@@ -1269,6 +1280,7 @@ $script:enumValueAliases = @{
 # Умолчания: значение, которое платформа у этого типа не пишет (выброшено при загрузке-выгрузке 8.3.24
 # и ни разу не встречается в корпусе) — тег с ним не пишется
 $script:enumDefaultValues = @{
+	"Attribute.FillCheck" = "DontCheck"
 	"AutoCommandBar.GroupHorizontalAlign" = "Auto"
 	"AutoCommandBar.GroupVerticalAlign" = "Auto"
 	"AutoCommandBar.HorizontalAlign" = "Left"
@@ -1335,6 +1347,7 @@ $script:enumDefaultValues = @{
 	"CheckBoxField.ToolTipRepresentation" = "Auto"
 	"CheckBoxField.VerticalAlign" = "Auto"
 	"CheckBoxField.WarningOnEditRepresentation" = "Auto"
+	"Column.FillCheck" = "DontCheck"
 	"ColumnGroup.FixingInTable" = "None"
 	"ColumnGroup.Group" = "Vertical"
 	"ColumnGroup.GroupHorizontalAlign" = "Auto"
@@ -1343,6 +1356,8 @@ $script:enumDefaultValues = @{
 	"ColumnGroup.HorizontalStretch" = "auto"
 	"ColumnGroup.ToolTipRepresentation" = "Auto"
 	"ColumnGroup.VerticalStretch" = "auto"
+	"Command.CurrentRowUse" = "Auto"
+	"Command.Representation" = "Auto"
 	"CommandBar.GroupHorizontalAlign" = "Auto"
 	"CommandBar.GroupVerticalAlign" = "Auto"
 	"CommandBar.HorizontalLocation" = "Left"
@@ -1354,6 +1369,15 @@ $script:enumDefaultValues = @{
 	"ContextMenu.HorizontalStretch" = "auto"
 	"ContextMenu.ToolTipRepresentation" = "Auto"
 	"ContextMenu.VerticalStretch" = "auto"
+	"ExtendedTooltip.GroupHorizontalAlign" = "Auto"
+	"ExtendedTooltip.GroupVerticalAlign" = "Auto"
+	"ExtendedTooltip.HorizontalAlign" = "Left"
+	"ExtendedTooltip.HorizontalStretch" = "auto"
+	"ExtendedTooltip.OnMainServerUnavalableBehavior" = "Auto"
+	"ExtendedTooltip.SkipOnInput" = "auto"
+	"ExtendedTooltip.ToolTipRepresentation" = "Auto"
+	"ExtendedTooltip.VerticalAlign" = "Auto"
+	"ExtendedTooltip.VerticalStretch" = "auto"
 	"Form.AutoSaveDataInSettings" = "DontUse"
 	"Form.ChildItemsWidth" = "Auto"
 	"Form.ChildrenAlign" = "Auto"
@@ -1592,6 +1616,17 @@ $script:enumDefaultValues = @{
 	"RadioButtonField.ToolTipRepresentation" = "Auto"
 	"RadioButtonField.VerticalAlign" = "Auto"
 	"RadioButtonField.WarningOnEditRepresentation" = "Auto"
+	"SearchControlAddition.GroupHorizontalAlign" = "Auto"
+	"SearchControlAddition.GroupVerticalAlign" = "Auto"
+	"SearchControlAddition.HorizontalStretch" = "auto"
+	"SearchControlAddition.PlacementArea" = "userCmds"
+	"SearchControlAddition.ToolTipRepresentation" = "Auto"
+	"SearchStringAddition.GroupHorizontalAlign" = "Auto"
+	"SearchStringAddition.GroupVerticalAlign" = "Auto"
+	"SearchStringAddition.HorizontalStretch" = "auto"
+	"SearchStringAddition.PlacementArea" = "userCmds"
+	"SearchStringAddition.ToolTipRepresentation" = "Auto"
+	"Settings.KeyType" = "Auto"
 	"SpreadSheetDocumentField.DrawingSelectionShowMode" = "Auto"
 	"SpreadSheetDocumentField.EditMode" = "Enter"
 	"SpreadSheetDocumentField.FixingInTable" = "None"
@@ -1683,6 +1718,62 @@ $script:enumDefaultValues = @{
 	"UsualGroup.VerticalAlign" = "Auto"
 	"UsualGroup.VerticalSpacing" = "Auto"
 	"UsualGroup.VerticalStretch" = "auto"
+	"ViewStatusAddition.GroupHorizontalAlign" = "Auto"
+	"ViewStatusAddition.GroupVerticalAlign" = "Auto"
+	"ViewStatusAddition.HorizontalLocation" = "Auto"
+	"ViewStatusAddition.HorizontalStretch" = "auto"
+	"ViewStatusAddition.PlacementArea" = "userCmds"
+	"ViewStatusAddition.ToolTipRepresentation" = "Auto"
+}
+# Узлы, у которых проверяются и приводятся значения перечислений (тег узла)
+$script:enumScopeTypes = @{
+	'Attribute' = $true
+	'AutoCommandBar' = $true
+	'Button' = $true
+	'ButtonGroup' = $true
+	'CalendarField' = $true
+	'ChartField' = $true
+	'CheckBoxField' = $true
+	'Column' = $true
+	'ColumnGroup' = $true
+	'Command' = $true
+	'CommandBar' = $true
+	'ContextMenu' = $true
+	'ExtendedTooltip' = $true
+	'Form' = $true
+	'FormattedDocumentField' = $true
+	'GanttChartField' = $true
+	'GraphicalSchemaField' = $true
+	'HTMLDocumentField' = $true
+	'InputField' = $true
+	'LabelDecoration' = $true
+	'LabelField' = $true
+	'Page' = $true
+	'Pages' = $true
+	'PeriodField' = $true
+	'PictureDecoration' = $true
+	'PictureField' = $true
+	'PlannerField' = $true
+	'Popup' = $true
+	'ProgressBarField' = $true
+	'RadioButtonField' = $true
+	'SearchControlAddition' = $true
+	'SearchStringAddition' = $true
+	'Settings' = $true
+	'SpreadSheetDocumentField' = $true
+	'Table' = $true
+	'TextDocumentField' = $true
+	'TrackBarField' = $true
+	'UsualGroup' = $true
+	'ViewStatusAddition' = $true
+}
+# Значение из соседнего перечисления того же свойства → значение этого типа (ввод DSL; в XML — ошибка)
+$script:enumInputSynonyms = @{
+	"Command.Representation" = @{ "PictureAndText" = "TextPicture" }
+	"Button.Representation" = @{ "TextPicture" = "PictureAndText" }
+	"Popup.Representation" = @{ "TextPicture" = "PictureAndText" }
+	"Table.SelectionMode" = @{ "Single" = "SingleRow"; "Multiple" = "MultiRow" }
+	"CalendarField.SelectionMode" = @{ "SingleRow" = "Single"; "MultiRow" = "Multiple" }
 }
 # --- /Перечисления свойств формы ---
 
@@ -1739,13 +1830,16 @@ function Get-ChildRank([string]$parentTag, [string]$childTag) {
 # предыдущим знакомым.
 
 # Элементы формы, которые сверяются: корень и элементы известных типов (вне <BaseForm> — его пишет платформа)
-function Get-EnumCheckNodes {
-	$out = @(@{ Node = $root; Type = 'Form' })
-	foreach ($n in $root.SelectNodes("//*[@name]")) {
+# Узлы формы с типом из $scope: корень, именованные узлы и настройки динамического списка (без имени —
+# подпись по реквизиту). Перечисления проверяются по enumScopeTypes, порядок — по childTagOrder.
+function Get-EnumCheckNodes([hashtable]$scope) {
+	$out = @(@{ Node = $root; Type = 'Form'; Label = 'Form' })
+	foreach ($n in $root.SelectNodes("//*[@name] | //*[local-name()='Attribute']/*[local-name()='Settings']")) {
 		if ($n.NamespaceURI -ne 'http://v8.1c.ru/8.3/xcf/logform') { continue }
-		if (-not $script:childTagOrder.ContainsKey($n.LocalName)) { continue }
+		if (-not $scope.ContainsKey($n.LocalName)) { continue }
 		if ($null -ne $n.SelectSingleNode("ancestor::*[local-name()='BaseForm']")) { continue }
-		$out += @{ Node = $n; Type = $n.LocalName }
+		$label = if ($n.HasAttribute('name')) { "$($n.LocalName) '$($n.GetAttribute('name'))'" } else { "$($n.LocalName) of $($n.ParentNode.LocalName) '$($n.ParentNode.GetAttribute('name'))'" }
+		$out += @{ Node = $n; Type = $n.LocalName; Label = $label }
 	}
 	return $out
 }
@@ -1756,9 +1850,9 @@ function Get-EnumCheckNodes {
 if (-not $stopped) {
 	$enumChecked = 0
 	$check15Ok = $true
-	foreach ($it in (Get-EnumCheckNodes)) {
+	foreach ($it in (Get-EnumCheckNodes $script:enumScopeTypes)) {
 		if ($stopped) { break }
-		$label = if ($it.Type -eq 'Form') { 'Form' } else { "$($it.Type) '$($it.Node.GetAttribute('name'))'" }
+		$label = $it.Label
 		foreach ($c in $it.Node.ChildNodes) {
 			if ($c.NodeType -ne 'Element' -or $c.NamespaceURI -ne 'http://v8.1c.ru/8.3/xcf/logform') { continue }
 			if ($c.SelectSingleNode("*") -or -not $c.InnerText) { continue }
@@ -1775,7 +1869,14 @@ if (-not $stopped) {
 				if ($hint.Count -gt 0) {
 					Report-Error "15. $label`: $prop '$val' — wrong case, the platform will not load it; use '$($hint[0])'"
 				} else {
-					Report-Error "15. $label`: $prop has invalid value '$val' (allowed: $($allowed -join ', '))"
+					# Значение из соседнего перечисления (у кнопки PictureAndText, у команды TextPicture) — подсказать замену
+					$syn = $script:enumInputSynonyms["$($it.Type).$prop"]
+					$use = @(if ($syn) { $syn.Keys | Where-Object { $_ -ieq $val } | ForEach-Object { $syn[$_] } })
+					if ($use.Count -gt 0) {
+						Report-Error "15. $label`: $prop '$val' is not valid for $($it.Type), the platform will not load it; use '$($use[0])'"
+					} else {
+						Report-Error "15. $label`: $prop has invalid value '$val' (allowed: $($allowed -join ', '))"
+					}
 				}
 				$check15Ok = $false
 			}
@@ -1789,7 +1890,7 @@ if (-not $stopped) {
 # принимает и переставляет при выгрузке — предупреждение, а не ошибка.
 if (-not $stopped) {
 	$orderBad = 0
-	foreach ($it in (Get-EnumCheckNodes)) {
+	foreach ($it in (Get-EnumCheckNodes $script:childTagOrder)) {
 		if ($it.Type -eq 'Form') { continue }
 		$prev = $null; $prevRank = -1
 		foreach ($c in $it.Node.ChildNodes) {

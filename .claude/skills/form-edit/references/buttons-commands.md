@@ -56,7 +56,7 @@
 | Ключ | Значения | Назначение |
 |------|----------|-----------|
 | `tooltip` | строка или `{ru, en}` | Подсказка команды |
-| `representation` | `Auto` / `Text` / `Picture` / `PictureAndText` | Вид кнопок команды |
+| `representation` | `Auto` / `Text` / `Picture` / `TextPicture` | Вид кнопок команды |
 | `table` | имя таблицы-элемента | Команда работает с текущей строкой этой таблицы |
 | `currentRowUse` | `Auto` / `DontUse` / `Use` | Использование текущей строки |
 | `modifiesSavedData` | `true` | Команда изменяет данные формы (форма помечается изменённой) |
@@ -70,7 +70,8 @@
 
 | Ключ | Где | Назначение |
 |------|-----|-----------|
-| `picture`, `representation` | `popup`, `buttonGroup` | Картинка и вид, как у кнопки |
+| `picture`, `representation` | `popup` | Картинка и вид, как у кнопки |
+| `representation` | `buttonGroup` | `Auto` / `Usual` / `Compact` — обычная или компактная группа |
 | `commandSource` | `buttonGroup`, `popup`, `cmdBar` | Наполнить командами из источника: `Form`, `FormCommandPanelGlobalCommands`, `Item.<ИмяТаблицы>` |
 | `horizontalLocation` | элемент командной панели | `auto` / `left` / `right` / `center` — прижать к краю панели |
 

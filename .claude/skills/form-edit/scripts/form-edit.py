@@ -1,4 +1,4 @@
-# form-edit v1.29 — Edit 1C managed form elements (Python port)
+# form-edit v1.30 — Edit 1C managed form elements (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import contextlib
@@ -1053,6 +1053,7 @@ _FORM_TYPE_SYNONYMS = {
 TYPE_SYNONYMS = _FORM_TYPE_SYNONYMS
 
 valid_enum_values = {
+    "ActionPurpose": ["Usual", "Create", "Finish"],
     "AppearanceInCard": ["Auto", "Extended"],
     "AppearanceMode": ["Auto", "CommandBar", "UsualGroup"],
     "AutoAddIncomplete": ["true", "false", "auto"],
@@ -1097,6 +1098,7 @@ valid_enum_values = {
     "ControlRepresentation": ["TitleHyperlink", "Picture", "Button", "ButtonInParentElement"],
     "ConversationsRepresentation": ["Auto", "Show", "DontShow"],
     "CreateButton": ["true", "false", "auto"],
+    "Command.CurrentRowUse": ["Use", "DontUse", "Auto"],
     "Pages.CurrentRowUse": ["Use", "DontUse", "Auto"],
     "Table.CurrentRowUse": ["Auto", "Choice", "SelectionPresentation", "SelectionPresentationAndChoice"],
     "UsualGroup.CurrentRowUse": ["Use", "DontUse", "Auto"],
@@ -1110,6 +1112,7 @@ valid_enum_values = {
     "EqualItemsWidth": ["true", "false", "auto"],
     "ExtendedEdit": ["true", "false", "auto"],
     "FileDragMode": ["AsFile", "AsFileRef"],
+    "FillCheck": ["DontCheck", "ShowError"],
     "FixInCard": ["true", "false", "auto"],
     "FixingInTable": ["None", "Left", "Right"],
     "FooterHorizontalAlign": ["Left", "Center", "Right", "Auto"],
@@ -1134,6 +1137,7 @@ valid_enum_values = {
     "ColumnGroup.HorizontalStretch": ["true", "false", "auto"],
     "CommandBar.HorizontalStretch": ["true", "false", "auto"],
     "ContextMenu.HorizontalStretch": ["true", "false", "auto"],
+    "ExtendedTooltip.HorizontalStretch": ["true", "false", "auto"],
     "InputField.HorizontalStretch": ["true", "false", "auto"],
     "LabelDecoration.HorizontalStretch": ["true", "false", "auto"],
     "LabelField.HorizontalStretch": ["true", "false", "auto"],
@@ -1142,13 +1146,17 @@ valid_enum_values = {
     "PictureDecoration.HorizontalStretch": ["true", "false", "auto"],
     "Popup.HorizontalStretch": ["true", "false", "auto"],
     "RadioButtonField.HorizontalStretch": ["true", "false", "auto"],
+    "SearchControlAddition.HorizontalStretch": ["true", "false", "auto"],
+    "SearchStringAddition.HorizontalStretch": ["true", "false", "auto"],
     "UsualGroup.HorizontalStretch": ["true", "false", "auto"],
+    "ViewStatusAddition.HorizontalStretch": ["true", "false", "auto"],
     "Importance": ["Main", "Normal", "Supplementary"],
     "IncompleteChoiceMode": ["OnEnterPressed", "OnActivate"],
     "InitialListView": ["Beginning", "End", "Auto"],
     "InitialRowActivation": ["Auto", "Activate", "NoActivate"],
     "InitialTreeView": ["NoExpand", "ExpandTopLevel", "ExpandAllLevels"],
     "IntervalsSelectionMode": ["Auto", "Multiple", "Single", "None"],
+    "KeyType": ["Auto", "FieldValue", "RowKey", "RowNumber"],
     "LocationInCommandBar": ["Auto", "InAdditionalSubmenu", "InCommandBar", "InCommandBarAndInAdditionalSubmenu"],
     "MarkNegatives": ["true", "false", "auto"],
     "MarkRequiredComplete": ["true", "false", "auto"],
@@ -1177,6 +1185,7 @@ valid_enum_values = {
     "ReportResultViewMode": ["Auto", "Default", "Compact"],
     "Button.Representation": ["Text", "Picture", "PictureAndText", "Auto"],
     "ButtonGroup.Representation": ["Auto", "Usual", "Compact"],
+    "Command.Representation": ["Text", "Picture", "TextPicture", "Auto"],
     "Popup.Representation": ["Text", "Picture", "PictureAndText", "Auto"],
     "ProgressBarField.Representation": ["Smooth", "Broken", "BrokenTilt"],
     "Table.Representation": ["List", "HierarchicalList", "Tree"],
@@ -1194,6 +1203,7 @@ valid_enum_values = {
     "SearchControlLocation": ["Auto", "None", "CommandBar"],
     "SearchOnInput": ["Use", "DontUse", "Auto"],
     "SearchStringLocation": ["Auto", "None", "CommandBar", "Top", "Bottom", "FormCaption", "PullFromTop"],
+    "SelectedRowsUse": ["Use", "DontUse", "Auto"],
     "CalendarField.SelectionMode": ["Single", "Multiple", "Interval"],
     "Table.SelectionMode": ["SingleRow", "MultiRow"],
     "SelectionShowMode": ["WhenActive", "Always", "DontShow", "WhenMultipleCellsSelected", "WhenMultipleCellsSelectedWhenActive"],
@@ -1220,7 +1230,7 @@ valid_enum_values = {
     "TitleLocation": ["None", "Auto", "Left", "Top", "Right", "Bottom"],
     "ToolTipRepresentation": ["Auto", "None", "Balloon", "Button", "ShowAuto", "ShowTop", "ShowLeft", "ShowBottom", "ShowRight"],
     "TumblerRepresentation": ["Text", "Picture", "Auto"],
-    "Type": ["CommandBarButton", "UsualButton", "Hyperlink", "CommandBarHyperlink"],
+    "Button.Type": ["CommandBarButton", "UsualButton", "Hyperlink", "CommandBarHyperlink"],
     "UpdateOnDataChange": ["Auto", "DontUpdate"],
     "UseAlternationRowColorBWA": ["true", "false", "auto"],
     "UseCopy": ["true", "false", "auto"],
@@ -1237,6 +1247,7 @@ valid_enum_values = {
     "ColumnGroup.VerticalStretch": ["true", "false", "auto"],
     "CommandBar.VerticalStretch": ["true", "false", "auto"],
     "ContextMenu.VerticalStretch": ["true", "false", "auto"],
+    "ExtendedTooltip.VerticalStretch": ["true", "false", "auto"],
     "InputField.VerticalStretch": ["true", "false", "auto"],
     "LabelDecoration.VerticalStretch": ["true", "false", "auto"],
     "LabelField.VerticalStretch": ["true", "false", "auto"],
@@ -1265,6 +1276,7 @@ enum_value_aliases = {
 }
 
 enum_default_values = {
+    "Attribute.FillCheck": "DontCheck",
     "AutoCommandBar.GroupHorizontalAlign": "Auto",
     "AutoCommandBar.GroupVerticalAlign": "Auto",
     "AutoCommandBar.HorizontalAlign": "Left",
@@ -1331,6 +1343,7 @@ enum_default_values = {
     "CheckBoxField.ToolTipRepresentation": "Auto",
     "CheckBoxField.VerticalAlign": "Auto",
     "CheckBoxField.WarningOnEditRepresentation": "Auto",
+    "Column.FillCheck": "DontCheck",
     "ColumnGroup.FixingInTable": "None",
     "ColumnGroup.Group": "Vertical",
     "ColumnGroup.GroupHorizontalAlign": "Auto",
@@ -1339,6 +1352,8 @@ enum_default_values = {
     "ColumnGroup.HorizontalStretch": "auto",
     "ColumnGroup.ToolTipRepresentation": "Auto",
     "ColumnGroup.VerticalStretch": "auto",
+    "Command.CurrentRowUse": "Auto",
+    "Command.Representation": "Auto",
     "CommandBar.GroupHorizontalAlign": "Auto",
     "CommandBar.GroupVerticalAlign": "Auto",
     "CommandBar.HorizontalLocation": "Left",
@@ -1350,6 +1365,15 @@ enum_default_values = {
     "ContextMenu.HorizontalStretch": "auto",
     "ContextMenu.ToolTipRepresentation": "Auto",
     "ContextMenu.VerticalStretch": "auto",
+    "ExtendedTooltip.GroupHorizontalAlign": "Auto",
+    "ExtendedTooltip.GroupVerticalAlign": "Auto",
+    "ExtendedTooltip.HorizontalAlign": "Left",
+    "ExtendedTooltip.HorizontalStretch": "auto",
+    "ExtendedTooltip.OnMainServerUnavalableBehavior": "Auto",
+    "ExtendedTooltip.SkipOnInput": "auto",
+    "ExtendedTooltip.ToolTipRepresentation": "Auto",
+    "ExtendedTooltip.VerticalAlign": "Auto",
+    "ExtendedTooltip.VerticalStretch": "auto",
     "Form.AutoSaveDataInSettings": "DontUse",
     "Form.ChildItemsWidth": "Auto",
     "Form.ChildrenAlign": "Auto",
@@ -1588,6 +1612,17 @@ enum_default_values = {
     "RadioButtonField.ToolTipRepresentation": "Auto",
     "RadioButtonField.VerticalAlign": "Auto",
     "RadioButtonField.WarningOnEditRepresentation": "Auto",
+    "SearchControlAddition.GroupHorizontalAlign": "Auto",
+    "SearchControlAddition.GroupVerticalAlign": "Auto",
+    "SearchControlAddition.HorizontalStretch": "auto",
+    "SearchControlAddition.PlacementArea": "userCmds",
+    "SearchControlAddition.ToolTipRepresentation": "Auto",
+    "SearchStringAddition.GroupHorizontalAlign": "Auto",
+    "SearchStringAddition.GroupVerticalAlign": "Auto",
+    "SearchStringAddition.HorizontalStretch": "auto",
+    "SearchStringAddition.PlacementArea": "userCmds",
+    "SearchStringAddition.ToolTipRepresentation": "Auto",
+    "Settings.KeyType": "Auto",
     "SpreadSheetDocumentField.DrawingSelectionShowMode": "Auto",
     "SpreadSheetDocumentField.EditMode": "Enter",
     "SpreadSheetDocumentField.FixingInTable": "None",
@@ -1679,6 +1714,62 @@ enum_default_values = {
     "UsualGroup.VerticalAlign": "Auto",
     "UsualGroup.VerticalSpacing": "Auto",
     "UsualGroup.VerticalStretch": "auto",
+    "ViewStatusAddition.GroupHorizontalAlign": "Auto",
+    "ViewStatusAddition.GroupVerticalAlign": "Auto",
+    "ViewStatusAddition.HorizontalLocation": "Auto",
+    "ViewStatusAddition.HorizontalStretch": "auto",
+    "ViewStatusAddition.PlacementArea": "userCmds",
+    "ViewStatusAddition.ToolTipRepresentation": "Auto",
+}
+
+enum_scope_types = {
+    'Attribute',
+    'AutoCommandBar',
+    'Button',
+    'ButtonGroup',
+    'CalendarField',
+    'ChartField',
+    'CheckBoxField',
+    'Column',
+    'ColumnGroup',
+    'Command',
+    'CommandBar',
+    'ContextMenu',
+    'ExtendedTooltip',
+    'Form',
+    'FormattedDocumentField',
+    'GanttChartField',
+    'GraphicalSchemaField',
+    'HTMLDocumentField',
+    'InputField',
+    'LabelDecoration',
+    'LabelField',
+    'Page',
+    'Pages',
+    'PeriodField',
+    'PictureDecoration',
+    'PictureField',
+    'PlannerField',
+    'Popup',
+    'ProgressBarField',
+    'RadioButtonField',
+    'SearchControlAddition',
+    'SearchStringAddition',
+    'Settings',
+    'SpreadSheetDocumentField',
+    'Table',
+    'TextDocumentField',
+    'TrackBarField',
+    'UsualGroup',
+    'ViewStatusAddition',
+}
+
+enum_input_synonyms = {
+    "Command.Representation": {"PictureAndText": "TextPicture"},
+    "Button.Representation": {"TextPicture": "PictureAndText"},
+    "Popup.Representation": {"TextPicture": "PictureAndText"},
+    "Table.SelectionMode": {"Single": "SingleRow", "Multiple": "MultiRow"},
+    "CalendarField.SelectionMode": {"SingleRow": "Single", "MultiRow": "Multiple"},
 }
 
 obj_type = None
@@ -3819,6 +3910,15 @@ def normalize_enum_value(prop_name, value):
     # 4. Unknown property — pass-through (no validation data)
     return value
 
+# Значение из соседнего перечисления того же свойства (у кнопки PictureAndText, у команды TextPicture) →
+# значение этого типа. Только ввод DSL: в XML такое значение платформа не загружает
+
+
+def resolve_enum_input_synonym(typ, tag, value):
+    syn = enum_input_synonyms.get(f'{typ}.{tag}') or {}
+    return next((b for a, b in syn.items() if a.lower() == value.lower()), value)
+
+
 # Значения перечислений в выводе эмиттера — к каноническому виду (normalize_enum_value): простой тег
 # элемента формы известного типа или корня формы. Регистр и старые имена исправляются молча,
 # неизвестное значение — ошибка с перечнем допустимых. root_type — тип для тегов прямо под корнем
@@ -3853,11 +3953,14 @@ def normalize_enum_tags(text, root_type='', keep_defaults=False):
             ptype = 'Form' if name == 'Form' else root_type
         else:
             ptype = name
-        if not ptype or (ptype != 'Form' and ptype not in CHILD_TAG_ORDER):
+        if not ptype or ptype not in enum_scope_types:
+            continue
+        # Settings — только настройки динамического списка (под реквизитом), как в form-validate
+        if ptype == 'Settings' and (len(stack) < 2 or stack[-2][0] != 'Attribute'):
             continue
         obj_type = ptype
         tag = m.group(2)
-        v = normalize_enum_value(tag, m.group(3))
+        v = normalize_enum_value(tag, resolve_enum_input_synonym(ptype, tag, m.group(3)))
         if not keep_defaults and enum_default_values.get(f'{ptype}.{tag}') == v:
             lines[i] = None
             continue
@@ -5942,9 +6045,16 @@ def emit_commands(lines, cmds, indent):
         if cmd.get('tooltip'):
             emit_mltext(lines, inner, 'ToolTip', cmd['tooltip'])
 
-        # Доступность команды по ролям (после ToolTip, до Action)
+        # Порядок детей — как пишет платформа (XSD FormCommand, корпус без обратных случаев):
+        # Title ToolTip Use Shortcut Picture Action FunctionalOptions Representation ModifiesSavedData
+        # CurrentRowUse AssociatedTableElementId
         if cmd.get('use') is not None:
             emit_xr_flag(lines, 'Use', cmd.get('use'), inner)
+
+        if cmd.get('shortcut'):
+            lines.append(f'{inner}<Shortcut>{cmd["shortcut"]}</Shortcut>')
+
+        emit_command_picture(lines, cmd.get('picture'), cmd.get('loadTransparent'), inner)
 
         # Обработчик; в расширении — с видом вызова (callType), или несколько: actions [{handler, callType}]
         if cmd.get('actions'):
@@ -5958,10 +6068,14 @@ def emit_commands(lines, cmds, indent):
             ct_attr = f' callType="{ct}"' if ct else ''
             lines.append(f'{inner}<Action{ct_attr}>{cmd["action"]}</Action>')
 
+        emit_functional_options(lines, cmd.get('functionalOptions'), inner)
+
+        # Значение — к перечислению команды (Text/Picture/TextPicture/Auto) приводит normalize_enum_tags
+        if cmd.get('representation'):
+            lines.append(f'{inner}<Representation>{cmd["representation"]}</Representation>')
+
         if cmd.get('modifiesSavedData') is True:
             lines.append(f'{inner}<ModifiesSavedData>true</ModifiesSavedData>')
-
-        emit_functional_options(lines, cmd.get('functionalOptions'), inner)
 
         if cmd.get('currentRowUse'):
             lines.append(f'{inner}<CurrentRowUse>{cmd["currentRowUse"]}</CurrentRowUse>')
@@ -5973,14 +6087,6 @@ def emit_commands(lines, cmds, indent):
                      or _cmd_norm.get('используемаятаблица'))
         if cmd_table:
             lines.append(f'{inner}<AssociatedTableElementId xsi:type="xs:string">{esc_xml_text(str(cmd_table))}</AssociatedTableElementId>')
-
-        if cmd.get('shortcut'):
-            lines.append(f'{inner}<Shortcut>{cmd["shortcut"]}</Shortcut>')
-
-        emit_command_picture(lines, cmd.get('picture'), cmd.get('loadTransparent'), inner)
-
-        if cmd.get('representation'):
-            lines.append(f'{inner}<Representation>{cmd["representation"]}</Representation>')
 
         lines.append(f'{indent}\t</Command>')
     lines.append(f'{indent}</Commands>')
@@ -6857,7 +6963,7 @@ REPR_MAPS = {
     'Table': {'list': 'List', 'tree': 'Tree', 'hierarchicallist': 'HierarchicalList'},
     'Button': {'auto': 'Auto', 'text': 'Text', 'picture': 'Picture', 'pictureandtext': 'PictureAndText'},
     'Popup': {'auto': 'Auto', 'text': 'Text', 'picture': 'Picture', 'pictureandtext': 'PictureAndText'},
-    'ButtonGroup': {'usual': 'Usual', 'compact': 'Compact'},
+    'ButtonGroup': {'auto': 'Auto', 'usual': 'Usual', 'compact': 'Compact'},
 }
 XML_TAG_TO_DSL = {v: k for k, v in DSL_TAG_MAP.items()}
 
@@ -6884,10 +6990,10 @@ def get_applicable_set_keys(nt):
 # Значение перечисления — к виду платформы (как эмиттер: normalize_enum_value по типу элемента)
 def get_normalized_enum_value(node, tag, text):
     global obj_type
-    if not text or local_name(node) not in CHILD_TAG_ORDER:
+    if not text or local_name(node) not in enum_scope_types:
         return text
     obj_type = local_name(node)
-    return normalize_enum_value(tag, text)
+    return normalize_enum_value(tag, resolve_enum_input_synonym(obj_type, tag, text))
 
 
 def set_simple_tag(node, tag, text):
@@ -7097,7 +7203,7 @@ def invoke_set(op, idx):
                 rmap = REPR_MAPS.get(nt)
                 if rmap is None:
                     fail(f"{c}: свойство '{key}' к {nt} не применимо; доступно: {', '.join(get_applicable_set_keys(nt))} и остальные ключи элемента из form-compile")
-                text = rmap.get(str(v).lower())
+                text = rmap.get(resolve_enum_input_synonym(nt, 'Representation', str(v)).lower())
                 if not text:
                     fail(f"{c}: representation='{v}' — допустимо: {', '.join(sorted(rmap.keys()))}")
                 set_value_tag(node, tag, text)
@@ -7909,9 +8015,9 @@ def invoke_section_emit(emit, root_type=''):
     emit(xml_lines)
     X("</_F>")
     next_elem_id = save_id
-    text = "\n".join(xml_lines)
-    if root_type:
-        text = normalize_enum_tags(text, root_type)
+    # Перечисления — к виду платформы, как в form-compile: у реквизитов и команд по их типу узла,
+    # у тегов прямо под корнем фрагмента — по root_type (свойства формы)
+    text = normalize_enum_tags("\n".join(xml_lines), root_type)
     return import_element_nodes(parse_fragment(text))
 
 

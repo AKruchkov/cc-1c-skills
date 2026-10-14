@@ -133,8 +133,8 @@
 					<v8:content>Загрузить</v8:content>
 				</v8:item>
 			</Title>
-			<Action>ЗагрузитьОбработка</Action>
 			<Shortcut>Ctrl+Enter</Shortcut>
+			<Action>ЗагрузитьОбработка</Action>
 		</Command>
 	</Commands>
 </Form>

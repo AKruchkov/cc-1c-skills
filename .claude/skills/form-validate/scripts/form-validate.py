@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# form-validate v1.24 — Validate 1C managed form
+# form-validate v1.25 — Validate 1C managed form
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -162,6 +162,7 @@ def localname(el):
 # Источник — XSD xcf-logform 2.10–2.21, сверено с корпусом БП/ERP 8.3.24 (17036 форм, расхождений нет)
 # и загрузкой в 8.3.24. Перегенерировать: python debug/form-dsl-revision/gen_enum_table.py
 valid_enum_values = {
+    "ActionPurpose": ["Usual", "Create", "Finish"],
     "AppearanceInCard": ["Auto", "Extended"],
     "AppearanceMode": ["Auto", "CommandBar", "UsualGroup"],
     "AutoAddIncomplete": ["true", "false", "auto"],
@@ -206,6 +207,7 @@ valid_enum_values = {
     "ControlRepresentation": ["TitleHyperlink", "Picture", "Button", "ButtonInParentElement"],
     "ConversationsRepresentation": ["Auto", "Show", "DontShow"],
     "CreateButton": ["true", "false", "auto"],
+    "Command.CurrentRowUse": ["Use", "DontUse", "Auto"],
     "Pages.CurrentRowUse": ["Use", "DontUse", "Auto"],
     "Table.CurrentRowUse": ["Auto", "Choice", "SelectionPresentation", "SelectionPresentationAndChoice"],
     "UsualGroup.CurrentRowUse": ["Use", "DontUse", "Auto"],
@@ -219,6 +221,7 @@ valid_enum_values = {
     "EqualItemsWidth": ["true", "false", "auto"],
     "ExtendedEdit": ["true", "false", "auto"],
     "FileDragMode": ["AsFile", "AsFileRef"],
+    "FillCheck": ["DontCheck", "ShowError"],
     "FixInCard": ["true", "false", "auto"],
     "FixingInTable": ["None", "Left", "Right"],
     "FooterHorizontalAlign": ["Left", "Center", "Right", "Auto"],
@@ -243,6 +246,7 @@ valid_enum_values = {
     "ColumnGroup.HorizontalStretch": ["true", "false", "auto"],
     "CommandBar.HorizontalStretch": ["true", "false", "auto"],
     "ContextMenu.HorizontalStretch": ["true", "false", "auto"],
+    "ExtendedTooltip.HorizontalStretch": ["true", "false", "auto"],
     "InputField.HorizontalStretch": ["true", "false", "auto"],
     "LabelDecoration.HorizontalStretch": ["true", "false", "auto"],
     "LabelField.HorizontalStretch": ["true", "false", "auto"],
@@ -251,13 +255,17 @@ valid_enum_values = {
     "PictureDecoration.HorizontalStretch": ["true", "false", "auto"],
     "Popup.HorizontalStretch": ["true", "false", "auto"],
     "RadioButtonField.HorizontalStretch": ["true", "false", "auto"],
+    "SearchControlAddition.HorizontalStretch": ["true", "false", "auto"],
+    "SearchStringAddition.HorizontalStretch": ["true", "false", "auto"],
     "UsualGroup.HorizontalStretch": ["true", "false", "auto"],
+    "ViewStatusAddition.HorizontalStretch": ["true", "false", "auto"],
     "Importance": ["Main", "Normal", "Supplementary"],
     "IncompleteChoiceMode": ["OnEnterPressed", "OnActivate"],
     "InitialListView": ["Beginning", "End", "Auto"],
     "InitialRowActivation": ["Auto", "Activate", "NoActivate"],
     "InitialTreeView": ["NoExpand", "ExpandTopLevel", "ExpandAllLevels"],
     "IntervalsSelectionMode": ["Auto", "Multiple", "Single", "None"],
+    "KeyType": ["Auto", "FieldValue", "RowKey", "RowNumber"],
     "LocationInCommandBar": ["Auto", "InAdditionalSubmenu", "InCommandBar", "InCommandBarAndInAdditionalSubmenu"],
     "MarkNegatives": ["true", "false", "auto"],
     "MarkRequiredComplete": ["true", "false", "auto"],
@@ -286,6 +294,7 @@ valid_enum_values = {
     "ReportResultViewMode": ["Auto", "Default", "Compact"],
     "Button.Representation": ["Text", "Picture", "PictureAndText", "Auto"],
     "ButtonGroup.Representation": ["Auto", "Usual", "Compact"],
+    "Command.Representation": ["Text", "Picture", "TextPicture", "Auto"],
     "Popup.Representation": ["Text", "Picture", "PictureAndText", "Auto"],
     "ProgressBarField.Representation": ["Smooth", "Broken", "BrokenTilt"],
     "Table.Representation": ["List", "HierarchicalList", "Tree"],
@@ -303,6 +312,7 @@ valid_enum_values = {
     "SearchControlLocation": ["Auto", "None", "CommandBar"],
     "SearchOnInput": ["Use", "DontUse", "Auto"],
     "SearchStringLocation": ["Auto", "None", "CommandBar", "Top", "Bottom", "FormCaption", "PullFromTop"],
+    "SelectedRowsUse": ["Use", "DontUse", "Auto"],
     "CalendarField.SelectionMode": ["Single", "Multiple", "Interval"],
     "Table.SelectionMode": ["SingleRow", "MultiRow"],
     "SelectionShowMode": ["WhenActive", "Always", "DontShow", "WhenMultipleCellsSelected", "WhenMultipleCellsSelectedWhenActive"],
@@ -329,7 +339,7 @@ valid_enum_values = {
     "TitleLocation": ["None", "Auto", "Left", "Top", "Right", "Bottom"],
     "ToolTipRepresentation": ["Auto", "None", "Balloon", "Button", "ShowAuto", "ShowTop", "ShowLeft", "ShowBottom", "ShowRight"],
     "TumblerRepresentation": ["Text", "Picture", "Auto"],
-    "Type": ["CommandBarButton", "UsualButton", "Hyperlink", "CommandBarHyperlink"],
+    "Button.Type": ["CommandBarButton", "UsualButton", "Hyperlink", "CommandBarHyperlink"],
     "UpdateOnDataChange": ["Auto", "DontUpdate"],
     "UseAlternationRowColorBWA": ["true", "false", "auto"],
     "UseCopy": ["true", "false", "auto"],
@@ -346,6 +356,7 @@ valid_enum_values = {
     "ColumnGroup.VerticalStretch": ["true", "false", "auto"],
     "CommandBar.VerticalStretch": ["true", "false", "auto"],
     "ContextMenu.VerticalStretch": ["true", "false", "auto"],
+    "ExtendedTooltip.VerticalStretch": ["true", "false", "auto"],
     "InputField.VerticalStretch": ["true", "false", "auto"],
     "LabelDecoration.VerticalStretch": ["true", "false", "auto"],
     "LabelField.VerticalStretch": ["true", "false", "auto"],
@@ -375,6 +386,7 @@ enum_value_aliases = {
 # Умолчания: значение, которое платформа у этого типа не пишет (выброшено при загрузке-выгрузке 8.3.24
 # и ни разу не встречается в корпусе) — тег с ним не пишется
 enum_default_values = {
+    "Attribute.FillCheck": "DontCheck",
     "AutoCommandBar.GroupHorizontalAlign": "Auto",
     "AutoCommandBar.GroupVerticalAlign": "Auto",
     "AutoCommandBar.HorizontalAlign": "Left",
@@ -441,6 +453,7 @@ enum_default_values = {
     "CheckBoxField.ToolTipRepresentation": "Auto",
     "CheckBoxField.VerticalAlign": "Auto",
     "CheckBoxField.WarningOnEditRepresentation": "Auto",
+    "Column.FillCheck": "DontCheck",
     "ColumnGroup.FixingInTable": "None",
     "ColumnGroup.Group": "Vertical",
     "ColumnGroup.GroupHorizontalAlign": "Auto",
@@ -449,6 +462,8 @@ enum_default_values = {
     "ColumnGroup.HorizontalStretch": "auto",
     "ColumnGroup.ToolTipRepresentation": "Auto",
     "ColumnGroup.VerticalStretch": "auto",
+    "Command.CurrentRowUse": "Auto",
+    "Command.Representation": "Auto",
     "CommandBar.GroupHorizontalAlign": "Auto",
     "CommandBar.GroupVerticalAlign": "Auto",
     "CommandBar.HorizontalLocation": "Left",
@@ -460,6 +475,15 @@ enum_default_values = {
     "ContextMenu.HorizontalStretch": "auto",
     "ContextMenu.ToolTipRepresentation": "Auto",
     "ContextMenu.VerticalStretch": "auto",
+    "ExtendedTooltip.GroupHorizontalAlign": "Auto",
+    "ExtendedTooltip.GroupVerticalAlign": "Auto",
+    "ExtendedTooltip.HorizontalAlign": "Left",
+    "ExtendedTooltip.HorizontalStretch": "auto",
+    "ExtendedTooltip.OnMainServerUnavalableBehavior": "Auto",
+    "ExtendedTooltip.SkipOnInput": "auto",
+    "ExtendedTooltip.ToolTipRepresentation": "Auto",
+    "ExtendedTooltip.VerticalAlign": "Auto",
+    "ExtendedTooltip.VerticalStretch": "auto",
     "Form.AutoSaveDataInSettings": "DontUse",
     "Form.ChildItemsWidth": "Auto",
     "Form.ChildrenAlign": "Auto",
@@ -698,6 +722,17 @@ enum_default_values = {
     "RadioButtonField.ToolTipRepresentation": "Auto",
     "RadioButtonField.VerticalAlign": "Auto",
     "RadioButtonField.WarningOnEditRepresentation": "Auto",
+    "SearchControlAddition.GroupHorizontalAlign": "Auto",
+    "SearchControlAddition.GroupVerticalAlign": "Auto",
+    "SearchControlAddition.HorizontalStretch": "auto",
+    "SearchControlAddition.PlacementArea": "userCmds",
+    "SearchControlAddition.ToolTipRepresentation": "Auto",
+    "SearchStringAddition.GroupHorizontalAlign": "Auto",
+    "SearchStringAddition.GroupVerticalAlign": "Auto",
+    "SearchStringAddition.HorizontalStretch": "auto",
+    "SearchStringAddition.PlacementArea": "userCmds",
+    "SearchStringAddition.ToolTipRepresentation": "Auto",
+    "Settings.KeyType": "Auto",
     "SpreadSheetDocumentField.DrawingSelectionShowMode": "Auto",
     "SpreadSheetDocumentField.EditMode": "Enter",
     "SpreadSheetDocumentField.FixingInTable": "None",
@@ -789,6 +824,62 @@ enum_default_values = {
     "UsualGroup.VerticalAlign": "Auto",
     "UsualGroup.VerticalSpacing": "Auto",
     "UsualGroup.VerticalStretch": "auto",
+    "ViewStatusAddition.GroupHorizontalAlign": "Auto",
+    "ViewStatusAddition.GroupVerticalAlign": "Auto",
+    "ViewStatusAddition.HorizontalLocation": "Auto",
+    "ViewStatusAddition.HorizontalStretch": "auto",
+    "ViewStatusAddition.PlacementArea": "userCmds",
+    "ViewStatusAddition.ToolTipRepresentation": "Auto",
+}
+# Узлы, у которых проверяются и приводятся значения перечислений (тег узла)
+enum_scope_types = {
+    'Attribute',
+    'AutoCommandBar',
+    'Button',
+    'ButtonGroup',
+    'CalendarField',
+    'ChartField',
+    'CheckBoxField',
+    'Column',
+    'ColumnGroup',
+    'Command',
+    'CommandBar',
+    'ContextMenu',
+    'ExtendedTooltip',
+    'Form',
+    'FormattedDocumentField',
+    'GanttChartField',
+    'GraphicalSchemaField',
+    'HTMLDocumentField',
+    'InputField',
+    'LabelDecoration',
+    'LabelField',
+    'Page',
+    'Pages',
+    'PeriodField',
+    'PictureDecoration',
+    'PictureField',
+    'PlannerField',
+    'Popup',
+    'ProgressBarField',
+    'RadioButtonField',
+    'SearchControlAddition',
+    'SearchStringAddition',
+    'Settings',
+    'SpreadSheetDocumentField',
+    'Table',
+    'TextDocumentField',
+    'TrackBarField',
+    'UsualGroup',
+    'ViewStatusAddition',
+}
+# Значение из соседнего перечисления того же свойства → значение этого типа (ввод DSL; в XML — ошибка)
+enum_input_synonyms = {
+    "Command.Representation": {"PictureAndText": "TextPicture"},
+    "Button.Representation": {"TextPicture": "PictureAndText"},
+    "Popup.Representation": {"TextPicture": "PictureAndText"},
+    "Table.SelectionMode": {"Single": "SingleRow", "Multiple": "MultiRow"},
+    "CalendarField.SelectionMode": {"SingleRow": "Single", "MultiRow": "Multiple"},
 }
 # --- /Перечисления свойств формы ---
 
@@ -1669,18 +1760,25 @@ def main():
         elif owner_ver or dump_ver:
             report_ok(f'14. Format version: {form_ver}, matches the descriptor and the dump')
 
-    # Элементы формы, которые сверяются: корень и элементы известных типов (вне <BaseForm> — его пишет платформа)
-    def enum_check_nodes():
-        out = [(root, 'Form')]
+    # Узлы формы с типом из scope (вне <BaseForm> — его пишет платформа): корень, именованные узлы и
+    # настройки динамического списка (без имени — подпись по реквизиту). Перечисления проверяются по
+    # enum_scope_types, порядок — по CHILD_TAG_ORDER.
+    def enum_check_nodes(scope):
+        out = [(root, 'Form', 'Form')]
         for n in root.iter():
-            if not isinstance(n.tag, str) or n.get('name') is None:
+            if not isinstance(n.tag, str) or (n.get('name') is None and not n.tag.endswith('}Settings')):
                 continue
             q = etree.QName(n.tag)
-            if q.namespace != F_NS or q.localname not in CHILD_TAG_ORDER:
+            if q.namespace != F_NS or q.localname not in scope:
+                continue
+            par = n.getparent()
+            if n.get('name') is None and not (par is not None and etree.QName(par.tag).localname == 'Attribute'):
                 continue
             if any(isinstance(a.tag, str) and etree.QName(a.tag).localname == 'BaseForm' for a in n.iterancestors()):
                 continue
-            out.append((n, q.localname))
+            label = (f"{q.localname} '{n.get('name')}'" if n.get('name') is not None
+                     else f"{q.localname} of {etree.QName(par.tag).localname} '{par.get('name', '')}'")
+            out.append((n, q.localname, label))
         return out
 
     # --- Check 15: значения свойств-перечислений ---
@@ -1689,10 +1787,9 @@ def main():
     if not stopped:
         enum_checked = 0
         check15_ok = True
-        for node, typ in enum_check_nodes():
+        for node, typ, label in enum_check_nodes(enum_scope_types):
             if stopped:
                 break
-            label = 'Form' if typ == 'Form' else f"{typ} '{node.get('name', '')}'"
             for c in node:
                 if not isinstance(c.tag, str) or etree.QName(c.tag).namespace != F_NS:
                     continue
@@ -1711,7 +1808,13 @@ def main():
                     if hint:
                         report_error(f"15. {label}: {prop} '{val}' — wrong case, the platform will not load it; use '{hint[0]}'")
                     else:
-                        report_error(f"15. {label}: {prop} has invalid value '{val}' (allowed: {', '.join(allowed)})")
+                        # Значение из соседнего перечисления (у кнопки PictureAndText, у команды TextPicture) — подсказать замену
+                        syn = enum_input_synonyms.get(f'{typ}.{prop}') or {}
+                        use = [b for a, b in syn.items() if a.lower() == val.lower()]
+                        if use:
+                            report_error(f"15. {label}: {prop} '{val}' is not valid for {typ}, the platform will not load it; use '{use[0]}'")
+                        else:
+                            report_error(f"15. {label}: {prop} has invalid value '{val}' (allowed: {', '.join(allowed)})")
                     check15_ok = False
         if check15_ok:
             report_ok(f'15. Enum values: {enum_checked} checked')
@@ -1721,7 +1824,7 @@ def main():
     # принимает и переставляет при выгрузке — предупреждение, а не ошибка.
     if not stopped:
         order_bad = 0
-        for node, typ in enum_check_nodes():
+        for node, typ, _ in enum_check_nodes(CHILD_TAG_ORDER):
             if typ == 'Form':
                 continue
             prev, prev_rank = None, -1

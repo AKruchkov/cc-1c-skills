@@ -1,0 +1,110 @@
+{
+  "name": "Перечисления вне элементов: команда, реквизит, колонка, динамический список, дополнения; значения соседних перечислений",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml",
+    "validatePath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "elements": [
+      {
+        "cmdBar": "Панель",
+        "children": [
+          {
+            "button": "КнопкаЗагрузить",
+            "command": "Загрузить",
+            "representation": "TextPicture"
+          }
+        ]
+      },
+      {
+        "table": "Таблица",
+        "path": "Таблица",
+        "selectionMode": "single",
+        "additions": {
+          "searchString": {
+            "groupHorizontalAlign": "left",
+            "tooltipRepresentation": "balloon"
+          }
+        },
+        "columns": [
+          {
+            "input": "ТаблицаА",
+            "path": "Таблица.А"
+          }
+        ]
+      },
+      {
+        "calendar": "Календарь",
+        "path": "Дата",
+        "selectionMode": "multirow"
+      }
+    ],
+    "attributes": [
+      {
+        "name": "Объект",
+        "type": "DataProcessorObject.Тест",
+        "main": true
+      },
+      {
+        "name": "Дата",
+        "type": "date",
+        "fillCheck": "SHOWERROR"
+      },
+      {
+        "name": "Таблица",
+        "type": "ValueTable",
+        "columns": [
+          {
+            "name": "А",
+            "type": "string",
+            "fillCheck": "showerror"
+          }
+        ]
+      },
+      {
+        "name": "Список",
+        "type": "DynamicList",
+        "settings": {
+          "query": "ВЫБРАТЬ 1 КАК Поле",
+          "keyType": "rownumber"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "name": "Загрузить",
+        "action": "ЗагрузитьОбработка",
+        "picture": "StdPicture.Refresh",
+        "representation": "PictureAndText",
+        "currentRowUse": "dontuse",
+        "shortcut": "F5",
+        "use": true
+      },
+      {
+        "name": "Обновить",
+        "action": "ОбновитьОбработка",
+        "representation": "PICTURE"
+      }
+    ]
+  }
+}

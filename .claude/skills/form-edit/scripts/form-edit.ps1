@@ -1,4 +1,4 @@
-﻿# form-edit v1.29 — Edit 1C managed form elements
+﻿# form-edit v1.30 — Edit 1C managed form elements
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 [CmdletBinding(PositionalBinding=$false)]
 param(
@@ -582,6 +582,7 @@ $script:elementTypeSynonyms = @{
 }
 
 $script:validEnumValues = @{
+	"ActionPurpose" = @("Usual","Create","Finish")
 	"AppearanceInCard" = @("Auto","Extended")
 	"AppearanceMode" = @("Auto","CommandBar","UsualGroup")
 	"AutoAddIncomplete" = @("true","false","auto")
@@ -626,6 +627,7 @@ $script:validEnumValues = @{
 	"ControlRepresentation" = @("TitleHyperlink","Picture","Button","ButtonInParentElement")
 	"ConversationsRepresentation" = @("Auto","Show","DontShow")
 	"CreateButton" = @("true","false","auto")
+	"Command.CurrentRowUse" = @("Use","DontUse","Auto")
 	"Pages.CurrentRowUse" = @("Use","DontUse","Auto")
 	"Table.CurrentRowUse" = @("Auto","Choice","SelectionPresentation","SelectionPresentationAndChoice")
 	"UsualGroup.CurrentRowUse" = @("Use","DontUse","Auto")
@@ -639,6 +641,7 @@ $script:validEnumValues = @{
 	"EqualItemsWidth" = @("true","false","auto")
 	"ExtendedEdit" = @("true","false","auto")
 	"FileDragMode" = @("AsFile","AsFileRef")
+	"FillCheck" = @("DontCheck","ShowError")
 	"FixInCard" = @("true","false","auto")
 	"FixingInTable" = @("None","Left","Right")
 	"FooterHorizontalAlign" = @("Left","Center","Right","Auto")
@@ -663,6 +666,7 @@ $script:validEnumValues = @{
 	"ColumnGroup.HorizontalStretch" = @("true","false","auto")
 	"CommandBar.HorizontalStretch" = @("true","false","auto")
 	"ContextMenu.HorizontalStretch" = @("true","false","auto")
+	"ExtendedTooltip.HorizontalStretch" = @("true","false","auto")
 	"InputField.HorizontalStretch" = @("true","false","auto")
 	"LabelDecoration.HorizontalStretch" = @("true","false","auto")
 	"LabelField.HorizontalStretch" = @("true","false","auto")
@@ -671,13 +675,17 @@ $script:validEnumValues = @{
 	"PictureDecoration.HorizontalStretch" = @("true","false","auto")
 	"Popup.HorizontalStretch" = @("true","false","auto")
 	"RadioButtonField.HorizontalStretch" = @("true","false","auto")
+	"SearchControlAddition.HorizontalStretch" = @("true","false","auto")
+	"SearchStringAddition.HorizontalStretch" = @("true","false","auto")
 	"UsualGroup.HorizontalStretch" = @("true","false","auto")
+	"ViewStatusAddition.HorizontalStretch" = @("true","false","auto")
 	"Importance" = @("Main","Normal","Supplementary")
 	"IncompleteChoiceMode" = @("OnEnterPressed","OnActivate")
 	"InitialListView" = @("Beginning","End","Auto")
 	"InitialRowActivation" = @("Auto","Activate","NoActivate")
 	"InitialTreeView" = @("NoExpand","ExpandTopLevel","ExpandAllLevels")
 	"IntervalsSelectionMode" = @("Auto","Multiple","Single","None")
+	"KeyType" = @("Auto","FieldValue","RowKey","RowNumber")
 	"LocationInCommandBar" = @("Auto","InAdditionalSubmenu","InCommandBar","InCommandBarAndInAdditionalSubmenu")
 	"MarkNegatives" = @("true","false","auto")
 	"MarkRequiredComplete" = @("true","false","auto")
@@ -706,6 +714,7 @@ $script:validEnumValues = @{
 	"ReportResultViewMode" = @("Auto","Default","Compact")
 	"Button.Representation" = @("Text","Picture","PictureAndText","Auto")
 	"ButtonGroup.Representation" = @("Auto","Usual","Compact")
+	"Command.Representation" = @("Text","Picture","TextPicture","Auto")
 	"Popup.Representation" = @("Text","Picture","PictureAndText","Auto")
 	"ProgressBarField.Representation" = @("Smooth","Broken","BrokenTilt")
 	"Table.Representation" = @("List","HierarchicalList","Tree")
@@ -723,6 +732,7 @@ $script:validEnumValues = @{
 	"SearchControlLocation" = @("Auto","None","CommandBar")
 	"SearchOnInput" = @("Use","DontUse","Auto")
 	"SearchStringLocation" = @("Auto","None","CommandBar","Top","Bottom","FormCaption","PullFromTop")
+	"SelectedRowsUse" = @("Use","DontUse","Auto")
 	"CalendarField.SelectionMode" = @("Single","Multiple","Interval")
 	"Table.SelectionMode" = @("SingleRow","MultiRow")
 	"SelectionShowMode" = @("WhenActive","Always","DontShow","WhenMultipleCellsSelected","WhenMultipleCellsSelectedWhenActive")
@@ -749,7 +759,7 @@ $script:validEnumValues = @{
 	"TitleLocation" = @("None","Auto","Left","Top","Right","Bottom")
 	"ToolTipRepresentation" = @("Auto","None","Balloon","Button","ShowAuto","ShowTop","ShowLeft","ShowBottom","ShowRight")
 	"TumblerRepresentation" = @("Text","Picture","Auto")
-	"Type" = @("CommandBarButton","UsualButton","Hyperlink","CommandBarHyperlink")
+	"Button.Type" = @("CommandBarButton","UsualButton","Hyperlink","CommandBarHyperlink")
 	"UpdateOnDataChange" = @("Auto","DontUpdate")
 	"UseAlternationRowColorBWA" = @("true","false","auto")
 	"UseCopy" = @("true","false","auto")
@@ -766,6 +776,7 @@ $script:validEnumValues = @{
 	"ColumnGroup.VerticalStretch" = @("true","false","auto")
 	"CommandBar.VerticalStretch" = @("true","false","auto")
 	"ContextMenu.VerticalStretch" = @("true","false","auto")
+	"ExtendedTooltip.VerticalStretch" = @("true","false","auto")
 	"InputField.VerticalStretch" = @("true","false","auto")
 	"LabelDecoration.VerticalStretch" = @("true","false","auto")
 	"LabelField.VerticalStretch" = @("true","false","auto")
@@ -794,6 +805,7 @@ $script:enumValueAliases = @{
 }
 
 $script:enumDefaultValues = @{
+	"Attribute.FillCheck" = "DontCheck"
 	"AutoCommandBar.GroupHorizontalAlign" = "Auto"
 	"AutoCommandBar.GroupVerticalAlign" = "Auto"
 	"AutoCommandBar.HorizontalAlign" = "Left"
@@ -860,6 +872,7 @@ $script:enumDefaultValues = @{
 	"CheckBoxField.ToolTipRepresentation" = "Auto"
 	"CheckBoxField.VerticalAlign" = "Auto"
 	"CheckBoxField.WarningOnEditRepresentation" = "Auto"
+	"Column.FillCheck" = "DontCheck"
 	"ColumnGroup.FixingInTable" = "None"
 	"ColumnGroup.Group" = "Vertical"
 	"ColumnGroup.GroupHorizontalAlign" = "Auto"
@@ -868,6 +881,8 @@ $script:enumDefaultValues = @{
 	"ColumnGroup.HorizontalStretch" = "auto"
 	"ColumnGroup.ToolTipRepresentation" = "Auto"
 	"ColumnGroup.VerticalStretch" = "auto"
+	"Command.CurrentRowUse" = "Auto"
+	"Command.Representation" = "Auto"
 	"CommandBar.GroupHorizontalAlign" = "Auto"
 	"CommandBar.GroupVerticalAlign" = "Auto"
 	"CommandBar.HorizontalLocation" = "Left"
@@ -879,6 +894,15 @@ $script:enumDefaultValues = @{
 	"ContextMenu.HorizontalStretch" = "auto"
 	"ContextMenu.ToolTipRepresentation" = "Auto"
 	"ContextMenu.VerticalStretch" = "auto"
+	"ExtendedTooltip.GroupHorizontalAlign" = "Auto"
+	"ExtendedTooltip.GroupVerticalAlign" = "Auto"
+	"ExtendedTooltip.HorizontalAlign" = "Left"
+	"ExtendedTooltip.HorizontalStretch" = "auto"
+	"ExtendedTooltip.OnMainServerUnavalableBehavior" = "Auto"
+	"ExtendedTooltip.SkipOnInput" = "auto"
+	"ExtendedTooltip.ToolTipRepresentation" = "Auto"
+	"ExtendedTooltip.VerticalAlign" = "Auto"
+	"ExtendedTooltip.VerticalStretch" = "auto"
 	"Form.AutoSaveDataInSettings" = "DontUse"
 	"Form.ChildItemsWidth" = "Auto"
 	"Form.ChildrenAlign" = "Auto"
@@ -1117,6 +1141,17 @@ $script:enumDefaultValues = @{
 	"RadioButtonField.ToolTipRepresentation" = "Auto"
 	"RadioButtonField.VerticalAlign" = "Auto"
 	"RadioButtonField.WarningOnEditRepresentation" = "Auto"
+	"SearchControlAddition.GroupHorizontalAlign" = "Auto"
+	"SearchControlAddition.GroupVerticalAlign" = "Auto"
+	"SearchControlAddition.HorizontalStretch" = "auto"
+	"SearchControlAddition.PlacementArea" = "userCmds"
+	"SearchControlAddition.ToolTipRepresentation" = "Auto"
+	"SearchStringAddition.GroupHorizontalAlign" = "Auto"
+	"SearchStringAddition.GroupVerticalAlign" = "Auto"
+	"SearchStringAddition.HorizontalStretch" = "auto"
+	"SearchStringAddition.PlacementArea" = "userCmds"
+	"SearchStringAddition.ToolTipRepresentation" = "Auto"
+	"Settings.KeyType" = "Auto"
 	"SpreadSheetDocumentField.DrawingSelectionShowMode" = "Auto"
 	"SpreadSheetDocumentField.EditMode" = "Enter"
 	"SpreadSheetDocumentField.FixingInTable" = "None"
@@ -1208,6 +1243,62 @@ $script:enumDefaultValues = @{
 	"UsualGroup.VerticalAlign" = "Auto"
 	"UsualGroup.VerticalSpacing" = "Auto"
 	"UsualGroup.VerticalStretch" = "auto"
+	"ViewStatusAddition.GroupHorizontalAlign" = "Auto"
+	"ViewStatusAddition.GroupVerticalAlign" = "Auto"
+	"ViewStatusAddition.HorizontalLocation" = "Auto"
+	"ViewStatusAddition.HorizontalStretch" = "auto"
+	"ViewStatusAddition.PlacementArea" = "userCmds"
+	"ViewStatusAddition.ToolTipRepresentation" = "Auto"
+}
+
+$script:enumScopeTypes = @{
+	'Attribute' = $true
+	'AutoCommandBar' = $true
+	'Button' = $true
+	'ButtonGroup' = $true
+	'CalendarField' = $true
+	'ChartField' = $true
+	'CheckBoxField' = $true
+	'Column' = $true
+	'ColumnGroup' = $true
+	'Command' = $true
+	'CommandBar' = $true
+	'ContextMenu' = $true
+	'ExtendedTooltip' = $true
+	'Form' = $true
+	'FormattedDocumentField' = $true
+	'GanttChartField' = $true
+	'GraphicalSchemaField' = $true
+	'HTMLDocumentField' = $true
+	'InputField' = $true
+	'LabelDecoration' = $true
+	'LabelField' = $true
+	'Page' = $true
+	'Pages' = $true
+	'PeriodField' = $true
+	'PictureDecoration' = $true
+	'PictureField' = $true
+	'PlannerField' = $true
+	'Popup' = $true
+	'ProgressBarField' = $true
+	'RadioButtonField' = $true
+	'SearchControlAddition' = $true
+	'SearchStringAddition' = $true
+	'Settings' = $true
+	'SpreadSheetDocumentField' = $true
+	'Table' = $true
+	'TextDocumentField' = $true
+	'TrackBarField' = $true
+	'UsualGroup' = $true
+	'ViewStatusAddition' = $true
+}
+
+$script:enumInputSynonyms = @{
+	"Command.Representation" = @{ "PictureAndText" = "TextPicture" }
+	"Button.Representation" = @{ "TextPicture" = "PictureAndText" }
+	"Popup.Representation" = @{ "TextPicture" = "PictureAndText" }
+	"Table.SelectionMode" = @{ "Single" = "SingleRow"; "Multiple" = "MultiRow" }
+	"CalendarField.SelectionMode" = @{ "SingleRow" = "Single"; "MultiRow" = "Multiple" }
 }
 
 $script:objType = $null
@@ -2540,6 +2631,12 @@ function Normalize-EnumValue {
 	return $value
 }
 
+function Resolve-EnumInputSynonym([string]$type, [string]$tag, [string]$value) {
+	$syn = $script:enumInputSynonyms["$type.$tag"]
+	if ($syn) { foreach ($k in $syn.Keys) { if ($k -ieq $value) { return $syn[$k] } } }
+	return $value
+}
+
 function Normalize-EnumTags([string]$text, [string]$rootType = '', [bool]$keepDefaults = $false) {
 	$crlf = $text.Contains("`r`n")
 	$lines = $text.Replace("`r`n", "`n") -split "`n"
@@ -2561,10 +2658,12 @@ function Normalize-EnumTags([string]$text, [string]$rootType = '', [bool]$keepDe
 		$top = $stack[$stack.Count - 1]
 		if ($m.Groups[1].Value.Length -ne $top.Ind + 1) { continue }
 		$ptype = if ($stack.Count -eq 1) { if ($top.Name -ceq 'Form') { 'Form' } else { $rootType } } else { $top.Name }
-		if (-not $ptype -or ($ptype -cne 'Form' -and -not $script:childTagOrder.ContainsKey($ptype))) { continue }
+		if (-not $ptype -or -not $script:enumScopeTypes.ContainsKey($ptype)) { continue }
+		# Settings — только настройки динамического списка (под реквизитом), как в form-validate
+		if ($ptype -ceq 'Settings' -and ($stack.Count -lt 2 -or $stack[$stack.Count - 2].Name -cne 'Attribute')) { continue }
 		$script:objType = $ptype
 		$tag = $m.Groups[2].Value
-		$v = Normalize-EnumValue $tag $m.Groups[3].Value
+		$v = Normalize-EnumValue $tag (Resolve-EnumInputSynonym $ptype $tag $m.Groups[3].Value)
 		if (-not $keepDefaults -and $script:enumDefaultValues.ContainsKey("$ptype.$tag") -and $script:enumDefaultValues["$ptype.$tag"] -ceq $v) { $drop[$i] = $true; continue }
 		if ($v -cne $m.Groups[3].Value) { $lines[$i] = "$($m.Groups[1].Value)<$tag>$v</$tag>" }
 	}
@@ -5499,8 +5598,16 @@ function Emit-Commands {
 			Emit-MLText -tag "ToolTip" -text $cmd.tooltip -indent $inner
 		}
 
-		# Доступность команды по ролям (после ToolTip, до Action)
+		# Порядок детей — как пишет платформа (XSD FormCommand, корпус без обратных случаев):
+		# Title ToolTip Use Shortcut Picture Action FunctionalOptions Representation ModifiesSavedData
+		# CurrentRowUse AssociatedTableElementId
 		if ($null -ne $cmd.use) { Emit-XrFlag -tag 'Use' -val $cmd.use -indent $inner }
+
+		if ($cmd.shortcut) {
+			X "$inner<Shortcut>$($cmd.shortcut)</Shortcut>"
+		}
+
+		Emit-CommandPicture -pic $cmd.picture -elemLt $cmd.loadTransparent -indent $inner
 
 		# Обработчик; в расширении — с видом вызова (callType), или несколько: actions [{handler, callType}]
 		if ($cmd.actions) {
@@ -5515,9 +5622,14 @@ function Emit-Commands {
 			X "$inner<Action$ctAttr>$($cmd.action)</Action>"
 		}
 
-		if ($cmd.modifiesSavedData -eq $true) { X "$inner<ModifiesSavedData>true</ModifiesSavedData>" }
-
 		Emit-FunctionalOptions -fo $cmd.functionalOptions -indent $inner
+
+		# Значение — к перечислению команды (Text/Picture/TextPicture/Auto) приводит Normalize-EnumTags
+		if ($cmd.representation) {
+			X "$inner<Representation>$($cmd.representation)</Representation>"
+		}
+
+		if ($cmd.modifiesSavedData -eq $true) { X "$inner<ModifiesSavedData>true</ModifiesSavedData>" }
 
 		if ($cmd.currentRowUse) {
 			X "$inner<CurrentRowUse>$($cmd.currentRowUse)</CurrentRowUse>"
@@ -5530,16 +5642,6 @@ function Emit-Commands {
 		if (-not $cmdTable) { $cmdTable = $cmd.используемаяТаблица }
 		if ($cmdTable) {
 			X "$inner<AssociatedTableElementId xsi:type=`"xs:string`">$(Esc-XmlText "$cmdTable")</AssociatedTableElementId>"
-		}
-
-		if ($cmd.shortcut) {
-			X "$inner<Shortcut>$($cmd.shortcut)</Shortcut>"
-		}
-
-		Emit-CommandPicture -pic $cmd.picture -elemLt $cmd.loadTransparent -indent $inner
-
-		if ($cmd.representation) {
-			X "$inner<Representation>$($cmd.representation)</Representation>"
 		}
 
 		X "$indent`t</Command>"
@@ -6340,9 +6442,9 @@ function Get-TagDefault([string]$nt, [string]$tag) {
 # Значение по умолчанию платформа не пишет — и set его не пишет, а убирает тег.
 # Значение перечисления — к виду платформы (как эмиттер: Normalize-EnumValue по типу элемента)
 function Get-NormalizedEnumValue($node, [string]$tag, [string]$text) {
-	if (-not $text -or -not $script:childTagOrder.ContainsKey($node.LocalName)) { return $text }
+	if (-not $text -or -not $script:enumScopeTypes.ContainsKey($node.LocalName)) { return $text }
 	$script:objType = $node.LocalName
-	return (Normalize-EnumValue $tag $text)
+	return (Normalize-EnumValue $tag (Resolve-EnumInputSynonym $node.LocalName $tag $text))
 }
 
 function Set-ValueTag($node, [string]$tag, [string]$text) {
@@ -6397,7 +6499,7 @@ $script:reprMaps = @{
 	'Table' = @{ 'list'='List'; 'tree'='Tree'; 'hierarchicallist'='HierarchicalList' }
 	'Button' = @{ 'auto'='Auto'; 'text'='Text'; 'picture'='Picture'; 'pictureandtext'='PictureAndText' }
 	'Popup' = @{ 'auto'='Auto'; 'text'='Text'; 'picture'='Picture'; 'pictureandtext'='PictureAndText' }
-	'ButtonGroup' = @{ 'usual'='Usual'; 'compact'='Compact' }
+	'ButtonGroup' = @{ 'auto'='Auto'; 'usual'='Usual'; 'compact'='Compact' }
 }
 $script:xmlTagToDsl = @{}
 foreach ($k in $script:dslTagMap.Keys) { $script:xmlTagToDsl[$script:dslTagMap[$k]] = $k }
@@ -6584,7 +6686,7 @@ function Invoke-Set($op, [int]$idx) {
 				'repr' {
 					$rmap = $script:reprMaps[$nt]
 					if ($null -eq $rmap) { Fail "${c}: свойство '$key' к $nt не применимо; доступно: $((Get-ApplicableSetKeys $nt) -join ', ') и остальные ключи элемента из form-compile" }
-					$text = $rmap["$v".ToLower()]
+					$text = $rmap[(Resolve-EnumInputSynonym $nt 'Representation' "$v").ToLower()]
 					if (-not $text) { Fail "${c}: representation='$v' — допустимо: $(($rmap.Keys | Sort-Object) -join ', ')" }
 					Set-ValueTag $node $tag $text
 					$script:opLog += "  * ${n}: $key=$v → $tag=$text"
@@ -7312,8 +7414,9 @@ function Invoke-SectionEmit([scriptblock]$emit, [string]$rootType = '') {
 	. $emit
 	X "</_F>"
 	$script:nextElemId = $saveId
-	$text = $script:xml.ToString()
-	if ($rootType) { $text = Normalize-EnumTags $text $rootType }
+	# Перечисления — к виду платформы, как в form-compile: у реквизитов и команд по их типу узла,
+	# у тегов прямо под корнем фрагмента — по $rootType (свойства формы)
+	$text = Normalize-EnumTags $script:xml.ToString() $rootType
 	return @(Import-ElementNodes (Parse-Fragment $text))
 }
 

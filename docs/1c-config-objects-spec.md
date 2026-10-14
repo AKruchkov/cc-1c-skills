@@ -808,7 +808,7 @@ Ext/                               # Расширение конфигураци
         </CommandParameterType>
         <ParameterUseMode>Multiple</ParameterUseMode>  <!-- Multiple -->
         <ModifiesData>true</ModifiesData>
-        <Representation>Auto</Representation>    <!-- Auto | TextPicture | Text | Picture -->
+        <Representation>Auto</Representation>    <!-- Auto | Text | Picture | PictureAndText (у команды формы — TextPicture) -->
         <ToolTip>...</ToolTip>
         <Picture>
             <xr:Ref>CommonPicture.Создать</xr:Ref>

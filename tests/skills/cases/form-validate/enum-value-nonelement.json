@@ -1,0 +1,18 @@
+{
+  "name": "Перечисления вне элементов: команда, настройки списка, дополнение; значение соседнего перечисления — ошибка с заменой",
+  "setup": "fixture:enum-values-nonelement-bad",
+  "params": {
+    "formPath": "DataProcessors/Bad/Forms/Форма"
+  },
+  "expectError": true,
+  "expect": {
+    "stdoutContains": [
+      "Command 'Загрузить': Representation 'PictureAndText' is not valid for Command",
+      "use 'TextPicture'",
+      "Button 'КнопкаЗагрузить': Representation 'TextPicture' is not valid for Button",
+      "Command 'Загрузить': CurrentRowUse has invalid value 'Never'",
+      "Settings of Attribute 'Список': KeyType 'rownumber' — wrong case",
+      "SearchStringAddition 'ТаблицаСтрокаПоиска': GroupHorizontalAlign has invalid value 'Middle'"
+    ]
+  }
+}

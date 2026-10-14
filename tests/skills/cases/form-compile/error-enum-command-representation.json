@@ -1,0 +1,39 @@
+{
+  "name": "Неизвестное значение перечисления у команды — ошибка с перечнем допустимых",
+  "params": {
+    "outputPath": "DataProcessors/Тест/Forms/Форма/Ext/Form.xml"
+  },
+  "preRun": [
+    {
+      "script": "meta-compile/scripts/meta-compile",
+      "input": {
+        "type": "DataProcessor",
+        "name": "Тест"
+      },
+      "args": {
+        "-JsonPath": "{inputFile}",
+        "-OutputDir": "{workDir}"
+      }
+    },
+    {
+      "script": "form-add/scripts/form-add",
+      "args": {
+        "-ObjectPath": "{workDir}/DataProcessors/Тест.xml",
+        "-FormName": "Форма"
+      }
+    }
+  ],
+  "input": {
+    "commands": [
+      {
+        "name": "Загрузить",
+        "action": "ЗагрузитьОбработка",
+        "representation": "Bold"
+      }
+    ]
+  },
+  "expect": {
+    "stderrContains": "Invalid value 'Bold' for property 'Representation'"
+  },
+  "expectError": true
+}

@@ -93,8 +93,8 @@
 					<v8:content>Запустить обработку</v8:content>
 				</v8:item>
 			</ToolTip>
-			<Action>ВыполнитьОбработка</Action>
 			<Shortcut>Ctrl+Enter</Shortcut>
+			<Action>ВыполнитьОбработка</Action>
 		</Command>
 		<Command name="Вверх" id="19">
 			<Title>

@@ -1,0 +1,20 @@
+{
+  "name": "Перечисления в правке вне элементов: команда и реквизит; значения соседних перечислений в set",
+  "setup": "fixture:move-form",
+  "params": {
+    "formPath": "Documents/ЗаказТест/Forms/ФормаДокумента/Ext/Form.xml"
+  },
+  "input": {
+    "attributes": [
+      { "name": "Комментарий", "type": "string", "fillCheck": "showerror" }
+    ],
+    "commands": [
+      { "name": "Загрузить", "action": "ЗагрузитьОбработка", "picture": "StdPicture.Refresh", "representation": "pictureandtext", "currentRowUse": "use" }
+    ],
+    "elements": [
+      { "button": "КнопкаЗагрузить", "command": "Загрузить", "into": "ФормаКоманднаяПанель", "representation": "text" },
+      { "set": "КнопкаЗагрузить", "representation": "TextPicture" },
+      { "set": "Товары", "selectionMode": "single" }
+    ]
+  }
+}
