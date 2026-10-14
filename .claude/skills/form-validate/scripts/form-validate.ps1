@@ -1829,12 +1829,12 @@ function Get-ChildRank([string]$parentTag, [string]$childTag) {
 # переставляются целыми блоками строк, содержимое блоков не меняется. Незнакомый тег идёт за
 # предыдущим знакомым.
 
-# Элементы формы, которые сверяются: корень и элементы известных типов (вне <BaseForm> — его пишет платформа)
-# Узлы формы с типом из $scope: корень, именованные узлы и настройки динамического списка (без имени —
-# подпись по реквизиту). Перечисления проверяются по enumScopeTypes, порядок — по childTagOrder.
+# Узлы формы с типом из $scope (вне <BaseForm> — его пишет платформа): корень, именованные узлы и
+# настройки динамического списка (без имени — подпись по реквизиту; Settings у ValueList/Planner/Chart —
+# не список). Перечисления проверяются по enumScopeTypes, порядок — по childTagOrder.
 function Get-EnumCheckNodes([hashtable]$scope) {
 	$out = @(@{ Node = $root; Type = 'Form'; Label = 'Form' })
-	foreach ($n in $root.SelectNodes("//*[@name] | //*[local-name()='Attribute']/*[local-name()='Settings']")) {
+	foreach ($n in $root.SelectNodes("//*[@name] | //*[local-name()='Settings'][@*[local-name()='type']='DynamicList']")) {
 		if ($n.NamespaceURI -ne 'http://v8.1c.ru/8.3/xcf/logform') { continue }
 		if (-not $scope.ContainsKey($n.LocalName)) { continue }
 		if ($null -ne $n.SelectSingleNode("ancestor::*[local-name()='BaseForm']")) { continue }

@@ -3906,7 +3906,7 @@ function Normalize-EnumTags([string]$text, [string]$rootType = '', [bool]$keepDe
 			continue
 		}
 		if ($line -cmatch '^(\t*)<([A-Za-z_][\w.:-]*)(\s[^>]*)?>$' -and -not $line.EndsWith('/>')) {
-			[void]$stack.Add(@{ Name = $Matches[2]; Ind = $Matches[1].Length })
+			[void]$stack.Add(@{ Name = $Matches[2]; Ind = $Matches[1].Length; Attrs = $Matches[3] })
 			continue
 		}
 		if ($stack.Count -eq 0) { continue }
@@ -3916,8 +3916,8 @@ function Normalize-EnumTags([string]$text, [string]$rootType = '', [bool]$keepDe
 		if ($m.Groups[1].Value.Length -ne $top.Ind + 1) { continue }
 		$ptype = if ($stack.Count -eq 1) { if ($top.Name -ceq 'Form') { 'Form' } else { $rootType } } else { $top.Name }
 		if (-not $ptype -or -not $script:enumScopeTypes.ContainsKey($ptype)) { continue }
-		# Settings — только настройки динамического списка (под реквизитом), как в form-validate
-		if ($ptype -ceq 'Settings' -and ($stack.Count -lt 2 -or $stack[$stack.Count - 2].Name -cne 'Attribute')) { continue }
+		# Settings — только настройки динамического списка (у ValueList/Planner/Chart свои), как в form-validate
+		if ($ptype -ceq 'Settings' -and "$($top.Attrs)" -cnotmatch 'xsi:type="DynamicList"') { continue }
 		$script:objType = $ptype
 		$tag = $m.Groups[2].Value
 		$v = Normalize-EnumValue $tag (Resolve-EnumInputSynonym $ptype $tag $m.Groups[3].Value)

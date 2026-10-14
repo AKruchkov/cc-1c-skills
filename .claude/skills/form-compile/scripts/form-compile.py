@@ -4890,14 +4890,14 @@ def normalize_enum_tags(text, root_type='', keep_defaults=False):
             continue
         m = re.fullmatch(r'(\t*)<([A-Za-z_][\w.:-]*)(\s[^>]*)?>', line)
         if m and not line.endswith('/>'):
-            stack.append((m.group(2), len(m.group(1))))
+            stack.append((m.group(2), len(m.group(1)), m.group(3) or ''))
             continue
         if not stack:
             continue
         m = re.fullmatch(r'(\t*)<([A-Za-z]\w*)>([^<]+)</([A-Za-z]\w*)>', line)
         if not m or m.group(2) != m.group(4):
             continue
-        name, ind = stack[-1]
+        name, ind, attrs = stack[-1]
         if len(m.group(1)) != ind + 1:
             continue
         if len(stack) == 1:
@@ -4906,8 +4906,8 @@ def normalize_enum_tags(text, root_type='', keep_defaults=False):
             ptype = name
         if not ptype or ptype not in enum_scope_types:
             continue
-        # Settings — только настройки динамического списка (под реквизитом), как в form-validate
-        if ptype == 'Settings' and (len(stack) < 2 or stack[-2][0] != 'Attribute'):
+        # Settings — только настройки динамического списка (у ValueList/Planner/Chart свои), как в form-validate
+        if ptype == 'Settings' and 'xsi:type="DynamicList"' not in attrs:
             continue
         obj_type = ptype
         tag = m.group(2)

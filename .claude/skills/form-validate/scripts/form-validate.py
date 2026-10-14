@@ -1761,8 +1761,8 @@ def main():
             report_ok(f'14. Format version: {form_ver}, matches the descriptor and the dump')
 
     # Узлы формы с типом из scope (вне <BaseForm> — его пишет платформа): корень, именованные узлы и
-    # настройки динамического списка (без имени — подпись по реквизиту). Перечисления проверяются по
-    # enum_scope_types, порядок — по CHILD_TAG_ORDER.
+    # настройки динамического списка (без имени — подпись по реквизиту; Settings у ValueList/Planner/Chart —
+    # не список). Перечисления проверяются по enum_scope_types, порядок — по CHILD_TAG_ORDER.
     def enum_check_nodes(scope):
         out = [(root, 'Form', 'Form')]
         for n in root.iter():
@@ -1772,7 +1772,7 @@ def main():
             if q.namespace != F_NS or q.localname not in scope:
                 continue
             par = n.getparent()
-            if n.get('name') is None and not (par is not None and etree.QName(par.tag).localname == 'Attribute'):
+            if n.get('name') is None and n.get('{http://www.w3.org/2001/XMLSchema-instance}type') != 'DynamicList':
                 continue
             if any(isinstance(a.tag, str) and etree.QName(a.tag).localname == 'BaseForm' for a in n.iterancestors()):
                 continue

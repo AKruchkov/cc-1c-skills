@@ -3939,14 +3939,14 @@ def normalize_enum_tags(text, root_type='', keep_defaults=False):
             continue
         m = re.fullmatch(r'(\t*)<([A-Za-z_][\w.:-]*)(\s[^>]*)?>', line)
         if m and not line.endswith('/>'):
-            stack.append((m.group(2), len(m.group(1))))
+            stack.append((m.group(2), len(m.group(1)), m.group(3) or ''))
             continue
         if not stack:
             continue
         m = re.fullmatch(r'(\t*)<([A-Za-z]\w*)>([^<]+)</([A-Za-z]\w*)>', line)
         if not m or m.group(2) != m.group(4):
             continue
-        name, ind = stack[-1]
+        name, ind, attrs = stack[-1]
         if len(m.group(1)) != ind + 1:
             continue
         if len(stack) == 1:
@@ -3955,8 +3955,8 @@ def normalize_enum_tags(text, root_type='', keep_defaults=False):
             ptype = name
         if not ptype or ptype not in enum_scope_types:
             continue
-        # Settings — только настройки динамического списка (под реквизитом), как в form-validate
-        if ptype == 'Settings' and (len(stack) < 2 or stack[-2][0] != 'Attribute'):
+        # Settings — только настройки динамического списка (у ValueList/Planner/Chart свои), как в form-validate
+        if ptype == 'Settings' and 'xsi:type="DynamicList"' not in attrs:
             continue
         obj_type = ptype
         tag = m.group(2)
@@ -8007,7 +8007,7 @@ def insert_root_child(node):
 
 
 # Вывод эмиттера form-compile во фрагмент: функция пишет в lines; результат — узлы верхнего уровня.
-def invoke_section_emit(emit, root_type=''):
+def invoke_section_emit(emit, root_type='', normalize=False):
     global next_elem_id
     save_id = next_elem_id
     xml_lines.clear()
@@ -8015,9 +8015,11 @@ def invoke_section_emit(emit, root_type=''):
     emit(xml_lines)
     X("</_F>")
     next_elem_id = save_id
-    # Перечисления — к виду платформы, как в form-compile: у реквизитов и команд по их типу узла,
-    # у тегов прямо под корнем фрагмента — по root_type (свойства формы)
-    text = normalize_enum_tags("\n".join(xml_lines), root_type)
+    # Перечисления — к виду платформы, как в form-compile: у тегов прямо под корнем фрагмента — по root_type
+    # (свойства формы); normalize — у вложенных узлов по их типу (добавляемые реквизиты и команды)
+    text = "\n".join(xml_lines)
+    if root_type or normalize:
+        text = normalize_enum_tags(text, root_type)
     return import_element_nodes(parse_fragment(text))
 
 
@@ -8343,7 +8345,7 @@ if attrs_list:
                     fail(f"attributes: '{attr['name']}' — у формы уже есть основной реквизит '{m.getparent().get('name')}'")
 
     # Реквизиты пишет эмиттер form-compile (все его ключи); id — из пулов формы
-    wrap = invoke_section_emit(lambda lines: emit_attributes(lines, attrs_list, '\t'))[0]
+    wrap = invoke_section_emit(lambda lines: emit_attributes(lines, attrs_list, '\t'), normalize=True)[0]
     for node in list(wrap.findall("f:Attribute", NS)):
         attr_id = new_attr_id()
         node.set('id', str(attr_id))
@@ -8393,7 +8395,7 @@ if cmds_list:
                 sys.exit(1)
 
     # Команды пишет эмиттер form-compile (все его ключи); id — из пула формы
-    wrap = invoke_section_emit(lambda lines: emit_commands(lines, cmds_list, '\t'))[0]
+    wrap = invoke_section_emit(lambda lines: emit_commands(lines, cmds_list, '\t'), normalize=True)[0]
     for node in list(wrap.findall("f:Command", NS)):
         cmd_id = new_cmd_id()
         node.set('id', str(cmd_id))
